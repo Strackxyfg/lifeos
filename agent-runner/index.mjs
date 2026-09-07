@@ -15,7 +15,7 @@ const LIFEOS_URL = required("LIFEOS_URL");
 const TOKEN = required("LIFEOS_AGENT_TOKEN");
 const MODEL_KEY = process.env.MODEL_API_KEY ?? "";
 const MODEL_BASE = process.env.MODEL_BASE_URL ?? "https://api.groq.com/openai/v1";
-const MODEL = process.env.MODEL ?? "llama-3.3-70b-versatile";
+const MODEL = process.env.MODEL ?? "qwen/qwen3.8-27b";
 const POLL_MS = Number(process.env.POLL_MS ?? 30_000);
 
 function required(name) {
@@ -25,6 +25,30 @@ function required(name) {
     process.exit(1);
   }
   return v;
+}
+
+/**
+ * Turns a model-endpoint failure into something diagnosable.
+ *
+ * A bare "HTTP 404" is ambiguous, and the most common cause is the least
+ * obvious one: providers retire model names, so a config that worked last
+ * month starts 404-ing with no other symptom.
+ */
+async function modelError(res) {
+  const detail = await res.text().catch(() => "");
+  const short = detail.slice(0, 200);
+  if (res.status === 404) {
+    return new Error(
+      `model "${MODEL}" not found at ${MODEL_BASE} (HTTP 404) — it may have been ` +
+        `decommissioned by the provider. List current models: ` +
+        `curl -H "Authorization: Bearer $MODEL_API_KEY" ${MODEL_BASE}/models`
+    );
+  }
+  if (res.status === 401 || res.status === 403) {
+    return new Error(`model auth rejected (HTTP ${res.status}) — check MODEL_API_KEY. ${short}`);
+  }
+  if (res.status === 429) return new Error("model rate-limited (HTTP 429) — backing off");
+  return new Error(`model HTTP ${res.status} ${short}`);
 }
 
 const api = (path, init = {}) =>
@@ -86,7 +110,7 @@ async function think(context, instruction) {
     }),
     signal: AbortSignal.timeout(60_000),
   });
-  if (!res.ok) throw new Error(`model HTTP ${res.status}`);
+  if (!res.ok) throw await modelError(res);
   const body = await res.json();
   return body.choices?.[0]?.message?.content ?? "";
 }
@@ -157,7 +181,7 @@ async function converse(context, history, question) {
     }),
     signal: AbortSignal.timeout(60_000),
   });
-  if (!res.ok) throw new Error(`model HTTP ${res.status}`);
+  if (!res.ok) throw await modelError(res);
 
   const body = await res.json();
   const raw = body.choices?.[0]?.message?.content ?? "{}";

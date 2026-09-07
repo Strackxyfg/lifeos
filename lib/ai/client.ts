@@ -11,7 +11,7 @@ export type AIProvider = "groq" | "cerebras";
 const PROVIDERS: Record<AIProvider, { baseURL: string; defaultModel: string; keyEnv: string; modelEnv: string }> = {
   groq: {
     baseURL: "https://api.groq.com/openai/v1",
-    defaultModel: "llama-3.3-70b-versatile",
+    defaultModel: "qwen/qwen3.8-27b",
     keyEnv: "GROQ_API_KEY",
     modelEnv: "GROQ_MODEL",
   },

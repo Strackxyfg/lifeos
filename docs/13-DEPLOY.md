@@ -48,7 +48,7 @@ Preview and Development**.
 | `SUPABASE_SERVICE_ROLE_KEY` | from `.env.local` |
 | `AI_PROVIDER` | `groq` |
 | `GROQ_API_KEY` | from `.env.local` |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` |
+| `GROQ_MODEL` | `qwen/qwen3.8-27b` |
 | `NOTION_CLIENT_ID` | from `.env.local` |
 | `NOTION_CLIENT_SECRET` | from `.env.local` |
 | `NEXT_PUBLIC_APP_URL` | ⚠️ see below |
@@ -147,7 +147,7 @@ The script refuses a `localhost` URL rather than failing silently.
 sudo docker compose -f /opt/lifeos-agent/docker-compose.yml logs -f
 ```
 
-Expected: `[runner] starting · lifeos=https://… · model=llama-3.3-70b-versatile`
+Expected: `[runner] starting · lifeos=https://… · model=qwen/qwen3.8-27b`
 
 ---
 

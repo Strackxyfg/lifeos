@@ -59,7 +59,7 @@ else
   ask LIFEOS_AGENT_TOKEN  "  2/4  Agent token (LifeOS → Agent → Generate token): "
   ask MODEL_API_KEY       "  3/4  Model API key (Groq/Cerebras/OpenRouter): "
   ask_opt MODEL_BASE_URL  "  4/4  Model base URL [https://api.groq.com/openai/v1]: " "https://api.groq.com/openai/v1"
-  ask_opt MODEL           "       Model [llama-3.3-70b-versatile]: " "llama-3.3-70b-versatile"
+  ask_opt MODEL           "       Model [qwen/qwen3.8-27b]: " "qwen/qwen3.8-27b"
 
   case "$LIFEOS_URL" in
     https://*) ;;
@@ -91,7 +91,7 @@ LIFEOS_URL=${LIFEOS_URL%/}
 LIFEOS_AGENT_TOKEN=$LIFEOS_AGENT_TOKEN
 MODEL_API_KEY=$MODEL_API_KEY
 MODEL_BASE_URL=${MODEL_BASE_URL:-https://api.groq.com/openai/v1}
-MODEL=${MODEL:-llama-3.3-70b-versatile}
+MODEL=${MODEL:-qwen/qwen3.8-27b}
 POLL_MS=30000
 EOF
   chmod 600 .env

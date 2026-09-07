@@ -83,7 +83,7 @@ sudo docker compose -f /opt/lifeos-agent/docker-compose.yml logs -f
 Expected:
 
 ```
-[runner] starting · lifeos=https://… · model=llama-3.3-70b-versatile · poll=30000ms
+[runner] starting · lifeos=https://… · model=qwen/qwen3.8-27b · poll=30000ms
 [runner] message: <your message>
 [runner] replied to 4f2a1c9b
 ```

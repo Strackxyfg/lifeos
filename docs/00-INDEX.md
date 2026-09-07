@@ -23,6 +23,5 @@ The 17 requested deliverables and where each lives.
 | 17 | 12-month roadmap | [`09-ROADMAP.md`](09-ROADMAP.md) |
 | + | Persistence & Supabase setup | [`10-PERSISTENCE.md`](10-PERSISTENCE.md) |
 | + | Autonomous agent: market study, architecture, guardrails | [`11-AGENT.md`](11-AGENT.md) |
-| + | Agent architecture & market study | [`11-AGENT.md`](11-AGENT.md) |
 | + | VPS runner setup | [`12-RUNNER-SETUP.md`](12-RUNNER-SETUP.md) |
 | + | Deploy: GitHub → Vercel → VPS | [`13-DEPLOY.md`](13-DEPLOY.md) |

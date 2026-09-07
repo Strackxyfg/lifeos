@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ───────────────────────────────────────────────────────────
+   LifeOS AI — Design Tokens
+   Dark-first. Graphite canvas, porcelain ink, one accent.
+   ─────────────────────────────────────────────────────────── */
+:root {
+  --background: 240 6% 4%;      /* #0A0A0B — canvas */
+  --surface: 240 6% 6%;        /* #0E0E10 — panels */
+  --surface-2: 240 5% 9%;      /* #16161A — elevated */
+  --foreground: 60 6% 94%;     /* warm porcelain */
+  --muted: 240 4% 44%;         /* tertiary ink */
+  --muted-foreground: 240 5% 66%;
+
+  --border: 240 6% 13%;        /* hairline */
+  --border-strong: 240 6% 20%;
+
+  /* Single accent — restrained signal blue (never purple, never neon) */
+  --accent: 222 90% 64%;
+  --accent-foreground: 0 0% 100%;
+  --ring: 222 90% 64%;
+
+  --success: 152 58% 52%;
+  --warning: 38 92% 60%;
+  --danger: 0 72% 60%;
+
+  --radius: 0.875rem;          /* 14px */
+  --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
+
+  color-scheme: dark;
+}
+
+/* Optional light theme (dark remains the product default) */
+.light {
+  --background: 40 20% 99%;
+  --surface: 0 0% 100%;
+  --surface-2: 240 20% 98%;
+  --foreground: 240 10% 8%;
+  --muted: 240 5% 45%;
+  --muted-foreground: 240 4% 40%;
+  --border: 240 10% 90%;
+  --border-strong: 240 8% 82%;
+  --accent: 222 88% 56%;
+  --accent-foreground: 0 0% 100%;
+  --ring: 222 88% 56%;
+  color-scheme: light;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "cv11", "ss01", "liga" 1, "calt" 1;
+}
+
+/* Selection + focus */
+::selection {
+  background: hsl(var(--accent) / 0.28);
+  color: hsl(var(--foreground));
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.9);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Custom scrollbar — quiet, premium */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border-strong));
+  border-radius: 999px;
+  border: 3px solid hsl(var(--background));
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(240 5% 28%); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Reusable primitives ─────────────────────────────────── */
+@layer components {
+  /* Hairline grid + aurora background used behind hero/app */
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.6) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.6) 1px, transparent 1px);
+    background-size: 64px 64px;
+  }
+  .bg-aurora {
+    background:
+      radial-gradient(600px 320px at 50% -10%, hsl(var(--accent) / 0.14), transparent 70%),
+      radial-gradient(900px 500px at 85% 10%, hsl(210 60% 40% / 0.08), transparent 70%);
+  }
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+    mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  }
+  .text-gradient {
+    background: linear-gradient(180deg, hsl(var(--foreground)) 30%, hsl(var(--muted-foreground)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .glass {
+    background: hsl(var(--surface) / 0.7);
+    backdrop-filter: blur(14px) saturate(150%);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+  }
+  .hairline { border: 1px solid hsl(var(--border)); }
+
+  /* Shimmering skeleton */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: hsl(var(--surface-2));
+    border-radius: calc(var(--radius) - 4px);
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, hsl(var(--foreground) / 0.05), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+}

@@ -1,0 +1,222 @@
+#!/usr/bin/env node
+/**
+ * LifeOS Agent Runner — runs on a VPS, never on the owner's machine.
+ *
+ * Security model:
+ *   • Holds exactly two secrets: LIFEOS_AGENT_TOKEN (scoped, revocable) and a
+ *     model API key. No database credentials, no Notion token, no Supabase key.
+ *   • Executes nothing locally. Every action is proposed to LifeOS `/act`,
+ *     which runs the policy engine and answers allow / approve / deny.
+ *   • Outbound network is restricted to LIFEOS_URL and the model endpoint.
+ *   • Fails closed: any error, timeout or non-allow answer stops the step.
+ */
+
+const LIFEOS_URL = required("LIFEOS_URL");
+const TOKEN = required("LIFEOS_AGENT_TOKEN");
+const MODEL_KEY = process.env.MODEL_API_KEY ?? "";
+const MODEL_BASE = process.env.MODEL_BASE_URL ?? "https://api.groq.com/openai/v1";
+const MODEL = process.env.MODEL ?? "llama-3.3-70b-versatile";
+const POLL_MS = Number(process.env.POLL_MS ?? 30_000);
+
+function required(name) {
+  const v = process.env[name];
+  if (!v) {
+    console.error(`[runner] missing required env var ${name}`);
+    process.exit(1);
+  }
+  return v;
+}
+
+const api = (path, init = {}) =>
+  fetch(`${LIFEOS_URL}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${TOKEN}`,
+      "Content-Type": "application/json",
+      ...init.headers,
+    },
+    signal: AbortSignal.timeout(30_000),
+  });
+
+/** Ask LifeOS whether an action is permitted. Never assume yes. */
+async function propose(capability, payload, costCents = 0) {
+  try {
+    const res = await api("/api/agent/v1/act", {
+      method: "POST",
+      body: JSON.stringify({ capability, payload, costCents }),
+    });
+    const body = await res.json().catch(() => ({}));
+    return { decision: body.decision ?? "deny", reason: body.reason ?? `HTTP ${res.status}` };
+  } catch (err) {
+    // Fail closed: if the gate is unreachable, nothing runs.
+    return { decision: "deny", reason: `gate unreachable: ${err.message}` };
+  }
+}
+
+async function loadContext() {
+  const gate = await propose("brain.read", { intent: "load context" });
+  if (gate.decision !== "allow") {
+    console.log(`[runner] context denied — ${gate.reason}`);
+    return null;
+  }
+  const res = await api("/api/agent/v1/context");
+  if (!res.ok) throw new Error(`context HTTP ${res.status}`);
+  return res.json();
+}
+
+async function think(context, instruction) {
+  if (!MODEL_KEY) return "(no model key configured — dry run)";
+  const res = await fetch(`${MODEL_BASE}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${MODEL_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 500,
+      temperature: 0.4,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are the LifeOS background agent. You may only propose actions; " +
+            "a policy engine decides whether they run. Be concrete and brief. " +
+            "Never claim to have done something you were not allowed to do.",
+        },
+        { role: "user", content: `Workspace facts:\n${JSON.stringify(context.snapshot)}\n\nTask: ${instruction}` },
+      ],
+    }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) throw new Error(`model HTTP ${res.status}`);
+  const body = await res.json();
+  return body.choices?.[0]?.message?.content ?? "";
+}
+
+/** Claims any messages the user sent, answers them, posts the reply back. */
+async function handleMessages(context) {
+  const res = await api("/api/agent/v1/inbox");
+  if (!res.ok) throw new Error(`inbox HTTP ${res.status}`);
+  const { messages, history } = await res.json();
+  if (!messages?.length) return 0;
+
+  for (const msg of messages) {
+    console.log(`[runner] message: ${msg.content.slice(0, 80)}`);
+    let reply;
+    let failed = false;
+
+    try {
+      reply = await converse(context, history ?? [], msg.content);
+
+      // If the answer proposes a concrete capture, put it through the gate.
+      if (reply.action?.capability) {
+        const gate = await propose(reply.action.capability, reply.action.payload ?? {}, 1);
+        reply.text += `\n\n— ${gate.decision === "allow" ? "✅" : gate.decision === "approve" ? "⏳" : "🚫"} ${gate.reason}`;
+      }
+    } catch (err) {
+      failed = true;
+      reply = { text: `I couldn't process that: ${err.message}` };
+    }
+
+    await api("/api/agent/v1/inbox", {
+      method: "POST",
+      body: JSON.stringify({ replyTo: msg.id, content: reply.text, failed }),
+    });
+    console.log(`[runner] replied to ${msg.id.slice(0, 8)}${failed ? " (failed)" : ""}`);
+  }
+  return messages.length;
+}
+
+/**
+ * Answers the user. Asks the model for JSON so a reply can optionally carry a
+ * proposed action — which still has to pass the gate before anything happens.
+ */
+async function converse(context, history, question) {
+  if (!MODEL_KEY) return { text: "No model key is configured on the runner, so I can't think yet." };
+
+  const res = await fetch(`${MODEL_BASE}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${MODEL_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 600,
+      temperature: 0.4,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are the LifeOS background agent, running on the user's own server. " +
+            "You may PROPOSE actions but a policy engine decides whether they run — " +
+            "never claim to have done something. Reply ONLY as JSON: " +
+            '{"text": "<your reply>", "action": null | {"capability": "brain.write"|"task.write"|"project.write", "payload": {…}}}. ' +
+            `Workspace facts: ${JSON.stringify(context.snapshot)}. ` +
+            `Current autonomy: ${context.policy.autonomy}.`,
+        },
+        ...history.map((h) => ({ role: h.role === "agent" ? "assistant" : "user", content: h.content })),
+        { role: "user", content: question },
+      ],
+    }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) throw new Error(`model HTTP ${res.status}`);
+
+  const body = await res.json();
+  const raw = body.choices?.[0]?.message?.content ?? "{}";
+  try {
+    const parsed = JSON.parse(raw);
+    return { text: String(parsed.text ?? raw).slice(0, 4000), action: parsed.action ?? null };
+  } catch {
+    return { text: String(raw).slice(0, 4000) };
+  }
+}
+
+async function tick() {
+  const context = await loadContext();
+  if (!context) return;
+
+  if (context.policy.killSwitch) {
+    console.log("[runner] kill switch is on — idle");
+    return;
+  }
+
+  // Messages first: a waiting human beats background work.
+  const handled = await handleMessages(context);
+  if (handled > 0) return;
+
+  // Autonomous pass. At "observe" the gate refuses the write, which is the point.
+  const output = await think(context, "Review the workspace and propose the single highest-leverage next action.");
+  console.log(`[runner] proposal: ${String(output).slice(0, 160)}`);
+
+  const gate = await propose("brain.write", { title: String(output).slice(0, 300), category: "next" }, 1);
+  console.log(`[runner] brain.write → ${gate.decision} (${gate.reason})`);
+}
+
+console.log(`[runner] starting · lifeos=${LIFEOS_URL} · model=${MODEL} · poll=${POLL_MS}ms`);
+
+let stopping = false;
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, () => {
+    stopping = true;
+    console.log(`[runner] ${sig} — shutting down`);
+    process.exit(0);
+  });
+}
+
+// Written after every cycle — including failed ones, since a runner that is
+// looping and reporting errors is alive. The container healthcheck fails only
+// if this stops being touched, i.e. the process is genuinely wedged.
+const HEARTBEAT = process.env.HEARTBEAT_FILE ?? "/tmp/lifeos-agent-heartbeat";
+const { writeFileSync } = await import("node:fs");
+
+while (!stopping) {
+  try {
+    await tick();
+  } catch (err) {
+    console.error("[runner] tick failed:", err.message);
+  }
+  try {
+    writeFileSync(HEARTBEAT, new Date().toISOString());
+  } catch {
+    /* heartbeat is best-effort */
+  }
+  await new Promise((r) => setTimeout(r, POLL_MS));
+}

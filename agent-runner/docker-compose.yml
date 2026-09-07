@@ -1,0 +1,31 @@
+# LifeOS Agent Runner — VPS deployment.
+#
+# Hardened by default: read-only filesystem, no new privileges, all Linux
+# capabilities dropped, memory and CPU capped. The container holds no database
+# or Notion credentials — only a scoped, revocable LifeOS token.
+services:
+  agent:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+
+    # ── Isolation ────────────────────────────────────────────────────
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "1000:1000"
+
+    # ── Blast radius ─────────────────────────────────────────────────
+    mem_limit: 256m
+    pids_limit: 128
+    cpus: 0.5
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

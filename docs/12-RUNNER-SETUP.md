@@ -46,10 +46,10 @@ The runner idles at ~40 MB RAM. Anything works.
 
 | Host | Cost | Notes |
 |---|---|---|
-| **Oracle Cloud Always Free** | **$0** | 4 ARM cores / 24 GB RAM, genuinely free. Sign-up can be fussy. |
+| **Oracle Cloud Always Free** | **$0** | Genuinely free forever. ARM was halved to 2 OCPU / 12 GB in 2026 and is often "out of capacity" — use the **AMD micro** shape instead (see [`13-DEPLOY.md`](13-DEPLOY.md)). |
+| **Hostinger KVM 1** | ~$5/mo | 1 vCPU / 4 GB, Docker template in hPanel, simplest path. |
 | **Hetzner CX22** | ~€3.8/mo | Best price/performance, EU data residency. |
 | **Fly.io** | ~$2/mo | `fly launch` from `agent-runner/`, scales to zero. |
-| **Contabo / Netcup** | ~€4/mo | Cheap, generous specs. |
 
 Debian 12 or Ubuntu 24.04.
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { NOTION_STATE_COOKIE } from "@/lib/notion/oauth";
+import { resolveNotionRedirectUri, requestOrigin } from "@/lib/notion/redirect";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,11 +16,13 @@ export const dynamic = "force-dynamic";
  * victim's account (OAuth CSRF).
  */
 export async function GET(req: Request) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  // Derived from the live request, so a stale localhost value in the
+  // environment can't send the user back to their own machine.
+  const appUrl = requestOrigin(req);
   const clientId = process.env.NOTION_CLIENT_ID;
-  const redirectUri = process.env.NOTION_REDIRECT_URI;
+  const redirectUri = resolveNotionRedirectUri(req);
 
-  if (!clientId || !redirectUri) {
+  if (!clientId) {
     return NextResponse.redirect(`${appUrl}/settings?notion=not_configured`);
   }
 

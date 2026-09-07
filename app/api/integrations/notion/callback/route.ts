@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserKey, isSupabaseConfigured } from "@/lib/db/store";
 import { NOTION_STATE_COOKIE, exchangeCodeForToken, resolveRootPageId } from "@/lib/notion/oauth";
+import { resolveNotionRedirectUri, requestOrigin } from "@/lib/notion/redirect";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,9 @@ export const dynamic = "force-dynamic";
  * explain what went wrong instead of failing silently.
  */
 export async function GET(req: Request) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  // Same derivation as /authorize — OAuth requires both redirect_uri values
+  // to be byte-identical, so they must come from the same helper.
+  const appUrl = requestOrigin(req);
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const oauthError = url.searchParams.get("error");
@@ -40,8 +43,8 @@ export async function GET(req: Request) {
 
   const clientId = process.env.NOTION_CLIENT_ID;
   const clientSecret = process.env.NOTION_CLIENT_SECRET;
-  const redirectUri = process.env.NOTION_REDIRECT_URI;
-  if (!clientId || !clientSecret || !redirectUri) return fail("not_configured");
+  const redirectUri = resolveNotionRedirectUri(req);
+  if (!clientId || !clientSecret) return fail("not_configured");
 
   const exchange = await exchangeCodeForToken({ code, clientId, clientSecret, redirectUri });
   if (!exchange.ok) {

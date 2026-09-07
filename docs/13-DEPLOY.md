@@ -144,7 +144,7 @@ The script refuses a `localhost` URL rather than failing silently.
 7. **Watch it start**:
 
 ```bash
-docker compose -f /opt/lifeos-agent/docker-compose.yml logs -f
+sudo docker compose -f /opt/lifeos-agent/docker-compose.yml logs -f
 ```
 
 Expected: `[runner] starting · lifeos=https://… · model=llama-3.3-70b-versatile`
@@ -231,7 +231,7 @@ On the VPS you should see:
 Container health (a real probe — the runner touches a heartbeat file each cycle):
 
 ```bash
-docker inspect --format '{{.State.Health.Status}}' lifeos-agent-agent-1
+sudo docker inspect --format '{{.State.Health.Status}}' lifeos-agent-agent-1
 ```
 
 ## If something is wrong

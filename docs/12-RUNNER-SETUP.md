@@ -77,7 +77,7 @@ mistake through silence.
 ## 4. Verify
 
 ```bash
-docker compose -f /opt/lifeos-agent/docker-compose.yml logs -f
+sudo docker compose -f /opt/lifeos-agent/docker-compose.yml logs -f
 ```
 
 Expected:
@@ -95,7 +95,7 @@ Container health is a real probe: the runner touches a heartbeat file each
 cycle, and the healthcheck fails if it goes stale for three cycles.
 
 ```bash
-docker inspect --format '{{.State.Health.Status}}' lifeos-agent-agent-1
+sudo docker inspect --format '{{.State.Health.Status}}' lifeos-agent-agent-1
 ```
 
 ---
@@ -117,7 +117,7 @@ Three independent stops, in order of bluntness:
 
 1. **Kill switch** (LifeOS → Agent) — refuses everything, including reads.
 2. **Revoke token** — the runner gets 401 on its next call.
-3. `docker compose down` on the VPS.
+3. `sudo docker compose down` on the VPS.
 
 ## Cost
 
@@ -135,3 +135,18 @@ about **€4/month**.
 | Messages stay "waiting" | Runner not running, or pointed at the wrong URL — check its logs |
 | `relation "agent_messages" does not exist` | Apply `supabase/migrations/005_agent_chat.sql` |
 | Container `unhealthy` | The loop is wedged — read the logs; it restarts on its own |
+| `permission denied ... /var/run/docker.sock` | Docker's socket is root-owned — prefix commands with `sudo` (see below) |
+
+### Running docker without `sudo`
+
+Every command here uses `sudo`. If you'd rather not, add yourself to the
+`docker` group once:
+
+```bash
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+⚠️ Be aware of what that grants: membership of the `docker` group is
+[equivalent to root on the host](https://docs.docker.com/engine/security/#docker-daemon-attack-surface),
+because anyone in it can start a privileged container that mounts `/`. On a
+single-admin VPS that's a normal convenience; on a shared box, keep `sudo`.

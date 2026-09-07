@@ -1,18 +1,16 @@
 # LifeOS Agent Runner — deploy to a VPS, never to the owner's machine.
 FROM node:22-alpine
 
-# Explicit UID/GID 1000 so it matches the `user:` pin in docker-compose.yml.
-# (Alpine's `adduser -S` allocates a system UID near 100, which would not.)
-RUN addgroup -g 1000 -S agent \
- && adduser -u 1000 -S agent -G agent -s /sbin/nologin
-
+# The official Node images already ship an unprivileged `node` user at
+# UID/GID 1000 — which is exactly what docker-compose.yml pins. Reuse it
+# instead of creating one: `addgroup -g 1000` fails with "gid in use".
 WORKDIR /app
-COPY index.mjs ./
-RUN chown -R agent:agent /app
+COPY --chown=node:node index.mjs ./
 
-USER agent
+USER node
 
-# No package installs at runtime, no writable app dir, no shell for the user.
+# No package installs at runtime; the app directory is read-only at runtime
+# (see docker-compose.yml), so nothing here can be modified in place.
 ENV NODE_ENV=production
 ENV POLL_MS=30000
 # Touched after every successful cycle; the healthcheck reads it.

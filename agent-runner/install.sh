@@ -37,19 +37,53 @@ if [ -f .env ]; then
   say ".env already exists — keeping it. Delete it to reconfigure."
 else
   say "Configuration. Nothing here grants database, Notion or payment access."
-  read -rp "  LifeOS public URL (https://…): " LIFEOS_URL
-  read -rp "  Agent token (LifeOS → Agent → Generate token): " LIFEOS_AGENT_TOKEN
-  read -rp "  Model API key (Groq/Cerebras/OpenRouter): " MODEL_API_KEY
-  read -rp "  Model base URL [https://api.groq.com/openai/v1]: " MODEL_BASE_URL
-  read -rp "  Model [llama-3.3-70b-versatile]: " MODEL
+  say "Answer one prompt at a time — do not paste a multi-line block."
+
+  # `read -u 1` reads from the terminal, not stdin, so this still works when
+  # the script itself is piped (curl … | bash) and can't consume the pipe.
+  ask() { # ask <var> <prompt>
+    local __var=$1 __prompt=$2 __val=""
+    while [ -z "$__val" ]; do
+      read -r -p "$__prompt" __val </dev/tty || die "No terminal available for input."
+      [ -n "$__val" ] || echo "    (required)"
+    done
+    printf -v "$__var" '%s' "$__val"
+  }
+  ask_opt() { # ask_opt <var> <prompt> <default>
+    local __var=$1 __val=""
+    read -r -p "$2" __val </dev/tty || true
+    printf -v "$__var" '%s' "${__val:-$3}"
+  }
+
+  ask LIFEOS_URL          "  1/4  LifeOS public URL (https://…): "
+  ask LIFEOS_AGENT_TOKEN  "  2/4  Agent token (LifeOS → Agent → Generate token): "
+  ask MODEL_API_KEY       "  3/4  Model API key (Groq/Cerebras/OpenRouter): "
+  ask_opt MODEL_BASE_URL  "  4/4  Model base URL [https://api.groq.com/openai/v1]: " "https://api.groq.com/openai/v1"
+  ask_opt MODEL           "       Model [llama-3.3-70b-versatile]: " "llama-3.3-70b-versatile"
 
   case "$LIFEOS_URL" in
     https://*) ;;
     http://localhost*|http://127.*)
-      die "A VPS cannot reach your laptop. Deploy LifeOS first (see docs/11-AGENT.md)." ;;
+      die "A VPS cannot reach your laptop. Deploy LifeOS first (see docs/13-DEPLOY.md)." ;;
     *) die "LIFEOS_URL must be https:// in production." ;;
   esac
-  [ -n "$LIFEOS_AGENT_TOKEN" ] || die "The agent token is required."
+
+  case "$LIFEOS_AGENT_TOKEN" in
+    lifeos_agent_*) ;;
+    *) die "That doesn't look like an agent token (they start with 'lifeos_agent_'). Mint one in LifeOS → Agent." ;;
+  esac
+
+  # Echo a masked summary so a mistyped or swallowed value is obvious *now*
+  # rather than as a silent "I can't think yet" reply hours later.
+  mask() { [ ${#1} -le 8 ] && printf '%s' "$1" || printf '%s…%s' "${1:0:6}" "${1: -4}"; }
+  echo
+  say "Confirm:"
+  printf '     LifeOS URL : %s\n'  "${LIFEOS_URL%/}"
+  printf '     Token      : %s\n'  "$(mask "$LIFEOS_AGENT_TOKEN")"
+  printf '     Model key  : %s\n'  "$(mask "$MODEL_API_KEY")"
+  printf '     Model      : %s @ %s\n' "$MODEL" "$MODEL_BASE_URL"
+  read -r -p "  Correct? [Y/n] " __ok </dev/tty || true
+  case "${__ok:-y}" in [nN]*) die "Aborted — re-run to try again." ;; esac
 
   umask 077
   cat > .env <<EOF

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CAPABILITIES, getCapability } from "@/lib/agent/capabilities";
-import { decide, derivePolicy, MINIMUM_POLICY, AUTONOMY_ORDER, type AgentPolicy, type UsageState } from "@/lib/agent/policy";
+import { decide, derivePolicy, isMetered, MINIMUM_POLICY, AUTONOMY_ORDER, type AgentPolicy, type UsageState } from "@/lib/agent/policy";
 import { scoreAssessment, reverseScore, isStraightLined } from "@/lib/assessment/scoring";
 import { items, ATTENTION_CHECK, ATTENTION_CHECK_EXPECTED, LIKERT_MIN, LIKERT_MAX } from "@/lib/assessment/instrument";
 
@@ -129,18 +129,61 @@ describe("guardrails — the assessment can never unlock danger", () => {
 
   it("stops at the daily run limit", () => {
     const spent = { ...fresh, runsToday: permissive.dailyRunLimit };
-    expect(decide("brain.read", permissive, spent).action).toBe("deny");
+    expect(decide("brain.write", permissive, spent).action).toBe("deny");
   });
 
   it("stops at the daily budget", () => {
     const broke = { ...fresh, spentTodayCents: permissive.dailyBudgetCents };
-    expect(decide("brain.read", permissive, broke).action).toBe("deny");
+    expect(decide("brain.write", permissive, broke).action).toBe("deny");
   });
 
   it("observe-level executes nothing that writes", () => {
     const observer: AgentPolicy = { ...permissive, autonomy: "observe" };
     for (const cap of CAPABILITIES.filter((c) => c.tier === "low" || c.tier === "medium")) {
       expect(decide(cap.id, observer, fresh).action).not.toBe("allow");
+    }
+  });
+});
+
+describe("quotas meter actions, not observations", () => {
+  const exhausted: UsageState = { runsToday: 999, spentTodayCents: 999_999, killSwitchOn: false };
+  const policy: AgentPolicy = {
+    ...MINIMUM_POLICY, autonomy: "act", dailyRunLimit: 50, dailyBudgetCents: 50,
+  };
+
+  it("marks read-only capabilities as unmetered", () => {
+    expect(isMetered("safe")).toBe(false);
+    for (const t of ["low", "medium", "high", "forbidden"] as const) {
+      expect(isMetered(t), `${t} must be metered`).toBe(true);
+    }
+  });
+
+  it("still allows reads once the run limit is exhausted", () => {
+    // The bug this pins: a runner polling every 30s spent its whole daily
+    // allowance fetching context, then locked itself out of doing any work.
+    for (const id of ["brain.read", "workspace.read", "analyze"]) {
+      const d = decide(id, policy, exhausted);
+      expect(d.action, `${id} should stay allowed`).toBe("allow");
+    }
+  });
+
+  it("still blocks writes once the run limit is exhausted", () => {
+    const d = decide("brain.write", policy, exhausted);
+    expect(d.action).toBe("deny");
+    expect(d.reason).toMatch(/run limit|budget/i);
+  });
+
+  it("keeps the kill switch outranking the read exemption", () => {
+    const d = decide("brain.read", policy, { ...fresh, killSwitchOn: true });
+    expect(d.action).toBe("deny");
+    expect(d.reason).toMatch(/kill switch/i);
+  });
+
+  it("never lets a read bypass the forbidden tier", () => {
+    const forbidden = CAPABILITIES.filter((c) => c.tier === "forbidden");
+    expect(forbidden.length).toBeGreaterThan(0);
+    for (const c of forbidden) {
+      expect(decide(c.id, policy, fresh).action).toBe("deny");
     }
   });
 });

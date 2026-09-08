@@ -128,11 +128,24 @@ export interface UsageState {
  * The single gate every agent action passes through.
  * Order matters: kill switch → unknown → forbidden → budget → tier ceiling.
  */
+/**
+ * Whether a capability draws down the daily run/budget quotas.
+ *
+ * Only `safe` capabilities are exempt: they read LifeOS's own database, have no
+ * side effects and cost nothing. Metering them meant a runner polling every
+ * 30 s spent its whole daily allowance just fetching context — 50 "runs" that
+ * did nothing — and then locked itself out of doing real work.
+ */
+export function isMetered(tier: RiskTier): boolean {
+  return tier !== "safe";
+}
+
 export function decide(
   capabilityId: string,
   policy: AgentPolicy,
   usage: UsageState
 ): Decision {
+  // The kill switch outranks everything, reads included.
   if (usage.killSwitchOn) {
     return { action: "deny", reason: "Kill switch is on — the agent is fully stopped." };
   }
@@ -145,6 +158,13 @@ export function decide(
 
   if (cap.tier === "forbidden") {
     return { action: "deny", reason: `${cap.label} is never delegated to an agent. ${cap.rationale}` };
+  }
+
+  // Quotas bound *actions*, not observations. A read has no side effect and
+  // costs nothing, so metering it would let a polling runner exhaust its own
+  // budget doing nothing — which is exactly what happened in practice.
+  if (!isMetered(cap.tier)) {
+    return { action: "allow", reason: `${cap.label} — read-only, no side effects.` };
   }
 
   if (usage.runsToday >= policy.dailyRunLimit) {

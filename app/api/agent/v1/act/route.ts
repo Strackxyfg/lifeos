@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authenticateRunner } from "@/lib/agent/token";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { decide, type AgentPolicy } from "@/lib/agent/policy";
+import { decide, isMetered, type AgentPolicy } from "@/lib/agent/policy";
+import { getCapability } from "@/lib/agent/capabilities";
 import { executeCapability } from "@/lib/agent/execute";
 
 export const runtime = "nodejs";
@@ -84,15 +85,21 @@ export async function POST(req: Request) {
     payload
   );
 
-  await db
-    .from("agent_policies")
-    .update({
-      usage_date: today,
-      runs_today: (stale ? 0 : row.runs_today) + 1,
-      spent_today_cents: (stale ? 0 : row.spent_today_cents) + costCents,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("user_key", auth.userKey);
+  // Read-only capabilities don't draw down the quotas — see isMetered().
+  // A `stale` counter (usage_date in the past) is rolled over either way, so
+  // the day still resets on the first call of a new day.
+  const metered = isMetered(getCapability(capability)?.tier ?? "high");
+  if (metered || stale) {
+    await db
+      .from("agent_policies")
+      .update({
+        usage_date: today,
+        runs_today: (stale ? 0 : row.runs_today) + (metered ? 1 : 0),
+        spent_today_cents: (stale ? 0 : row.spent_today_cents) + (metered ? costCents : 0),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_key", auth.userKey);
+  }
 
   return NextResponse.json({
     decision: result.ok ? "allow" : "deny",

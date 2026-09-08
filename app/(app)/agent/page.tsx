@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Bot, ShieldAlert, ArrowRight, Check, ShieldX, UserCheck, MessageSquare } from "lucide-react";
+import { Bot, ShieldAlert, ArrowRight, Check, ShieldX, UserCheck, MessageSquare, Send, Inbox } from "lucide-react";
 import { AgentChat } from "@/components/agent/agent-chat";
 import { AutonomyPicker } from "@/components/agent/autonomy-picker";
+import { TelegramLink, Drafts } from "@/components/agent/agent-channels";
 import { PageHeader } from "@/components/app/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -134,6 +135,27 @@ export default async function AgentPage() {
         <Approvals approvals={state.approvals} />
       </Card>
 
+      {/* Finished work waiting on a human — the other half of the tier split */}
+      <Card className="mt-3">
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Inbox className="h-4 w-4 text-accent" />
+              {m.agent.drafts}
+              {state.drafts.filter((d) => d.status !== "sent").length > 0 && (
+                <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[0.68rem] text-accent">
+                  {state.drafts.filter((d) => d.status !== "sent").length}
+                </span>
+              )}
+            </span>
+          }
+        />
+        <p className="border-b border-border px-5 pb-3.5 text-[0.78rem] leading-relaxed text-muted-foreground">
+          {m.agent.draftsDesc}
+        </p>
+        <Drafts drafts={state.drafts} />
+      </Card>
+
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader title={m.agent.autonomy} />
@@ -181,11 +203,24 @@ export default async function AgentPage() {
         </ul>
       </Card>
 
-      {/* Runner credentials */}
-      <Card className="mt-3">
-        <CardHeader title={m.agent.runner} />
-        <RunnerToken hasToken={state.hasToken} />
-      </Card>
+      {/* Reachability + runner credentials */}
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        <Card>
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2">
+                <Send className="h-4 w-4 text-accent" />
+                {m.agent.telegram}
+              </span>
+            }
+          />
+          <TelegramLink linked={state.telegramLinked} available={state.telegramAvailable} />
+        </Card>
+        <Card>
+          <CardHeader title={m.agent.runner} />
+          <RunnerToken hasToken={state.hasToken} />
+        </Card>
+      </div>
 
       <p className="mt-6 text-center text-[0.72rem] text-muted">
         <Link href="/assessment" className="underline-offset-4 hover:underline">

@@ -1,5 +1,6 @@
 import "server-only";
 import { getStore } from "@/lib/db/store";
+import type { DealStage } from "@/lib/data/workspace";
 import { getCapability } from "./capabilities";
 
 /**
@@ -28,6 +29,8 @@ export async function executeCapability(
   const store = getStore();
   const str = (v: unknown, max = 500) =>
     typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
+  const isRecord = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v);
 
   try {
     switch (capabilityId) {
@@ -83,6 +86,61 @@ export async function executeCapability(
           priority: "Medium",
         });
         return { ok: true, detail: `Created project "${name.slice(0, 60)}".` };
+      }
+
+      case "deal.write": {
+        const name = str(payload.name ?? payload.title, 120);
+        if (!name) return { ok: false, error: "A deal needs a name.", code: "invalid_payload" };
+        const stage = ["Lead", "Qualified", "Proposal", "Won", "Lost"].includes(String(payload.stage))
+          ? (payload.stage as string)
+          : "Lead";
+        const value = Number(payload.value);
+        await store.insert(userKey, "deals", {
+          name,
+          company: str(payload.company, 120) ?? "",
+          stage: stage as DealStage,
+          value: Number.isFinite(value) && value >= 0 ? value : 0,
+          owner: str(payload.owner, 60) ?? "Agent",
+          next: str(payload.next, 200) ?? "",
+        });
+        return { ok: true, detail: `Deal "${name.slice(0, 60)}" at stage ${stage}.` };
+      }
+
+      // ── Drafting ────────────────────────────────────────────────────
+      // These write only into `agent_drafts`. Nothing reaches a recipient or
+      // an ad account here — that is the whole point of the tier split.
+      case "email.draft":
+      case "campaign.draft":
+      case "proposal.draft": {
+        const kind = capabilityId.split(".")[0] as "email" | "campaign" | "proposal";
+        const body = str(payload.body ?? payload.content, 20_000);
+        if (!body) return { ok: false, error: "A draft needs a body.", code: "invalid_payload" };
+
+        const { createDraft } = await import("./drafts");
+        const draft = await createDraft(userKey, {
+          kind,
+          target: str(payload.to ?? payload.target ?? payload.audience, 200),
+          subject: str(payload.subject ?? payload.name, 300),
+          body,
+          meta: isRecord(payload.meta) ? payload.meta : null,
+        });
+        return {
+          ok: true,
+          detail: `Drafted ${kind} "${(draft.subject ?? body).slice(0, 60)}" — waiting for your approval.`,
+        };
+      }
+
+      case "email.send": {
+        const to = str(payload.to ?? payload.target, 200);
+        const subject = str(payload.subject, 300);
+        const body = str(payload.body ?? payload.content, 20_000);
+        if (!to || !subject || !body) {
+          return { ok: false, error: "An email needs to, subject and body.", code: "invalid_payload" };
+        }
+        const { sendEmail } = await import("./email");
+        const sent = await sendEmail({ to, subject, body });
+        if (!sent.ok) return { ok: false, error: sent.error, code: "failed" };
+        return { ok: true, detail: `Sent to ${to} (${sent.id}).` };
       }
 
       // Deliberately unbuilt. Better an honest refusal than a false success.

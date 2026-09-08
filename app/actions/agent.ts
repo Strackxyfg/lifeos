@@ -201,6 +201,122 @@ export async function mintRunnerToken(): Promise<
   }
 }
 
+/**
+ * Issues a Telegram pairing code.
+ *
+ * Access to the agent from a chat app is access to everything the agent can
+ * see, so a chat must be claimed deliberately. The code is short-lived and
+ * single-use, and issuing a new one unlinks whatever chat was paired before —
+ * which is also how you revoke a phone you no longer have.
+ */
+export async function createTelegramLink(): Promise<
+  { ok: true; code: string; expiresAt: string; botUsername: string | null } | { ok: false; error: string }
+> {
+  try {
+    const { userKey } = await ctx();
+    const { createLinkCode } = await import("@/lib/agent/telegram");
+    const { code, expiresAt } = await createLinkCode(userKey);
+    revalidatePath("/agent");
+    return { ok: true, code, expiresAt, botUsername: process.env.TELEGRAM_BOT_USERNAME ?? null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed." };
+  }
+}
+
+export async function unlinkTelegram(): Promise<AgentResult> {
+  try {
+    const { userKey, db } = await ctx();
+    const { error } = await db
+      .from("agent_channels")
+      .delete()
+      .eq("user_key", userKey)
+      .eq("provider", "telegram");
+    if (error) return fail(error.message);
+    revalidatePath("/agent");
+    return ok;
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Failed.");
+  }
+}
+
+/**
+ * The owner approving a draft the agent wrote.
+ *
+ * This is the human half of the tier split: the agent may draft all day at
+ * `low` risk precisely because sending stops here, in front of a person. The
+ * send therefore runs directly rather than through the policy engine — the
+ * approval the engine would have asked for is the click that got us here — and
+ * it is audited with the approver stamped on it.
+ */
+export async function approveDraft(id: string): Promise<AgentResult> {
+  try {
+    const { userKey, db } = await ctx();
+    const { data: draft } = await db
+      .from("agent_drafts")
+      .select("id, kind, target, subject, body, status")
+      .eq("id", id)
+      .eq("user_key", userKey)
+      .maybeSingle();
+
+    if (!draft) return fail("Draft not found.");
+    if (draft.status === "sent") return fail("That draft has already been sent.");
+
+    let detail = "Approved.";
+    let status: "approved" | "sent" = "approved";
+
+    if (draft.kind === "email") {
+      if (!draft.target) return fail("This draft has no recipient — add one before sending.");
+      const { sendEmail } = await import("@/lib/agent/email");
+      const sent = await sendEmail({
+        to: draft.target,
+        subject: draft.subject ?? "(no subject)",
+        body: draft.body,
+      });
+      // Do not mark it sent if it wasn't. A draft stuck at `draft` with a
+      // visible error is far better than one that claims to have gone out.
+      if (!sent.ok) return fail(sent.error);
+      detail = `Sent to ${draft.target}.`;
+      status = "sent";
+    }
+
+    await db
+      .from("agent_drafts")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("user_key", userKey);
+
+    await db.from("agent_audit").insert({
+      user_key: userKey,
+      capability: draft.kind === "email" ? "email.send" : `${draft.kind}.approve`,
+      decision: "allow",
+      reason: detail,
+      approved_by: userKey,
+      approved_at: new Date().toISOString(),
+    });
+
+    revalidatePath("/agent");
+    return ok;
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Failed.");
+  }
+}
+
+export async function rejectDraft(id: string): Promise<AgentResult> {
+  try {
+    const { userKey, db } = await ctx();
+    const { error } = await db
+      .from("agent_drafts")
+      .update({ status: "rejected", updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("user_key", userKey);
+    if (error) return fail(error.message);
+    revalidatePath("/agent");
+    return ok;
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Failed.");
+  }
+}
+
 export async function revokeRunnerTokens(): Promise<AgentResult> {
   try {
     const { userKey, db } = await ctx();

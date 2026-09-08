@@ -205,6 +205,26 @@ const en = {
     tokenActive: "A token is active.",
     tokenNone: "No token yet.",
     revoked: "Token revoked",
+
+    telegram: "Telegram",
+    telegramDesc:
+      "Talk to your agent from your phone. Pairing is one-time and revocable — an unlinked chat can never reach your data.",
+    telegramLink: "Generate pairing code",
+    telegramLinked: "Telegram is linked.",
+    telegramUnlink: "Unlink",
+    telegramUnavailable:
+      "Set TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET on the server to enable Telegram.",
+    telegramStep: "Send this to your bot, within 15 minutes:",
+
+    drafts: "Waiting for you",
+    draftsDesc:
+      "Work the agent finished. It writes freely; sending is yours alone.",
+    noDrafts: "Nothing waiting.",
+    draftSend: "Approve & send",
+    draftApprove: "Approve",
+    draftReject: "Discard",
+    draftSent: "Sent",
+
     capabilities: "What it may do",
     tierSafe: "Automatic",
     tierApproval: "Needs your approval",
@@ -489,6 +509,26 @@ const fr: Messages = {
     tokenActive: "Un jeton est actif.",
     tokenNone: "Aucun jeton.",
     revoked: "Jeton révoqué",
+
+    telegram: "Telegram",
+    telegramDesc:
+      "Parlez à votre agent depuis votre téléphone. L'appairage est unique et révocable — une conversation non liée n'atteint jamais vos données.",
+    telegramLink: "Générer un code d'appairage",
+    telegramLinked: "Telegram est lié.",
+    telegramUnlink: "Délier",
+    telegramUnavailable:
+      "Définissez TELEGRAM_BOT_TOKEN et TELEGRAM_WEBHOOK_SECRET sur le serveur pour activer Telegram.",
+    telegramStep: "Envoyez ceci à votre bot, sous 15 minutes :",
+
+    drafts: "En attente de vous",
+    draftsDesc:
+      "Le travail terminé par l'agent. Il rédige librement ; l'envoi n'appartient qu'à vous.",
+    noDrafts: "Rien en attente.",
+    draftSend: "Valider et envoyer",
+    draftApprove: "Valider",
+    draftReject: "Écarter",
+    draftSent: "Envoyé",
+
     capabilities: "Ce qu'il peut faire",
     tierSafe: "Automatique",
     tierApproval: "Nécessite votre accord",

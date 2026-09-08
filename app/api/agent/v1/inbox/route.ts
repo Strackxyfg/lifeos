@@ -21,6 +21,26 @@ export async function GET(req: Request) {
   const db = createAdminClient();
   const staleCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
 
+  // Live control state travels with the inbox. This is what lets the runner
+  // poll fast: one cheap call tells it both "is there work" and "am I allowed
+  // to work", instead of a /act round-trip on every idle cycle.
+  const { data: policy } = await db
+    .from("agent_policies")
+    .select("kill_switch, autonomy")
+    .eq("user_key", auth.userKey)
+    .maybeSingle();
+
+  const control = {
+    killSwitch: Boolean(policy?.kill_switch),
+    autonomy: policy?.autonomy ?? "observe",
+  };
+
+  // Stopped means stopped. Messages stay `pending` and are answered once the
+  // switch goes back off — nothing is lost, and nothing runs meanwhile.
+  if (control.killSwitch) {
+    return NextResponse.json({ messages: [], history: [], control });
+  }
+
   // Release abandoned claims first.
   await db
     .from("agent_messages")
@@ -37,7 +57,7 @@ export async function GET(req: Request) {
     .order("created_at", { ascending: true })
     .limit(5);
 
-  if (!pending?.length) return NextResponse.json({ messages: [], history: [] });
+  if (!pending?.length) return NextResponse.json({ messages: [], history: [], control });
 
   await db
     .from("agent_messages")
@@ -56,6 +76,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     messages: pending,
     history: (history ?? []).reverse(),
+    control,
   });
 }
 
@@ -77,22 +98,49 @@ export async function POST(req: Request) {
   const db = createAdminClient();
 
   // Only close a message this user owns and this runner actually claimed.
-  const { data: source } = await db
+  //
+  // The channel columns arrive in migration 006, and code deploys the instant
+  // it is pushed while migrations are applied by hand. Between the two, asking
+  // for those columns would fail the whole query and silently drop every
+  // reply — so fall back to the pre-006 shape instead of breaking the chat.
+  let source: { id: string; channel?: string | null; channel_chat_id?: string | null } | null = null;
+  let channelsReady = true;
+
+  const withChannel = await db
     .from("agent_messages")
-    .select("id")
+    .select("id, channel, channel_chat_id")
     .eq("id", parsed.data.replyTo)
     .eq("user_key", auth.userKey)
     .eq("status", "claimed")
     .maybeSingle();
 
+  if (withChannel.error) {
+    channelsReady = false;
+    const legacy = await db
+      .from("agent_messages")
+      .select("id")
+      .eq("id", parsed.data.replyTo)
+      .eq("user_key", auth.userKey)
+      .eq("status", "claimed")
+      .maybeSingle();
+    source = legacy.data;
+  } else {
+    source = withChannel.data;
+  }
+
   if (!source) return NextResponse.json({ error: "not_claimed" }, { status: 409 });
 
+  // The reply carries the same channel as the question, so the transcript
+  // stays coherent whichever surface the conversation started on.
   const { error } = await db.from("agent_messages").insert({
     user_key: auth.userKey,
     role: "agent",
     content: parsed.data.content,
     status: "handled",
     run_id: parsed.data.runId ?? null,
+    ...(channelsReady
+      ? { channel: source.channel ?? "web", channel_chat_id: source.channel_chat_id ?? null }
+      : {}),
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -101,5 +149,13 @@ export async function POST(req: Request) {
     .update({ status: parsed.data.failed ? "failed" : "handled" })
     .eq("id", source.id);
 
-  return NextResponse.json({ ok: true });
+  // Deliver it to wherever the user actually is. LifeOS owns this routing so
+  // the runner never needs a Telegram token — it just answers questions.
+  let delivered = true;
+  if (source.channel === "telegram" && source.channel_chat_id) {
+    const { sendTelegram } = await import("@/lib/agent/telegram");
+    delivered = await sendTelegram(source.channel_chat_id, parsed.data.content);
+  }
+
+  return NextResponse.json({ ok: true, delivered });
 }

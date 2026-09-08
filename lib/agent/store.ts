@@ -30,6 +30,16 @@ export interface AgentMessage {
   createdAt: string;
 }
 
+export interface AgentDraft {
+  id: string;
+  kind: "email" | "campaign" | "proposal";
+  target: string | null;
+  subject: string | null;
+  body: string;
+  status: "draft" | "approved" | "sent" | "rejected";
+  createdAt: string;
+}
+
 export interface AgentState {
   policy: AgentPolicy;
   /** What the assessment suggested, so the UI can flag a divergence. */
@@ -43,6 +53,12 @@ export interface AgentState {
   tasks: AgentTask[];
   approvals: PendingApproval[];
   hasToken: boolean;
+  /** Work the agent produced that is waiting on a human. */
+  drafts: AgentDraft[];
+  /** The linked Telegram chat, or null. Never the chat id — just whether. */
+  telegramLinked: boolean;
+  /** False when the bot token isn't set on the server. */
+  telegramAvailable: boolean;
   /** False when Supabase isn't configured — the UI explains instead of erroring. */
   available: boolean;
 }
@@ -59,6 +75,9 @@ const EMPTY: AgentState = {
   tasks: [],
   approvals: [],
   hasToken: false,
+  drafts: [],
+  telegramLinked: false,
+  telegramAvailable: false,
   available: false,
 };
 
@@ -69,7 +88,7 @@ export const loadAgentState = cache(async function loadAgentState(): Promise<Age
   const userKey = await getUserKey();
   const db = createAdminClient();
 
-  const [assessmentRes, policyRes, tasksRes, approvalsRes, tokenRes, messagesRes] = await Promise.all([
+  const [assessmentRes, policyRes, tasksRes, approvalsRes, tokenRes, messagesRes, draftsRes, channelRes] = await Promise.all([
     db.from("agent_assessments").select("*").eq("user_key", userKey)
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
     db.from("agent_policies").select("*").eq("user_key", userKey).maybeSingle(),
@@ -82,6 +101,13 @@ export const loadAgentState = cache(async function loadAgentState(): Promise<Age
       .is("revoked_at", null).limit(1).maybeSingle(),
     db.from("agent_messages").select("id, role, content, status, created_at")
       .eq("user_key", userKey).order("created_at", { ascending: false }).limit(50),
+    // Migration 006 may not be applied yet; these two degrade to empty rather
+    // than taking the console down.
+    db.from("agent_drafts").select("id, kind, target, subject, body, status, created_at")
+      .eq("user_key", userKey).neq("status", "rejected")
+      .order("created_at", { ascending: false }).limit(20),
+    db.from("agent_channels").select("verified_at")
+      .eq("user_key", userKey).eq("provider", "telegram").maybeSingle(),
   ]);
 
   const a = assessmentRes.data;
@@ -139,6 +165,17 @@ export const loadAgentState = cache(async function loadAgentState(): Promise<Age
       createdAt: r.created_at,
     })),
     hasToken: Boolean(tokenRes.data),
+    drafts: (draftsRes.data ?? []).map((d) => ({
+      id: d.id,
+      kind: d.kind,
+      target: d.target,
+      subject: d.subject,
+      body: d.body,
+      status: d.status,
+      createdAt: d.created_at,
+    })),
+    telegramLinked: Boolean(channelRes.data?.verified_at),
+    telegramAvailable: Boolean(process.env.TELEGRAM_BOT_TOKEN),
     available: true,
   };
 });

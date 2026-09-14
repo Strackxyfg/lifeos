@@ -106,6 +106,50 @@ AUTONOMOUS_MS=900000 # background work, 15 min
 
 ---
 
+## 2b. When the model is rate-limited
+
+Groq's free tier allows **1000 requests/day but only 8000 tokens/minute**, and
+tokens-per-minute is the limit you actually hit. The old runner made an
+autonomous model call every 30 seconds, which burned roughly a fifth of that
+budget continuously doing nothing — so a real question arriving at the wrong
+moment got a 429.
+
+Three things now happen instead of failing:
+
+**It actually backs off.** The old code printed "backing off" and then carried
+on at full speed 1.5 seconds later. It now waits — exponentially, with jitter,
+honouring the provider's `Retry-After` when one is sent.
+
+**Your question is kept.** A rate limit is transient, so the message goes back
+on the queue and is answered when the provider recovers. Previously it was
+marked failed and closed: you had to retype it. After
+`GIVE_UP_AFTER_MS` (default 10 minutes) it gives up and tells you what went
+wrong, rather than retrying silently forever.
+
+**It can fail over to a second provider.** Both endpoints are
+OpenAI-compatible, so this is two environment variables:
+
+```
+FALLBACK_MODEL_BASE_URL=https://api.cerebras.ai/v1
+FALLBACK_MODEL_API_KEY=csk-...
+FALLBACK_MODEL=qwen-3.8-27b
+```
+
+Failover only happens for problems the other provider might not have — a rate
+limit, a timeout, a 5xx. A bad key or a retired model name fails over there
+too, so it is reported immediately instead.
+
+Note the model names differ per provider: Groq calls it `qwen/qwen3.8-27b`,
+Cerebras calls it `qwen-3.8-27b`. **Verify a fallback before relying on it** —
+a Cerebras key with no credit returns `HTTP 402`, which is not a rate limit and
+will not be retried:
+
+```bash
+curl -s https://api.cerebras.ai/v1/models -H "Authorization: Bearer $KEY"
+```
+
+---
+
 ## 3. What the agent can do now
 
 The catalogue gained a deliberate split. **Drafting is cheap and reversible,

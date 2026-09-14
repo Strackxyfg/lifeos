@@ -5,7 +5,8 @@ FROM node:22-alpine
 # UID/GID 1000 — which is exactly what docker-compose.yml pins. Reuse it
 # instead of creating one: `addgroup -g 1000` fails with "gid in use".
 WORKDIR /app
-COPY --chown=node:node index.mjs ./
+# retry.mjs is imported by index.mjs — omitting it fails at startup, not build.
+COPY --chown=node:node index.mjs retry.mjs ./
 
 USER node
 

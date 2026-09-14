@@ -11,11 +11,22 @@
  *   • Fails closed: any error, timeout or non-allow answer stops the step.
  */
 
+import { classifyModelError, isTransientNetworkError, createBackoff } from "./retry.mjs";
+
 const LIFEOS_URL = required("LIFEOS_URL");
 const TOKEN = required("LIFEOS_AGENT_TOKEN");
 const MODEL_KEY = process.env.MODEL_API_KEY ?? "";
 const MODEL_BASE = process.env.MODEL_BASE_URL ?? "https://api.groq.com/openai/v1";
 const MODEL = process.env.MODEL ?? "qwen/qwen3.8-27b";
+
+/**
+ * Optional second provider, used when the first is rate-limited or down.
+ * Any OpenAI-compatible endpoint works — Cerebras is the usual pairing with
+ * Groq because both have a free tier and neither shares the other's quota.
+ */
+const FALLBACK_BASE = process.env.FALLBACK_MODEL_BASE_URL ?? "";
+const FALLBACK_KEY = process.env.FALLBACK_MODEL_API_KEY ?? "";
+const FALLBACK_MODEL = process.env.FALLBACK_MODEL ?? MODEL;
 
 /**
  * Polling cadence.
@@ -45,28 +56,31 @@ function required(name) {
 }
 
 /**
- * Turns a model-endpoint failure into something diagnosable.
- *
- * A bare "HTTP 404" is ambiguous, and the most common cause is the least
- * obvious one: providers retire model names, so a config that worked last
- * month starts 404-ing with no other symptom.
+ * Model failures, and whether to wait or give up.
+ * Classification and backoff live in retry.mjs so they can be unit-tested —
+ * this is the logic that decides whether a user's question is retried or
+ * thrown away, and getting it wrong fails silently.
  */
-async function modelError(res) {
-  const detail = await res.text().catch(() => "");
-  const short = detail.slice(0, 200);
-  if (res.status === 404) {
-    return new Error(
-      `model "${MODEL}" not found at ${MODEL_BASE} (HTTP 404) — it may have been ` +
-        `decommissioned by the provider. List current models: ` +
-        `curl -H "Authorization: Bearer $MODEL_API_KEY" ${MODEL_BASE}/models`
-    );
-  }
-  if (res.status === 401 || res.status === 403) {
-    return new Error(`model auth rejected (HTTP ${res.status}) — check MODEL_API_KEY. ${short}`);
-  }
-  if (res.status === 429) return new Error("model rate-limited (HTTP 429) — backing off");
-  return new Error(`model HTTP ${res.status} ${short}`);
+const modelError = (res) => classifyModelError(res, { model: MODEL, base: MODEL_BASE });
+
+const backoff = createBackoff({
+  baseMs: Number(process.env.BACKOFF_BASE_MS ?? 5_000),
+  maxMs: Number(process.env.BACKOFF_MAX_MS ?? 5 * 60_000),
+});
+
+function enterCooldown(err) {
+  const wait = backoff.enter(err);
+  console.warn(
+    `[runner] model unavailable (attempt ${backoff.failures}) — waiting ${Math.round(wait / 1000)}s: ${err.message}`
+  );
+  return wait;
 }
+
+function clearCooldown() {
+  if (backoff.clear()) console.log("[runner] model recovered");
+}
+
+const inCooldown = () => backoff.active();
 
 const api = (path, init = {}) =>
   fetch(`${LIFEOS_URL}${path}`, {
@@ -121,31 +135,68 @@ async function loadContext(force = false) {
   return value;
 }
 
+/**
+ * One model call, with a second provider behind it.
+ *
+ * Free tiers are rate-limited by design, so a single provider means the agent
+ * goes quiet exactly when you are using it most. Both endpoints are
+ * OpenAI-compatible, so failing over is a different base URL and key — no
+ * other code changes. If no fallback is configured this behaves as before.
+ */
+async function chat(body) {
+  const providers = [{ base: MODEL_BASE, key: MODEL_KEY, model: MODEL, name: "primary" }];
+  if (FALLBACK_KEY && FALLBACK_BASE) {
+    providers.push({ base: FALLBACK_BASE, key: FALLBACK_KEY, model: FALLBACK_MODEL, name: "fallback" });
+  }
+
+  let primaryErr;
+  for (const p of providers) {
+    try {
+      const res = await fetch(`${p.base}/chat/completions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${p.key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, model: p.model }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!res.ok) throw await modelError(res);
+      if (p.name === "fallback") console.log(`[runner] answered via fallback provider (${p.model})`);
+      return (await res.json()).choices?.[0]?.message?.content ?? "";
+    } catch (err) {
+      if (p.name === "primary") {
+        primaryErr = err;
+        // Only fail over for problems the other provider might not have. A
+        // malformed request will be just as malformed over there.
+        if (!isTransientNetworkError(err)) throw err;
+        console.warn(`[runner] primary model failed (${err.message}) — trying fallback`);
+        continue;
+      }
+
+      // The fallback failed too. Report the PRIMARY's error, because that is
+      // the one to act on — surfacing "payment required" from a spare provider
+      // when the real problem was a rate limit points at the wrong thing.
+      primaryErr.message += ` (fallback also failed: ${err.message})`;
+      throw primaryErr;
+    }
+  }
+  throw primaryErr;
+}
+
 async function think(context, instruction) {
   if (!MODEL_KEY) return "(no model key configured — dry run)";
-  const res = await fetch(`${MODEL_BASE}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${MODEL_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 500,
-      temperature: 0.4,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are the LifeOS background agent. You may only propose actions; " +
-            "a policy engine decides whether they run. Be concrete and brief. " +
-            "Never claim to have done something you were not allowed to do.",
-        },
-        { role: "user", content: `Workspace facts:\n${JSON.stringify(context.snapshot)}\n\nTask: ${instruction}` },
-      ],
-    }),
-    signal: AbortSignal.timeout(60_000),
+  return chat({
+    max_tokens: 500,
+    temperature: 0.4,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are the LifeOS background agent. You may only propose actions; " +
+          "a policy engine decides whether they run. Be concrete and brief. " +
+          "Never claim to have done something you were not allowed to do.",
+      },
+      { role: "user", content: `Workspace facts:\n${JSON.stringify(context.snapshot)}\n\nTask: ${instruction}` },
+    ],
   });
-  if (!res.ok) throw await modelError(res);
-  const body = await res.json();
-  return body.choices?.[0]?.message?.content ?? "";
 }
 
 /** Cheap liveness probe + work check. One call, no gate round-trip. */
@@ -155,15 +206,40 @@ async function pollInbox() {
   return res.json();
 }
 
-/** Answers claimed messages and posts each reply back. */
+/**
+ * How long a question may be retried before the runner gives up and says so.
+ * Long enough to ride out a rate limit, short enough that nobody is left
+ * staring at an unanswered message wondering.
+ */
+const GIVE_UP_AFTER_MS = Number(process.env.GIVE_UP_AFTER_MS ?? 10 * 60_000);
+
+/** Hands a message back to the queue so a later cycle can answer it. */
+async function release(msg) {
+  await api("/api/agent/v1/inbox", {
+    method: "POST",
+    body: JSON.stringify({ replyTo: msg.id, release: true }),
+  });
+}
+
+/**
+ * Answers claimed messages and posts each reply back.
+ *
+ * Returns `retryLater` when it stopped early because the model was
+ * unavailable — the caller uses that to wait instead of spinning.
+ */
 async function handleMessages(context, messages, history) {
-  for (const msg of messages) {
+  /** Hand back everything we claimed but haven't answered. */
+  const releaseFrom = async (index) => {
+    for (const m of messages.slice(index)) await release(m);
+  };
+
+  for (const [index, msg] of messages.entries()) {
     console.log(`[runner] message: ${msg.content.slice(0, 80)}`);
     let reply;
-    let failed = false;
 
     try {
       reply = await converse(context, history ?? [], msg.content);
+      clearCooldown();
 
       // If the answer proposes a concrete capture, put it through the gate.
       if (reply.action?.capability) {
@@ -171,21 +247,61 @@ async function handleMessages(context, messages, history) {
         reply.text += `\n\n— ${gate.decision === "allow" ? "✅" : gate.decision === "approve" ? "⏳" : "🚫"} ${gate.reason}`;
       }
     } catch (err) {
-      failed = true;
-      reply = { text: `I couldn't process that: ${err.message}` };
+      const age = Date.now() - new Date(msg.created_at).getTime();
+      const transient = isTransientNetworkError(err);
+
+      // Record the outage first, whatever we decide about this particular
+      // message. Otherwise a batch of old messages each burns a model call
+      // against a provider we already know is refusing us.
+      const wait = transient ? enterCooldown(err) : 0;
+
+      if (transient && age < GIVE_UP_AFTER_MS) {
+        // The provider is having a moment. Put the question back rather than
+        // spending it on an error message — the user shouldn't have to retype
+        // what they asked because a rate limit happened to land on their turn.
+        await releaseFrom(index);
+        console.log(
+          `[runner] released ${messages.length - index} message(s) for retry in ${Math.round(wait / 1000)}s`
+        );
+        beat();
+        return { handled: index, retryLater: true };
+      }
+
+      // Either it will never work (bad key, retired model) or we've retried
+      // long enough. Say what actually went wrong instead of staying silent.
+      reply = {
+        text: isTransientNetworkError(err)
+          ? `I couldn't reach the model for the last ${Math.round(age / 60_000)} minutes: ${err.message}\n\nAsk me again in a bit.`
+          : `I couldn't process that: ${err.message}`,
+      };
+      await api("/api/agent/v1/inbox", {
+        method: "POST",
+        body: JSON.stringify({ replyTo: msg.id, content: reply.text, failed: true }),
+      });
+      console.log(`[runner] gave up on ${msg.id.slice(0, 8)}: ${err.message}`);
+      beat();
+
+      // If the provider is down, stop here: the rest of the batch would only
+      // collect the same error. Hand them back so they requeue immediately
+      // rather than waiting out the five-minute stale-claim sweep.
+      if (inCooldown()) {
+        await releaseFrom(index + 1);
+        return { handled: index + 1, retryLater: true };
+      }
+      continue;
     }
 
     await api("/api/agent/v1/inbox", {
       method: "POST",
-      body: JSON.stringify({ replyTo: msg.id, content: reply.text, failed }),
+      body: JSON.stringify({ replyTo: msg.id, content: reply.text }),
     });
-    console.log(`[runner] replied to ${msg.id.slice(0, 8)}${failed ? " (failed)" : ""}`);
+    console.log(`[runner] replied to ${msg.id.slice(0, 8)}`);
 
     // A model call can take tens of seconds. Report liveness while it runs so
     // the container healthcheck doesn't mistake slow work for a wedged process.
     beat();
   }
-  return messages.length;
+  return { handled: messages.length, retryLater: false };
 }
 
 /**
@@ -195,46 +311,37 @@ async function handleMessages(context, messages, history) {
 async function converse(context, history, question) {
   if (!MODEL_KEY) return { text: "No model key is configured on the runner, so I can't think yet." };
 
-  const res = await fetch(`${MODEL_BASE}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${MODEL_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 600,
-      temperature: 0.4,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are the LifeOS agent — the user's second self, working on their " +
-            "business. You may PROPOSE actions but a policy engine decides whether " +
-            "they run — never claim to have done something. Reply ONLY as JSON: " +
-            '{"text": "<your reply>", "action": null | {"capability": "<id>", "payload": {…}}}.\n' +
-            "Capabilities you may propose:\n" +
-            '  brain.write {title, detail, category}     — capture a note\n' +
-            '  task.write {label}                        — add a task\n' +
-            '  project.write {name, status}              — start a project\n' +
-            '  deal.write {name, company, stage, value}  — update the sales pipeline\n' +
-            '  email.draft {to, subject, body}           — draft an email for approval\n' +
-            '  campaign.draft {audience, subject, body}  — plan an ad campaign\n' +
-            '  proposal.draft {target, subject, body}    — write a sales proposal\n' +
-            "Prefer drafting over sending: drafts are free and the owner approves the " +
-            "send. Write the full, finished text — never a placeholder or a promise " +
-            "to write it later.\n" +
-            `Workspace facts: ${JSON.stringify(context.snapshot)}. ` +
-            `Current autonomy: ${context.policy.autonomy}.`,
-        },
-        ...history.map((h) => ({ role: h.role === "agent" ? "assistant" : "user", content: h.content })),
-        { role: "user", content: question },
-      ],
-    }),
-    signal: AbortSignal.timeout(60_000),
+  const raw = await chat({
+    max_tokens: 600,
+    temperature: 0.4,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are the LifeOS agent — the user's second self, working on their " +
+          "business. You may PROPOSE actions but a policy engine decides whether " +
+          "they run — never claim to have done something. Reply ONLY as JSON: " +
+          '{"text": "<your reply>", "action": null | {"capability": "<id>", "payload": {…}}}.\n' +
+          "Capabilities you may propose:\n" +
+          '  brain.write {title, detail, category}     — capture a note\n' +
+          '  task.write {label}                        — add a task\n' +
+          '  project.write {name, status}              — start a project\n' +
+          '  deal.write {name, company, stage, value}  — update the sales pipeline\n' +
+          '  email.draft {to, subject, body}           — draft an email for approval\n' +
+          '  campaign.draft {audience, subject, body}  — plan an ad campaign\n' +
+          '  proposal.draft {target, subject, body}    — write a sales proposal\n' +
+          "Prefer drafting over sending: drafts are free and the owner approves the " +
+          "send. Write the full, finished text — never a placeholder or a promise " +
+          "to write it later.\n" +
+          `Workspace facts: ${JSON.stringify(context.snapshot)}. ` +
+          `Current autonomy: ${context.policy.autonomy}.`,
+      },
+      ...history.map((h) => ({ role: h.role === "agent" ? "assistant" : "user", content: h.content })),
+      { role: "user", content: question },
+    ],
   });
-  if (!res.ok) throw await modelError(res);
 
-  const body = await res.json();
-  const raw = body.choices?.[0]?.message?.content ?? "{}";
   try {
     const parsed = JSON.parse(raw);
     return { text: String(parsed.text ?? raw).slice(0, 4000), action: parsed.action ?? null };
@@ -264,11 +371,28 @@ async function tick() {
   // Messages first: a waiting human beats background work.
   if (messages?.length) {
     lastMessageAt = Date.now();
+
+    // The model is in a backoff window. Hand the messages straight back so
+    // they stay queued, and don't burn a claim slot waiting.
+    if (inCooldown()) {
+      for (const msg of messages) await release(msg);
+      return Math.max(backoff.remaining(), HOT_POLL_MS);
+    }
+
     const context = await loadContext();
     if (!context) return IDLE_POLL_MS;
-    await handleMessages(context, messages, history ?? []);
+
+    const { retryLater } = await handleMessages(context, messages, history ?? []);
+    if (retryLater) return Math.max(backoff.remaining(), HOT_POLL_MS);
+
     // Stay hot — a reply usually gets a follow-up.
     return HOT_POLL_MS;
+  }
+
+  // Background work waits out a provider outage too — there is no point
+  // spending retries on busywork while someone may be about to write.
+  if (inCooldown()) {
+    return Math.min(Math.max(backoff.remaining(), HOT_POLL_MS), IDLE_POLL_MS);
   }
 
   // Autonomous pass, on its own slow clock. Running this every cycle would
@@ -277,17 +401,25 @@ async function tick() {
     lastAutonomousAt = Date.now();
     const context = await loadContext();
     if (context) {
-      const output = await think(
-        context,
-        "Review the workspace and propose the single highest-leverage next action."
-      );
-      console.log(`[runner] proposal: ${String(output).slice(0, 160)}`);
-      const gate = await propose(
-        "brain.write",
-        { title: String(output).slice(0, 300), category: "next" },
-        1
-      );
-      console.log(`[runner] brain.write → ${gate.decision} (${gate.reason})`);
+      try {
+        const output = await think(
+          context,
+          "Review the workspace and propose the single highest-leverage next action."
+        );
+        clearCooldown();
+        console.log(`[runner] proposal: ${String(output).slice(0, 160)}`);
+        const gate = await propose(
+          "brain.write",
+          { title: String(output).slice(0, 300), category: "next" },
+          1
+        );
+        console.log(`[runner] brain.write → ${gate.decision} (${gate.reason})`);
+      } catch (err) {
+        // Background work is not worth retrying hard. Back off and let the
+        // next scheduled pass try again.
+        if (isTransientNetworkError(err)) enterCooldown(err);
+        else console.error(`[runner] autonomous pass failed: ${err.message}`);
+      }
     }
   }
 

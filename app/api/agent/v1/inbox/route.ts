@@ -80,12 +80,25 @@ export async function GET(req: Request) {
   });
 }
 
-const replySchema = z.object({
-  replyTo: z.string().uuid(),
-  content: z.string().trim().min(1).max(4000),
-  runId: z.string().uuid().optional(),
-  failed: z.boolean().optional(),
-});
+const replySchema = z
+  .object({
+    replyTo: z.string().uuid(),
+    content: z.string().trim().min(1).max(4000).optional(),
+    runId: z.string().uuid().optional(),
+    failed: z.boolean().optional(),
+    /**
+     * Put the message back in the queue instead of answering it.
+     *
+     * For failures that are the provider's fault and will pass — a rate limit,
+     * a timeout, a 5xx. Burning the user's question on a transient error means
+     * they have to retype it, which is the wrong answer to "try again in a
+     * moment".
+     */
+    release: z.boolean().optional(),
+  })
+  .refine((v) => v.release || (v.content?.length ?? 0) > 0, {
+    message: "content is required unless releasing",
+  });
 
 /** The runner posts its answer and closes out the source message. */
 export async function POST(req: Request) {
@@ -96,6 +109,19 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
 
   const db = createAdminClient();
+
+  // Release: hand the message back so the next cycle retries it. Scoped to
+  // this user and to a message this runner actually holds.
+  if (parsed.data.release) {
+    const { error } = await db
+      .from("agent_messages")
+      .update({ status: "pending" })
+      .eq("id", parsed.data.replyTo)
+      .eq("user_key", auth.userKey)
+      .eq("status", "claimed");
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, released: true });
+  }
 
   // Only close a message this user owns and this runner actually claimed.
   //
@@ -130,12 +156,16 @@ export async function POST(req: Request) {
 
   if (!source) return NextResponse.json({ error: "not_claimed" }, { status: 409 });
 
+  // Guaranteed by the schema refine, but narrow it for the type checker.
+  const content = parsed.data.content ?? "";
+  if (!content) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+
   // The reply carries the same channel as the question, so the transcript
   // stays coherent whichever surface the conversation started on.
   const { error } = await db.from("agent_messages").insert({
     user_key: auth.userKey,
     role: "agent",
-    content: parsed.data.content,
+    content,
     status: "handled",
     run_id: parsed.data.runId ?? null,
     ...(channelsReady
@@ -154,7 +184,7 @@ export async function POST(req: Request) {
   let delivered = true;
   if (source.channel === "telegram" && source.channel_chat_id) {
     const { sendTelegram } = await import("@/lib/agent/telegram");
-    delivered = await sendTelegram(source.channel_chat_id, parsed.data.content);
+    delivered = await sendTelegram(source.channel_chat_id, content);
   }
 
   return NextResponse.json({ ok: true, delivered });

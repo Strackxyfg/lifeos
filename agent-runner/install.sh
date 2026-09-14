@@ -92,7 +92,20 @@ LIFEOS_AGENT_TOKEN=$LIFEOS_AGENT_TOKEN
 MODEL_API_KEY=$MODEL_API_KEY
 MODEL_BASE_URL=${MODEL_BASE_URL:-https://api.groq.com/openai/v1}
 MODEL=${MODEL:-qwen/qwen3.8-27b}
-POLL_MS=30000
+
+# Polling. The runner drops to HOT_POLL_MS while a conversation is live and
+# settles back to POLL_MS when it goes quiet.
+POLL_MS=10000
+HOT_POLL_MS=1500
+# Background work runs on its own clock. Do not set this low: it spends the
+# daily action quota, and at 30s it exhausts a 50-run budget in half an hour.
+AUTONOMOUS_MS=900000
+
+# Optional second provider, tried when the first is rate-limited or down.
+# Any OpenAI-compatible endpoint works.
+# FALLBACK_MODEL_BASE_URL=https://api.cerebras.ai/v1
+# FALLBACK_MODEL_API_KEY=
+# FALLBACK_MODEL=qwen-3.8-27b
 EOF
   chmod 600 .env
   say "Wrote $APP_DIR/.env (owner-only)."

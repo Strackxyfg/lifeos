@@ -25,8 +25,13 @@ fi
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required."
 
 # ── Files ────────────────────────────────────────────────────────────
+# Everything the image needs. Keep in step with the Dockerfile's COPY line —
+# a file missing here fails the build, or worse, starts a container that
+# crashes on an unresolved import.
+RUNNER_FILES="index.mjs retry.mjs Dockerfile docker-compose.yml"
+
 mkdir -p "$APP_DIR"
-for f in index.mjs Dockerfile docker-compose.yml; do
+for f in $RUNNER_FILES; do
   [ -f "$f" ] || die "Missing $f — run this from the agent-runner/ folder."
   cp "$f" "$APP_DIR/"
 done
@@ -34,7 +39,44 @@ cd "$APP_DIR"
 
 # ── Secrets ──────────────────────────────────────────────────────────
 if [ -f .env ]; then
-  say ".env already exists — keeping it. Delete it to reconfigure."
+  say ".env already exists — keeping your secrets. Delete it to reconfigure."
+
+  # Upgrade an .env written by an older installer. Secrets are never touched;
+  # only the tuning keys, which used to make the agent feel broken: a flat
+  # 30s poll meant a message sent just after a cycle waited half a minute.
+  if ! grep -q '^HOT_POLL_MS=' .env; then
+    say "Adding the new polling settings (your secrets are untouched)…"
+    cat >> .env <<'EOF'
+
+# ── Added by install.sh (polling + backoff) ──────────────────────────
+# The runner drops to HOT_POLL_MS while a conversation is live and settles
+# back to POLL_MS when it goes quiet.
+HOT_POLL_MS=1500
+# Background work runs on its own clock. Do not set this low: it spends the
+# daily action quota, and at 30s it exhausts a 50-run budget in half an hour.
+AUTONOMOUS_MS=900000
+
+# Optional second provider, tried when the first is rate-limited or down.
+# Any OpenAI-compatible endpoint works. Verify it before relying on it.
+# FALLBACK_MODEL_BASE_URL=https://api.cerebras.ai/v1
+# FALLBACK_MODEL_API_KEY=
+# FALLBACK_MODEL=qwen-3.8-27b
+EOF
+  fi
+
+  # 30000 was our own old default and is the idle latency being complained
+  # about. Only rewrite that exact value — a deliberate choice is left alone.
+  if grep -q '^POLL_MS=30000$' .env; then
+    sed -i 's/^POLL_MS=30000$/POLL_MS=10000/' .env
+    say "Idle poll lowered from 30s to 10s."
+  fi
+
+  # A model name Groq has since retired: the agent answers every message with
+  # an HTTP 404 until this is changed.
+  if grep -q '^MODEL=llama-3.3-70b-versatile$' .env; then
+    sed -i 's|^MODEL=llama-3.3-70b-versatile$|MODEL=qwen/qwen3.8-27b|' .env
+    say "MODEL was a decommissioned Groq model — switched to qwen/qwen3.8-27b."
+  fi
 else
   say "Configuration. Nothing here grants database, Notion or payment access."
   say "Answer one prompt at a time — do not paste a multi-line block."

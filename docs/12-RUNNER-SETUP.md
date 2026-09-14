@@ -83,13 +83,50 @@ sudo docker compose -f /opt/lifeos-agent/docker-compose.yml logs -f
 Expected:
 
 ```
-[runner] starting · lifeos=https://… · model=qwen/qwen3.8-27b · poll=30000ms
+[runner] starting · lifeos=https://… · model=qwen/qwen3.8-27b · poll=1500ms active / 10000ms idle · autonomous every 15min
 [runner] message: <your message>
 [runner] replied to 4f2a1c9b
 ```
 
-Then in LifeOS → **Agent**, send a message. It shows *"waiting for your
-runner…"* and the reply appears within one poll cycle (~30 s).
+Then in LifeOS → **Agent**, send a message. The reply usually lands in about
+3–5 seconds, most of which is the model thinking.
+
+## 4b. Updating
+
+**Two different directories, and this is the usual trip-up.**
+
+| Path | What it is |
+| --- | --- |
+| `~/lifeos` | the git clone — where you pull |
+| `/opt/lifeos-agent` | the install target — copied files, `.env`, the container. **Not a git repository** |
+
+Running `git pull` in `/opt/lifeos-agent` fails with *"not a git repository"*.
+Pull in the clone, then re-run the installer, which copies the new files over
+and rebuilds:
+
+```bash
+cd ~/lifeos && git fetch origin && git reset --hard origin/main
+cd ~/lifeos/agent-runner && sudo bash install.sh
+```
+
+Re-running `install.sh` is safe and idempotent. It keeps your existing `.env`
+— your token and model key are never touched — and only adds tuning keys that
+were introduced after you installed. It will tell you what it changed.
+
+If you do not have the repo on the server, clone it first:
+
+```bash
+git clone https://github.com/Strackxyfg/lifeos.git ~/lifeos
+```
+
+Confirm the new build is actually running:
+
+```bash
+sudo docker compose -f /opt/lifeos-agent/docker-compose.yml logs --tail 5
+```
+
+The `poll=…active/…idle` line only appears on the new runner. If you still see
+a single `poll=30000ms`, the rebuild did not happen.
 
 Container health is a real probe: the runner touches a heartbeat file each
 cycle, and the healthcheck fails if it goes stale for three cycles.

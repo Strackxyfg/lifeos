@@ -14,6 +14,27 @@ import { CAPABILITIES, type Capability } from "./capabilities";
  *     back as "queued for approval" rather than being executed.
  */
 
+/**
+ * MCP revisions this server speaks, oldest first.
+ * The last entry is what we answer with when a client asks for something we
+ * do not recognise.
+ */
+export const SUPPORTED_PROTOCOL_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18"] as const;
+
+/**
+ * Echo the client's protocol version when we understand it.
+ *
+ * Answering with our own regardless makes a client that speaks an older
+ * revision give up at the handshake — which looks like "the server is broken"
+ * rather than "we disagree about a version".
+ */
+export function negotiateProtocolVersion(requested: unknown): string {
+  const asked = String(requested ?? "");
+  return (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(asked)
+    ? asked
+    : SUPPORTED_PROTOCOL_VERSIONS[SUPPORTED_PROTOCOL_VERSIONS.length - 1];
+}
+
 export interface McpTool {
   name: string;
   description: string;

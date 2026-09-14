@@ -41,8 +41,16 @@ const IDLE_POLL_MS = Number(process.env.POLL_MS ?? 10_000);
 const HOT_POLL_MS = Number(process.env.HOT_POLL_MS ?? 1_500);
 /** How long a conversation stays "live" after the last message. */
 const HOT_WINDOW_MS = Number(process.env.HOT_WINDOW_MS ?? 120_000);
-/** Background work runs on its own slow clock, not once per poll. */
+/**
+ * Background work runs on its own slow clock, not once per poll.
+ *
+ * Set to 0 to switch it off entirely. That is the right setting when Hermes is
+ * the primary agent: it does its own thinking through the LifeOS MCP tools, so
+ * a second brain running here would think the same thoughts twice and bill you
+ * for both — which matters, because the model budget is a daily one.
+ */
 const AUTONOMOUS_MS = Number(process.env.AUTONOMOUS_MS ?? 15 * 60_000);
+const AUTONOMOUS_ENABLED = AUTONOMOUS_MS > 0;
 /** Workspace facts change slowly; re-fetching them every cycle is pure latency. */
 const CONTEXT_TTL_MS = Number(process.env.CONTEXT_TTL_MS ?? 60_000);
 
@@ -397,7 +405,7 @@ async function tick() {
 
   // Autonomous pass, on its own slow clock. Running this every cycle would
   // burn the daily action quota on busywork within minutes.
-  if (Date.now() - lastAutonomousAt >= AUTONOMOUS_MS) {
+  if (AUTONOMOUS_ENABLED && Date.now() - lastAutonomousAt >= AUTONOMOUS_MS) {
     lastAutonomousAt = Date.now();
     const context = await loadContext();
     if (context) {
@@ -429,7 +437,10 @@ async function tick() {
 
 console.log(
   `[runner] starting · lifeos=${LIFEOS_URL} · model=${MODEL} · ` +
-    `poll=${HOT_POLL_MS}ms active / ${IDLE_POLL_MS}ms idle · autonomous every ${AUTONOMOUS_MS / 60_000}min`
+    `poll=${HOT_POLL_MS}ms active / ${IDLE_POLL_MS}ms idle · ` +
+    (AUTONOMOUS_ENABLED
+      ? `autonomous every ${AUTONOMOUS_MS / 60_000}min`
+      : "autonomous OFF (Hermes is the agent; this process only answers in-app chat)")
 );
 
 let stopping = false;

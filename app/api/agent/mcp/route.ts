@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateRunner } from "@/lib/agent/token";
 import { runCapability } from "@/lib/agent/gate";
-import { listMcpTools, fromToolName } from "@/lib/agent/mcp-tools";
+import { listMcpTools, fromToolName, negotiateProtocolVersion, SUPPORTED_PROTOCOL_VERSIONS } from "@/lib/agent/mcp-tools";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
  * JSON-RPC 2.0 over HTTP (MCP's streamable-HTTP transport, non-streaming).
  */
 
-const PROTOCOL_VERSION = "2025-06-18";
+const PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[SUPPORTED_PROTOCOL_VERSIONS.length - 1];
 
 interface RpcRequest {
   jsonrpc?: string;
@@ -58,7 +58,7 @@ async function handle(rpc: RpcRequest, userKey: string) {
   switch (method) {
     case "initialize":
       return ok(id, {
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: negotiateProtocolVersion(params.protocolVersion),
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "lifeos", version: "1.0.0" },
         instructions:
@@ -70,14 +70,21 @@ async function handle(rpc: RpcRequest, userKey: string) {
           "needs the owner.",
       });
 
-    case "notifications/initialized":
-      return null;
-
     case "ping":
       return ok(id, {});
 
     case "tools/list":
       return ok(id, { tools: listMcpTools() });
+
+    // We advertise only `tools`, so a well-behaved client never asks for
+    // these. Some ask anyway; an empty list is quieter than a protocol error
+    // and tells them there is genuinely nothing there.
+    case "resources/list":
+      return ok(id, { resources: [] });
+    case "resources/templates/list":
+      return ok(id, { resourceTemplates: [] });
+    case "prompts/list":
+      return ok(id, { prompts: [] });
 
     case "tools/call": {
       const name = String(params.name ?? "");
@@ -106,7 +113,8 @@ async function handle(rpc: RpcRequest, userKey: string) {
     }
 
     default:
-      if (isNotification) return null;
+      // Every notification is fire-and-forget, not just the initialized one.
+      if (isNotification || method?.startsWith("notifications/")) return null;
       return err(id, -32601, `Method not found: ${method}`);
   }
 }

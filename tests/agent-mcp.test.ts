@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { CAPABILITIES, getCapability } from "@/lib/agent/capabilities";
-import { listMcpTools, toToolName, fromToolName } from "@/lib/agent/mcp-tools";
+import {
+  listMcpTools, toToolName, fromToolName,
+  negotiateProtocolVersion, SUPPORTED_PROTOCOL_VERSIONS,
+} from "@/lib/agent/mcp-tools";
 import { decide, derivePolicy, MINIMUM_POLICY, AUTONOMY_ORDER, type AgentPolicy, type UsageState } from "@/lib/agent/policy";
 
 const fresh: UsageState = { runsToday: 0, spentTodayCents: 0, killSwitchOn: false };
@@ -62,6 +65,27 @@ describe("MCP tool surface", () => {
       expect(t.inputSchema.type).toBe("object");
       expect(Object.keys(t.inputSchema.properties).length, t.name).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("MCP protocol negotiation", () => {
+  it("echoes a version it understands", () => {
+    for (const v of SUPPORTED_PROTOCOL_VERSIONS) {
+      expect(negotiateProtocolVersion(v), v).toBe(v);
+    }
+  });
+
+  it("falls back to the newest for anything unknown", () => {
+    const newest = SUPPORTED_PROTOCOL_VERSIONS[SUPPORTED_PROTOCOL_VERSIONS.length - 1];
+    for (const v of ["1999-01-01", "", null, undefined, 42, {}]) {
+      expect(negotiateProtocolVersion(v), String(v)).toBe(newest);
+    }
+  });
+
+  it("still supports the oldest published revision", () => {
+    // Dropping this silently would break older clients at the handshake,
+    // which reads as "the server is down" rather than a version mismatch.
+    expect(SUPPORTED_PROTOCOL_VERSIONS).toContain("2024-11-05");
   });
 });
 

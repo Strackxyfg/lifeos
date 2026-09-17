@@ -9,6 +9,18 @@ services:
     restart: unless-stopped
     env_file: .env
 
+    # ── Reaching a local Hermes (AGENT_BACKEND=hermes) ───────────────
+    # Hermes' API server binds to 127.0.0.1 on the host, which inside a
+    # container means the container itself. Uncomment to share the host's
+    # network namespace so http://127.0.0.1:8642 resolves to Hermes.
+    #
+    # Preferred over binding Hermes to 0.0.0.0: on a public VPS that would put
+    # an unauthenticated-by-default agent API on the open internet, one
+    # firewall mistake away from disaster. The container still listens on
+    # nothing and keeps every hardening flag below.
+    #
+    # network_mode: host
+
     # ── Isolation ────────────────────────────────────────────────────
     read_only: true
     tmpfs:

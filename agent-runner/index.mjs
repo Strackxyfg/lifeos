@@ -29,6 +29,29 @@ const FALLBACK_KEY = process.env.FALLBACK_MODEL_API_KEY ?? "";
 const FALLBACK_MODEL = process.env.FALLBACK_MODEL ?? MODEL;
 
 /**
+ * Where the thinking happens.
+ *
+ *   "model"  — call a model directly. One agent per surface: whoever chats in
+ *              LifeOS gets a different mind from whoever chats on Telegram,
+ *              with its own (absent) memory. This is what ships to customers,
+ *              who cannot be asked to run their own agent host.
+ *
+ *   "hermes" — relay to a local Hermes API server. Hermes brings the persona,
+ *              the persistent memory, the skills and the cron jobs, and it
+ *              reaches back into LifeOS through the MCP tools. The in-app chat
+ *              and Telegram then talk to the *same* agent.
+ *
+ * Hermes' API server is OpenAI-compatible, which is why this is a base URL
+ * swap rather than a rewrite.
+ */
+const BACKEND = (process.env.AGENT_BACKEND ?? "model").toLowerCase();
+const HERMES_URL = (process.env.HERMES_API_URL ?? "http://127.0.0.1:8642/v1").replace(/\/$/, "");
+const HERMES_KEY = process.env.HERMES_API_KEY ?? "";
+const HERMES_MODEL = process.env.HERMES_MODEL ?? "hermes-agent";
+/** An agent run does real work — tool calls, retries. It is not a chat completion. */
+const HERMES_TIMEOUT_MS = Number(process.env.HERMES_TIMEOUT_MS ?? 180_000);
+
+/**
  * Polling cadence.
  *
  * A single 30 s interval made every reply feel broken: a message sent one
@@ -50,7 +73,12 @@ const HOT_WINDOW_MS = Number(process.env.HOT_WINDOW_MS ?? 120_000);
  * for both — which matters, because the model budget is a daily one.
  */
 const AUTONOMOUS_MS = Number(process.env.AUTONOMOUS_MS ?? 15 * 60_000);
-const AUTONOMOUS_ENABLED = AUTONOMOUS_MS > 0;
+/**
+ * Always off when Hermes is the brain: it has its own cron jobs, so a second
+ * scheduler here would reach the same conclusions on the same token budget and
+ * file them twice.
+ */
+const AUTONOMOUS_ENABLED = AUTONOMOUS_MS > 0 && BACKEND !== "hermes";
 /** Workspace facts change slowly; re-fetching them every cycle is pure latency. */
 const CONTEXT_TTL_MS = Number(process.env.CONTEXT_TTL_MS ?? 60_000);
 
@@ -207,6 +235,53 @@ async function think(context, instruction) {
   });
 }
 
+/**
+ * Relays an in-app message to Hermes and returns its answer verbatim.
+ *
+ * Deliberately sends no system prompt and no capability list: Hermes already
+ * has its persona in SOUL.md and reaches LifeOS through its own MCP tools,
+ * where the same policy engine governs every call. Duplicating instructions
+ * here would fight its persona and pay for the same tokens twice.
+ *
+ * No `response_format` either — Hermes answers prose, not the JSON envelope
+ * the direct-model path uses to smuggle a proposed action. It does not need
+ * that envelope: it acts through MCP, not through this runner.
+ */
+async function converseViaHermes(history, question) {
+  const res = await fetch(`${HERMES_URL}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${HERMES_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: HERMES_MODEL,
+      messages: [
+        ...history.map((h) => ({ role: h.role === "agent" ? "assistant" : "user", content: h.content })),
+        { role: "user", content: question },
+      ],
+    }),
+    signal: AbortSignal.timeout(HERMES_TIMEOUT_MS),
+  });
+
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => "")).slice(0, 200);
+    // A local agent host that is down is an operational problem, not a model
+    // problem — say which, so the fix isn't looked for in the wrong place.
+    if (res.status === 401 || res.status === 403) {
+      throw tagLocal(new Error(`Hermes rejected the API key (HTTP ${res.status}). Check API_SERVER_KEY.`), false);
+    }
+    throw tagLocal(new Error(`Hermes API HTTP ${res.status} ${detail}`), res.status >= 500 || res.status === 429);
+  }
+
+  const body = await res.json();
+  const text = body.choices?.[0]?.message?.content ?? "";
+  return { text: String(text).slice(0, 4000) || "(Hermes returned an empty answer.)" };
+}
+
+/** Mark an error retryable without dragging in the model-provider semantics. */
+function tagLocal(err, retryable) {
+  err.retryable = retryable;
+  return err;
+}
+
 /** Cheap liveness probe + work check. One call, no gate round-trip. */
 async function pollInbox() {
   const res = await api("/api/agent/v1/inbox");
@@ -317,6 +392,7 @@ async function handleMessages(context, messages, history) {
  * proposed action — which still has to pass the gate before anything happens.
  */
 async function converse(context, history, question) {
+  if (BACKEND === "hermes") return converseViaHermes(history, question);
   if (!MODEL_KEY) return { text: "No model key is configured on the runner, so I can't think yet." };
 
   const raw = await chat({
@@ -435,12 +511,26 @@ async function tick() {
   return Date.now() - lastMessageAt < HOT_WINDOW_MS ? HOT_POLL_MS : IDLE_POLL_MS;
 }
 
+if (BACKEND !== "model" && BACKEND !== "hermes") {
+  console.error(`[runner] AGENT_BACKEND must be "model" or "hermes", got "${BACKEND}"`);
+  process.exit(1);
+}
+if (BACKEND === "hermes" && !HERMES_KEY) {
+  // Failing closed here beats discovering it as a 401 on the user's first
+  // message, which reads as "the agent is broken".
+  console.error("[runner] AGENT_BACKEND=hermes requires HERMES_API_KEY (Hermes' API_SERVER_KEY)");
+  process.exit(1);
+}
+
 console.log(
-  `[runner] starting · lifeos=${LIFEOS_URL} · model=${MODEL} · ` +
-    `poll=${HOT_POLL_MS}ms active / ${IDLE_POLL_MS}ms idle · ` +
+  `[runner] starting · lifeos=${LIFEOS_URL} · ` +
+    (BACKEND === "hermes"
+      ? `brain=Hermes at ${HERMES_URL} (shared with Telegram)`
+      : `brain=${MODEL} direct`) +
+    ` · poll=${HOT_POLL_MS}ms active / ${IDLE_POLL_MS}ms idle · ` +
     (AUTONOMOUS_ENABLED
       ? `autonomous every ${AUTONOMOUS_MS / 60_000}min`
-      : "autonomous OFF (Hermes is the agent; this process only answers in-app chat)")
+      : "autonomous OFF")
 );
 
 let stopping = false;

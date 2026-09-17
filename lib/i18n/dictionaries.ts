@@ -80,6 +80,25 @@ const en = {
     settings: { title: "Settings", desc: "Profile, workspace, and connections." },
     brain: { title: "Second Brain", desc: "Your ideas, thoughts and next moves — mapped to an interactive neural space, powered by AI." },
   },
+  notion: {
+    connect: "Connect Notion",
+    connected: "Notion connected",
+    retry: "Try again",
+    dismiss: "Dismiss",
+    // One line per `?notion=` code the OAuth callback can return. Each says
+    // what to actually do, because an error you cannot act on is noise.
+    denied: "You declined the Notion authorization.",
+    no_code: "Notion didn't return an authorization code. Start the connection again.",
+    bad_state: "Security check failed — start the connection again from this page.",
+    not_configured: "Notion OAuth isn't configured on the server.",
+    not_signed_in: "Your session expired during authorization. Sign in, then connect again.",
+    bad_credentials: "Invalid Notion client ID or secret.",
+    exchange_failed: "Notion rejected the authorization code. Start the connection again.",
+    no_page_shared:
+      "No page was shared. On Notion's screen, click “Select pages” and tick at least one page before allowing access.",
+    no_database: "Connected, but there's no database configured to store it.",
+    store_failed: "Couldn't save the connection. Check the server logs.",
+  },
   dashboard: {
     morning: "Good morning",
     afternoon: "Good afternoon",
@@ -383,6 +402,23 @@ const fr: Messages = {
     team: { title: "Équipe", desc: "Invitez des personnes à partager votre espace et collaborer." },
     settings: { title: "Paramètres", desc: "Profil, espace et connexions." },
     brain: { title: "Second cerveau", desc: "Vos idées, pensées et prochaines actions — dans un espace neuronal interactif, propulsé par l'IA." },
+  },
+  notion: {
+    connect: "Connecter Notion",
+    connected: "Notion connecté",
+    retry: "Réessayer",
+    dismiss: "Fermer",
+    denied: "Vous avez refusé l'autorisation Notion.",
+    no_code: "Notion n'a pas renvoyé de code d'autorisation. Relancez la connexion.",
+    bad_state: "Vérification de sécurité échouée — relancez la connexion depuis cette page.",
+    not_configured: "L'OAuth Notion n'est pas configuré sur le serveur.",
+    not_signed_in: "Votre session a expiré pendant l'autorisation. Reconnectez-vous, puis réessayez.",
+    bad_credentials: "Identifiant ou secret client Notion invalide.",
+    exchange_failed: "Notion a rejeté le code d'autorisation. Relancez la connexion.",
+    no_page_shared:
+      "Aucune page partagée. Sur l'écran Notion, cliquez sur « Sélectionner des pages » et cochez au moins une page avant d'autoriser.",
+    no_database: "Connecté, mais aucune base n'est configurée pour l'enregistrer.",
+    store_failed: "Impossible d'enregistrer la connexion. Consultez les logs du serveur.",
   },
   dashboard: {
     morning: "Bonjour",

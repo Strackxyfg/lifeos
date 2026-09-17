@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getUserKey, isSupabaseConfigured } from "@/lib/db/store";
+import { getAuthenticatedUserKey, isSupabaseConfigured } from "@/lib/db/store";
 import { NOTION_STATE_COOKIE, exchangeCodeForToken, resolveRootPageId } from "@/lib/notion/oauth";
 import { resolveNotionRedirectUri, requestOrigin } from "@/lib/notion/redirect";
 
@@ -41,6 +41,14 @@ export async function GET(req: Request) {
   // CSRF: the state must match the one we minted for this browser.
   if (!expectedState || !state || state !== expectedState) return fail("bad_state");
 
+  // Check identity BEFORE spending the code. `getUserKey()` would fall back to
+  // the shared demo key here, filing this workspace's access token under a row
+  // every other signed-out visitor resolves to. Doing it first also keeps the
+  // authorization code unused, so "sign in and try again" actually works —
+  // exchanging first would burn a single-use code on a request we then reject.
+  const userKey = await getAuthenticatedUserKey();
+  if (!userKey) return fail("not_signed_in");
+
   const clientId = process.env.NOTION_CLIENT_ID;
   const clientSecret = process.env.NOTION_CLIENT_SECRET;
   const redirectUri = resolveNotionRedirectUri(req);
@@ -62,7 +70,6 @@ export async function GET(req: Request) {
   }
 
   try {
-    const userKey = await getUserKey();
     const db = createAdminClient();
     const { error } = await db.from("notion_connections").upsert(
       {

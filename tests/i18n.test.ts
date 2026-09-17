@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { dictionaries } from "@/lib/i18n/dictionaries";
 import { locales, fill, isLocale } from "@/lib/i18n/config";
@@ -82,5 +83,42 @@ describe("i18n helpers", () => {
     expect(isLocale("fr")).toBe(true);
     expect(isLocale("de")).toBe(false);
     expect(isLocale(undefined)).toBe(false);
+  });
+});
+
+describe("Notion OAuth failures are all explainable", () => {
+  // The callback communicates failure only through `?notion=<code>`. A code
+  // with no dictionary entry renders as a raw slug the user cannot act on —
+  // which is how "it doesn't work and I don't know why" happens.
+  const source = readFileSync(
+    new URL("../app/api/integrations/notion/callback/route.ts", import.meta.url),
+    "utf8"
+  );
+  const codes = [...source.matchAll(/fail\("([a-z_]+)"\)/g)].map((m) => m[1]);
+
+  it("finds the codes the route can actually return", () => {
+    expect(codes.length).toBeGreaterThan(5);
+    // Guards the regex itself: if `fail(...)` is refactored away this test
+    // must fail loudly rather than silently verifying an empty list.
+    expect(codes).toContain("no_page_shared");
+    expect(codes).toContain("not_signed_in");
+  });
+
+  it("translates every failure code in every locale", () => {
+    for (const locale of locales) {
+      const notion = (dictionaries[locale] as unknown as { notion: Record<string, string> }).notion;
+      for (const code of [...codes, "connected"]) {
+        expect(notion[code], `${locale}.notion.${code} is missing`).toBeTruthy();
+      }
+    }
+  });
+
+  it("tells the user what to do about a missing page", () => {
+    // The most common real failure: consent granted, but no page ticked.
+    // A message that only says "no page was shared" leaves them stuck.
+    for (const locale of locales) {
+      const notion = (dictionaries[locale] as unknown as { notion: Record<string, string> }).notion;
+      expect(notion.no_page_shared.length, locale).toBeGreaterThan(40);
+    }
   });
 });

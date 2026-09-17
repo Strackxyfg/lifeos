@@ -38,3 +38,26 @@ export const getUserKey = cache(async function getUserKey(): Promise<string> {
   const session = await getSession();
   return session?.email ?? DEMO_USER_KEY;
 });
+
+/**
+ * The signed-in identity, or null — never the shared demo key.
+ *
+ * `getUserKey()` deliberately falls back to `DEMO_USER_KEY` so signed-out
+ * pages still render something. That fallback is fine for reads, and wrong
+ * for writes that carry a credential: an OAuth callback that lands here
+ * unauthenticated would file a real Notion access token under a key every
+ * other signed-out visitor also resolves to, handing them someone else's
+ * workspace. Use this wherever writing to the wrong row is a security
+ * problem rather than a cosmetic one.
+ */
+export const getAuthenticatedUserKey = cache(async function getAuthenticatedUserKey(): Promise<
+  string | null
+> {
+  if (isSupabaseConfigured()) {
+    const { getSupabaseUser } = await import("@/lib/supabase/rls");
+    const user = await getSupabaseUser();
+    return user?.id ?? null;
+  }
+  const session = await getSession();
+  return session?.email ?? null;
+});

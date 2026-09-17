@@ -98,6 +98,11 @@ const en = {
       "No page was shared. On Notion's screen, click “Select pages” and tick at least one page before allowing access.",
     no_database: "Connected, but there's no database configured to store it.",
     store_failed: "Couldn't save the connection. Check the server logs.",
+    redirectHelp: "Notion says the redirect URI is invalid?",
+    redirectHint:
+      "Notion only accepts redirect URIs registered on the integration. Add this exact URL under Integrations → your integration → Redirect URIs, then try again.",
+    copy: "Copy",
+    copied: "Copied",
   },
   dashboard: {
     morning: "Good morning",
@@ -419,6 +424,11 @@ const fr: Messages = {
       "Aucune page partagée. Sur l'écran Notion, cliquez sur « Sélectionner des pages » et cochez au moins une page avant d'autoriser.",
     no_database: "Connecté, mais aucune base n'est configurée pour l'enregistrer.",
     store_failed: "Impossible d'enregistrer la connexion. Consultez les logs du serveur.",
+    redirectHelp: "Notion dit que l'URI de redirection est invalide ?",
+    redirectHint:
+      "Notion n'accepte que les URI de redirection enregistrées sur l'intégration. Ajoutez cette URL exacte dans Intégrations → votre intégration → URI de redirection, puis réessayez.",
+    copy: "Copier",
+    copied: "Copié",
   },
   dashboard: {
     morning: "Bonjour",

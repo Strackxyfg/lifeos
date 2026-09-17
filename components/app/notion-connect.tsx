@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { NotebookPen, Check, AlertTriangle, X } from "lucide-react";
+import { NotebookPen, Check, AlertTriangle, X, Copy } from "lucide-react";
 import { toast } from "@/components/ui/toaster";
 import { buttonVariants } from "@/components/ui/button";
 import { useMessages } from "@/lib/i18n/client";
@@ -43,6 +43,22 @@ export function NotionConnect({
    * all that was left was a button that didn't work.
    */
   const [outcome, setOutcome] = useState<NotionCode | null>(null);
+
+  /**
+   * The callback URL this deployment will actually send to Notion.
+   *
+   * Notion rejects any `redirect_uri` not registered on the integration, and
+   * it does so on its own consent screen — the user never comes back, so the
+   * app gets no error code and can say nothing. Showing the exact string here
+   * turns "redirect_uri missing or invalid" from a guessing game into a
+   * copy-paste. Read from the live origin for the same reason the server
+   * derives it that way: a preview deployment has a different host, and a
+   * hardcoded value would be wrong on all but one of them.
+   */
+  const [callbackUrl, setCallbackUrl] = useState("");
+  useEffect(() => {
+    setCallbackUrl(`${window.location.origin}/api/integrations/notion/callback`);
+  }, []);
 
   useEffect(() => {
     if (!status) return;
@@ -96,6 +112,35 @@ export function NotionConnect({
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
+      )}
+
+      {callbackUrl && (
+        <details className="max-w-xs text-right">
+          <summary className="cursor-pointer list-none text-[0.68rem] text-muted-foreground underline-offset-4 hover:underline">
+            {m.notion.redirectHelp}
+          </summary>
+          <div className="mt-1.5 rounded-lg border border-border bg-surface-2/40 p-2 text-left">
+            <p className="mb-1.5 text-[0.68rem] leading-relaxed text-muted-foreground">
+              {m.notion.redirectHint}
+            </p>
+            <div className="flex items-center gap-1.5">
+              <code className="min-w-0 flex-1 truncate rounded bg-surface-2 px-1.5 py-1 font-mono text-[0.66rem]">
+                {callbackUrl}
+              </code>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(callbackUrl);
+                  toast(m.notion.copied, "success");
+                }}
+                aria-label={m.notion.copy}
+                className="grid h-6 w-6 shrink-0 place-items-center rounded border border-border hover:bg-surface-2"
+              >
+                <Copy className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        </details>
       )}
     </div>
   );

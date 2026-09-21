@@ -55,12 +55,25 @@ export interface DbBrainItem extends Owned {
   ai: boolean;
 }
 
+/**
+ * A synapse: two notes the person — or an accepted suggestion — connected.
+ * Undirected, stored once with the smaller id first (see `canonicalPair`).
+ */
+export interface DbBrainLink extends Owned {
+  fromId: string;
+  toId: string;
+  /** Why they belong together, in the person's words or the matcher's. */
+  reason: string | null;
+  origin: "user" | "suggested";
+}
+
 export interface Dataset {
   projects: DbProject[];
   deals: DbDeal[];
   transactions: DbTransaction[];
   tasks: DbTask[];
   brain: DbBrainItem[];
+  links: DbBrainLink[];
 }
 
 export type Collection = keyof Dataset;

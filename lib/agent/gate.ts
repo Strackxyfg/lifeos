@@ -27,6 +27,8 @@ export interface GateOutcome {
    * missing integration, and they must not be reported identically.
    */
   blockedByPolicy: boolean;
+  /** What a read returned. Sent to the caller, never written to the audit log. */
+  data?: string;
 }
 
 export async function runCapability(
@@ -105,6 +107,7 @@ export async function runCapability(
     reason: result.ok ? result.detail : result.error,
     executed: result.ok,
     blockedByPolicy: false,
+    data: result.ok ? result.data : undefined,
   };
 }
 

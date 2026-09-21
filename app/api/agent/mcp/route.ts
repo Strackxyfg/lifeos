@@ -106,8 +106,11 @@ async function handle(rpc: RpcRequest, userKey: string) {
       const prefix =
         outcome.decision === "allow" ? "✅ " : outcome.decision === "approve" ? "⏳ " : "🚫 ";
 
+      const text = outcome.data ? `${prefix}${outcome.reason}
+
+${outcome.data}` : prefix + outcome.reason;
       return ok(id, {
-        content: [{ type: "text", text: prefix + outcome.reason }],
+        content: [{ type: "text", text }],
         isError: outcome.decision === "deny",
       });
     }

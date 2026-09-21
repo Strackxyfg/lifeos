@@ -23,14 +23,12 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
               </span>
               LifeOS
             </Link>
-            <div className="max-w-md">
-              <blockquote className="text-balance text-xl font-medium leading-snug tracking-tight text-foreground/90">
-                &ldquo;I&apos;ve paid consultants $4k to build me a Notion setup. LifeOS did
-                something better in under a minute.&rdquo;
-              </blockquote>
-              <figcaption className="mt-4 text-sm text-muted-foreground">Maya Chen · Founder</figcaption>
-            </div>
-            <p className="text-[0.8125rem] text-muted">Native Notion · No lock-in · You own everything</p>
+            {/* A statement of what the product is — not a quote. This spot used
+                to hold an invented testimonial attributed to a "Maya Chen". */}
+            <p className="max-w-md text-balance text-xl font-medium leading-snug tracking-tight text-foreground/90">
+              {messages.auth.brandLine}
+            </p>
+            <p className="text-[0.8125rem] text-muted">{messages.auth.brandFoot}</p>
           </div>
         </div>
 

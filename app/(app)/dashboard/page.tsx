@@ -9,7 +9,7 @@ import { loadWorkspace } from "@/lib/data/live";
 import { cn, formatCurrency } from "@/lib/utils";
 import { getProfile } from "@/lib/user/profile";
 import { getMessages, getLocale } from "@/lib/i18n/server";
-import { fill } from "@/lib/i18n/config";
+import { plural } from "@/lib/i18n/config";
 import type { Messages } from "@/lib/i18n/dictionaries";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -46,10 +46,7 @@ export default async function DashboardPage() {
     <>
       <PageHeader
         title={`${greeting(m)}, ${firstName}`}
-        description={fill(m.dashboard.subline, {
-          open: snapshot.tasks.open,
-          notes: data.brain.length,
-        })}
+        description={`${plural(locale, snapshot.tasks.open, m.dashboard.sublineTasks)} · ${plural(locale, data.brain.length, m.dashboard.sublineNotes)}`}
       />
 
       {/* KPI row */}

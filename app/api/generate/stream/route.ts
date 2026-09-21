@@ -3,6 +3,7 @@ import { genPhases, type GenStreamEvent } from "@/lib/notion/phases";
 import { getNotionConnection } from "@/lib/notion/connection";
 import { generateWorkspace } from "@/lib/notion/generate";
 import { getUserKey } from "@/lib/db/store";
+import { requireUserKey } from "@/lib/auth/require-user";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,9 @@ export const maxDuration = 300;
  * anything was created.
  */
 export async function POST(req: Request) {
+  const auth = await requireUserKey();
+  if ("response" in auth) return auth.response;
+
   const answers = (await req.json().catch(() => ({}))) as Partial<OnboardingAnswers>;
   const plan = planFromAnswers(answers);
   const encoder = new TextEncoder();

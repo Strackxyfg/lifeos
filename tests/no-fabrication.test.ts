@@ -1,0 +1,63 @@
+import { describe, it, expect } from "vitest";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+
+/**
+ * Nothing the product shows may be invented and presented as real.
+ *
+ * An audit before the pivot found sixteen fabrications shipped to real users:
+ * testimonials from people who don't exist, a Visa "ending 4242" and paid
+ * invoices on the billing page, integrations shown as "Connected" that were
+ * never built, a 23-day habit streak fed to the AI, and a "focus" and an
+ * assistant greeting that told every user their investor deck was at risk.
+ *
+ * These are the exact phrases that shipped. Comments are stripped first, so
+ * code may still *describe* what was removed; only live strings are checked.
+ */
+
+const ROOT = join(__dirname, "..");
+
+const FORBIDDEN: { what: string; pattern: RegExp }[] = [
+  { what: "invented testimonial authors", pattern: /Maya Chen|Daniel Okafor|Priya Nair|Tom Rivera/ },
+  { what: "a fake payment card", pattern: /•{2,}\s*4242|ending 4242/i },
+  { what: "a fake renewal date", pattern: /Renews August/ },
+  { what: "the fabricated habit streak", pattern: /habitStreak|\b23-day\b|série de 23/ },
+  { what: "an invented weekly score", pattern: /68\s?% (on-track|dans les temps)/ },
+  {
+    what: "a hardcoded priority presented as analysis",
+    pattern: /investor deck is your only|deck investisseurs est votre seul|close the three warm leads|closez les trois leads/i,
+  },
+];
+
+function files(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    if (name === "node_modules" || name.startsWith(".")) continue;
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) out.push(...files(full));
+    else if (/\.(tsx?|mjs)$/.test(name)) out.push(full);
+  }
+  return out;
+}
+
+/** Drops // and /* *\/ comments (and JSX {/* *\/} ones) so only live code is checked. */
+function stripComments(src: string): string {
+  return src.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+}
+
+const sources = ["app", "components", "lib"].flatMap((d) => files(join(ROOT, d)));
+
+describe("no fabricated content", () => {
+  it("scans the product source", () => {
+    expect(sources.length).toBeGreaterThan(50);
+  });
+
+  for (const { what, pattern } of FORBIDDEN) {
+    it(`contains no ${what}`, () => {
+      const hits = sources
+        .filter((f) => pattern.test(stripComments(readFileSync(f, "utf8"))))
+        .map((f) => relative(ROOT, f));
+      expect(hits, `${what} found in: ${hits.join(", ")}`).toEqual([]);
+    });
+  }
+});

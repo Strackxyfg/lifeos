@@ -122,3 +122,38 @@ describe("Notion OAuth failures are all explainable", () => {
     }
   });
 });
+
+import { plural } from "@/lib/i18n/config";
+
+describe("plurals", () => {
+  const forms = { one: "{n} connexion", other: "{n} connexions" };
+  const en = { one: "{n} connection", other: "{n} connections" };
+
+  it("uses the singular for one in both languages", () => {
+    expect(plural("fr", 1, forms)).toBe("1 connexion");
+    expect(plural("en", 1, en)).toBe("1 connection");
+  });
+
+  it("treats zero as singular in French and plural in English", () => {
+    // The reason a hand-rolled `n === 1` check is wrong for one language or
+    // the other.
+    expect(plural("fr", 0, forms)).toBe("0 connexion");
+    expect(plural("en", 0, en)).toBe("0 connections");
+  });
+
+  it("uses the plural above one", () => {
+    expect(plural("fr", 2, forms)).toBe("2 connexions");
+    expect(plural("en", 12, en)).toBe("12 connections");
+  });
+
+  it("gives every counted string in the dictionaries both forms", () => {
+    // A counted string left as plain text would silently print "1 notes".
+    for (const locale of locales) {
+      const b = dictionaries[locale].brain;
+      for (const p of [b.hudNotes, b.hudLinks, b.resultCount, b.resurfaceAge, b.reason.waiting]) {
+        expect(p.one).toContain("{n}");
+        expect(p.other).toContain("{n}");
+      }
+    }
+  });
+});

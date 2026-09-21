@@ -64,9 +64,23 @@ const SCHEMAS: Record<string, McpTool["inputSchema"]> = {
     properties: {
       title: str("The note, idea or insight. One clear sentence."),
       detail: str("Optional longer body."),
-      category: str("One of: ideas, thoughts, next, knowledge, insights."),
+      category: str("One of: goals, next, ideas, thoughts, knowledge, insights."),
     },
     required: ["title"],
+  },
+  "brain.search": {
+    type: "object",
+    properties: { query: str("Words to look for. Accent-insensitive; every word must match.") },
+    required: ["query"],
+  },
+  "brain.link": {
+    type: "object",
+    properties: {
+      a: str("Id of the first note, as shown in brain_read or brain_search."),
+      b: str("Id of the second note."),
+      reason: str("Why they belong together, in one short sentence."),
+    },
+    required: ["a", "b"],
   },
   "task.write": {
     type: "object",

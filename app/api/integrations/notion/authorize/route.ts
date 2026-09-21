@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { NOTION_STATE_COOKIE } from "@/lib/notion/oauth";
 import { resolveNotionRedirectUri, requestOrigin } from "@/lib/notion/redirect";
+import { getAuthenticatedUserKey } from "@/lib/db/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,13 @@ export async function GET(req: Request) {
 
   if (!clientId) {
     return NextResponse.redirect(`${appUrl}/settings?notion=not_configured`);
+  }
+
+  // Sign in first. Otherwise someone could go all the way through Notion's
+  // consent screen only for the callback to reject them — and the single-use
+  // code would be spent by then.
+  if (!(await getAuthenticatedUserKey())) {
+    return NextResponse.redirect(`${appUrl}/login?next=${encodeURIComponent("/settings")}`);
   }
 
   const state = randomBytes(24).toString("hex");

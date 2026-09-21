@@ -1,6 +1,15 @@
 import "server-only";
 import { getStore } from "@/lib/db/store";
 import type { DealStage } from "@/lib/data/workspace";
+import { isCategory, kindForCategory } from "@/lib/data/brain";
+import { isMissingTable } from "@/lib/data/live";
+import { toBrainNotes } from "@/lib/brain/load";
+import { brainIndex, brainSearch } from "@/lib/brain/agent-views";
+import { canonicalPair, liveLinks, sameLink } from "@/lib/brain/graph";
+import { computeSnapshot } from "@/lib/data/workspace";
+import { snapshotFacts } from "@/lib/ai/insights";
+import { dictionaries } from "@/lib/i18n/dictionaries";
+import type { DbBrainLink } from "@/lib/db/types";
 import { getCapability } from "./capabilities";
 
 /**
@@ -14,8 +23,14 @@ import { getCapability } from "./capabilities";
  * silently succeeding — the agent must never be able to claim it sent an email
  * that was never sent.
  */
+/**
+ * `detail` is a short summary and goes into the audit log. `data` is what a
+ * read returns to the caller, and deliberately does *not* go into the audit:
+ * copying the whole brain into the log on every read would duplicate personal
+ * data into a table built to be append-only.
+ */
 export type ExecuteResult =
-  | { ok: true; detail: string }
+  | { ok: true; detail: string; data?: string }
   | { ok: false; error: string; code: "not_implemented" | "invalid_payload" | "failed" };
 
 export async function executeCapability(
@@ -32,36 +47,88 @@ export async function executeCapability(
   const isRecord = (v: unknown): v is Record<string, unknown> =>
     typeof v === "object" && v !== null && !Array.isArray(v);
 
+  // The brain as the agent sees it. Links tolerate migration 007 not having
+  // run yet: an agent should still read notes while connections are pending.
+  const loadBrain = async () => {
+    const notes = toBrainNotes(await store.list(userKey, "brain"), dictionaries.en);
+    let links: DbBrainLink[] = [];
+    try {
+      links = liveLinks(await store.list(userKey, "links"), notes);
+    } catch (e) {
+      if (!isMissingTable(e)) throw e;
+    }
+    return { notes, links };
+  };
+
   try {
     switch (capabilityId) {
-      // Reads have no effect to perform; the runner already got the data.
-      case "brain.read":
-      case "workspace.read":
+      // Reads used to answer "Read granted." with nothing attached — the agent
+      // was allowed to read the brain and given no way to. They return data now.
+      case "brain.read": {
+        const { notes, links } = await loadBrain();
+        return { ok: true, detail: `Read ${notes.length} notes.`, data: brainIndex(notes, links) };
+      }
+
+      case "brain.search": {
+        const query = str(payload.query, 200);
+        if (!query) return { ok: false, error: "A search needs a query.", code: "invalid_payload" };
+        const { notes, links } = await loadBrain();
+        return { ok: true, detail: `Searched for "${query.slice(0, 60)}".`, data: brainSearch(notes, links, query) };
+      }
+
+      case "workspace.read": {
+        const [projects, deals, transactions, tasks] = await Promise.all([
+          store.list(userKey, "projects"),
+          store.list(userKey, "deals"),
+          store.list(userKey, "transactions"),
+          store.list(userKey, "tasks"),
+        ]);
+        const facts = snapshotFacts(computeSnapshot({ projects, deals, transactions, tasks }), "en");
+        return { ok: true, detail: "Read the workspace summary.", data: facts };
+      }
+
       case "analyze":
-        return { ok: true, detail: "Read granted." };
+        return { ok: true, detail: "Analysis runs in the model; nothing to fetch." };
 
       case "brain.write": {
         const title = str(payload.title);
         if (!title) return { ok: false, error: "A note needs a title.", code: "invalid_payload" };
-        const category = ["ideas", "thoughts", "next", "knowledge", "insights"].includes(
-          String(payload.category)
-        )
-          ? (payload.category as string)
-          : "thoughts";
-        const kindByCategory: Record<string, string> = {
-          ideas: "idea", thoughts: "thought", next: "task",
-          knowledge: "note", insights: "insight",
-        };
-        await store.insert(userKey, "brain", {
-          category: category as never,
-          kind: kindByCategory[category] as never,
+        const category = isCategory(payload.category) ? payload.category : "thoughts";
+        const note = await store.insert(userKey, "brain", {
+          category,
+          kind: kindForCategory[category],
           seedKey: null,
           title,
-          detail: str(payload.detail),
+          detail: str(payload.detail, 20_000),
           done: false,
+          // The agent wrote it — unlike a person's capture, which is theirs.
           ai: true,
         });
-        return { ok: true, detail: `Captured "${title.slice(0, 60)}" under ${category}.` };
+        return { ok: true, detail: `Captured "${title.slice(0, 60)}" under ${category}.`, data: `id: ${note.id}` };
+      }
+
+      case "brain.link": {
+        const a = str(payload.a ?? payload.from, 64);
+        const b = str(payload.b ?? payload.to, 64);
+        if (!a || !b || a.toLowerCase() === b.toLowerCase()) {
+          return { ok: false, error: "Linking needs two different note ids.", code: "invalid_payload" };
+        }
+        // Same ownership rule as the app: both ends must be this user's notes.
+        const { notes, links } = await loadBrain();
+        const mine = new Set(notes.map((n) => n.id.toLowerCase()));
+        if (!mine.has(a.toLowerCase()) || !mine.has(b.toLowerCase())) {
+          return { ok: false, error: "One of those notes does not exist.", code: "invalid_payload" };
+        }
+        if (links.some((l) => sameLink(l, a, b))) return { ok: true, detail: "Already connected." };
+
+        const [fromId, toId] = canonicalPair(a, b);
+        await store.insert(userKey, "links", {
+          fromId,
+          toId,
+          reason: str(payload.reason, 300),
+          origin: "suggested",
+        });
+        return { ok: true, detail: "Connected the two notes." };
       }
 
       case "task.write": {

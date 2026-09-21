@@ -56,6 +56,13 @@ class LocalStore implements Store {
         ? seedDataset(userKey)
         : structuredClone(EMPTY_DATASET);
     }
+    // Files written before a collection existed don't have its key. Backfill
+    // it, or the first read of a new collection returns `undefined` and the
+    // first delete calls `.filter` on it.
+    const set = data[userKey] as unknown as Record<string, unknown[]>;
+    for (const key of Object.keys(EMPTY_DATASET)) {
+      if (!Array.isArray(set[key])) set[key] = [];
+    }
     return data[userKey];
   }
 
@@ -100,6 +107,13 @@ class LocalStore implements Store {
       // Indexing a union-typed key needs a widened view to assign back.
       const set = this.ensure(data, userKey) as unknown as Record<string, { id: string }[]>;
       set[collection] = set[collection].filter((r) => r.id !== id);
+
+      // Mirror the database's ON DELETE CASCADE: a note's links go with it.
+      // Without this the file store would keep synapses to a deleted note.
+      if (collection === "brain") {
+        const links = set.links as unknown as { fromId: string; toId: string }[];
+        set.links = links.filter((l) => l.fromId !== id && l.toId !== id) as unknown as { id: string }[];
+      }
     });
   }
 }

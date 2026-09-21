@@ -21,6 +21,7 @@ const TABLE: Record<Collection, string> = {
   transactions: "lifeos_transactions",
   tasks: "lifeos_tasks",
   brain: "lifeos_brain_items",
+  links: "lifeos_brain_links",
 };
 
 /** camelCase (TS) → snake_case (Postgres). */

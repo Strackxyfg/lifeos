@@ -1,6 +1,7 @@
 import { getAI } from "@/lib/ai/client";
 import { isLocale, type Locale } from "@/lib/i18n/config";
 import { loadSnapshot } from "@/lib/data/live";
+import { requireUserKey } from "@/lib/auth/require-user";
 import {
   computeInsight, insightPrompt, snapshotFacts,
   type Insight, type InsightKind,
@@ -15,6 +16,9 @@ export const dynamic = "force-dynamic";
  * the surface is always populated and always factually correct.
  */
 export async function POST(req: Request) {
+  const auth = await requireUserKey();
+  if ("response" in auth) return auth.response;
+
   const body = (await req.json().catch(() => ({}))) as { kind?: string; locale?: string };
   const kind: InsightKind = body.kind === "weekly" ? "weekly" : "daily";
   const locale: Locale = isLocale(body.locale) ? body.locale : "en";

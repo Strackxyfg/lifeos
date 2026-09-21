@@ -48,8 +48,8 @@ export function getAI(): { client: OpenAI; model: string; provider: AIProvider }
 export function systemPrompt(locale: Locale, extra?: string): string {
   const lang = locale === "fr" ? "French" : "English";
   return [
-    "You are LifeOS, a warm, sharp AI productivity copilot living inside a personal operating system.",
-    "You help the user run their projects, finances, goals and habits. Be concise and concrete — no filler.",
+    "You are LifeOS, a warm, sharp second brain for one person.",
+    "You help them think, decide and move their goals, projects and clients forward. Be concise and concrete — no filler.",
     `Always answer in ${lang}.`,
     "Prefer short paragraphs or tight bullet lists. Never exceed ~90 words unless asked.",
     extra ?? "",

@@ -72,7 +72,10 @@ export function seedDataset(userKey: string): Dataset {
     brain: seedItems.map((b, i) => ({
       id: id("brain", i),
       userKey,
-      createdAt: now(i),
+      // Backdated by each item's `ts`, so the demo has a history: without it
+      // every sample note is minutes old and resurfacing — which only brings
+      // back notes a week or older — would never have anything to show.
+      createdAt: new Date(base - ageOf(b.ts) - i * 1000).toISOString(),
       category: b.category,
       kind: b.kind,
       seedKey: b.id,
@@ -81,7 +84,17 @@ export function seedDataset(userKey: string): Dataset {
       done: b.done ?? false,
       ai: b.ai ?? false,
     })),
+    // Links can't be seeded: in Supabase the sample notes get fresh UUIDs on
+    // insert, which a separate seed pass for links has no way to know.
+    links: [],
   };
+}
+
+/** "2d" → 2 days, "1w" → 7 days, in ms. Unset means "just now". */
+function ageOf(ts: string | undefined): number {
+  const m = /^(\d+)([dw])$/.exec(ts ?? "");
+  if (!m) return 0;
+  return Number(m[1]) * (m[2] === "w" ? 7 : 1) * 86_400_000;
 }
 
 export const EMPTY_DATASET: Dataset = {
@@ -90,4 +103,5 @@ export const EMPTY_DATASET: Dataset = {
   transactions: [],
   tasks: [],
   brain: [],
+  links: [],
 };

@@ -1,22 +1,29 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
+import { ArrowUp, Brain, Mic, Search, Sparkles, Square, X } from "lucide-react";
+import { categories, categoryById, isCategory, type BrainCategoryId } from "@/lib/data/brain";
+import { canonicalPair, type BrainNote } from "@/lib/brain/graph";
+import { computeFocus } from "@/lib/brain/focus";
+import { pickResurface } from "@/lib/brain/resurface";
+import { searchNotes } from "@/lib/brain/search";
+import { MAX_RENDERED_NODES, nodePosition } from "@/lib/brain/layout";
 import {
-  Brain, ArrowLeft, ArrowUp, Mic, Sparkles, Check, Circle, CornerRightDown,
-} from "lucide-react";
-import { categories, type BrainCategoryId, type BrainItemKind } from "@/lib/data/brain";
-import { createBrainItem, setBrainItemDone } from "@/app/actions/workspace";
-import type { DbBrainItem } from "@/lib/db/types";
-import type { Messages } from "@/lib/i18n/dictionaries";
+  createNote, deleteNote, linkNotes, unlinkNotes, updateNote,
+  type BrainErrorCode, type BrainResult,
+} from "@/app/actions/brain";
+import { Overview, RegionList, SearchResults } from "./brain-panels";
+import { NoteDetail, type ClientLink, type NotePatch } from "./note-detail";
+import { useDictation } from "./use-dictation";
+import type { GraphNode } from "./note-graph";
 import { toast } from "@/components/ui/toaster";
-import { useMessages, useLocale } from "@/lib/i18n/client";
+import { plural } from "@/lib/i18n/config";
+import { useLocale, useMessages } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
-import { ease } from "@/lib/motion";
 
-const BrainScene = dynamic(() => import("./brain-scene").then((m) => m.BrainScene), {
+const BrainScene = dynamic(() => import("./brain-scene").then((mod) => mod.BrainScene), {
   ssr: false,
   loading: () => (
     <div className="flex h-full items-center justify-center">
@@ -25,299 +32,433 @@ const BrainScene = dynamic(() => import("./brain-scene").then((m) => m.BrainScen
   ),
 });
 
-const kindForCategory: Record<BrainCategoryId, BrainItemKind> = {
-  ideas: "idea",
-  thoughts: "thought",
-  next: "task",
-  knowledge: "note",
-  insights: "insight",
-};
+type View = { kind: "overview" } | { kind: "region"; region: BrainCategoryId } | { kind: "note"; id: string };
 
-/** Seeded rows resolve their text from i18n; captured rows carry their own. */
-function itemText(item: DbBrainItem, m: Messages): { title: string; detail?: string } {
-  if (item.title) return { title: item.title, detail: item.detail ?? undefined };
-  const seeded = item.seedKey ? m.brain.items[item.seedKey] : undefined;
-  return { title: seeded?.title ?? "", detail: seeded?.detail };
+const tempId = () => `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+/**
+ * A server action rejects on a dropped connection rather than returning an
+ * error. Without this, every optimistic update would stay on screen after the
+ * server refused it — the UI showing a state the database doesn't have.
+ */
+async function safe<T>(action: Promise<BrainResult<T>>): Promise<BrainResult<T>> {
+  try {
+    return await action;
+  } catch {
+    return { ok: false, code: "failed", error: "network" };
+  }
 }
 
-export function SecondBrain({ items: initialItems }: { items: DbBrainItem[] }) {
+export function SecondBrain({
+  initialNotes,
+  initialLinks,
+  linksAvailable,
+  nowIso,
+  seed,
+}: {
+  initialNotes: BrainNote[];
+  initialLinks: ClientLink[];
+  /** False until migration 007 creates the links table. */
+  linksAvailable: boolean;
+  /** Server time, so server and client compute the same focus and resurfacing. */
+  nowIso: string;
+  /** Per-user salt for today's resurfaced note. */
+  seed: string;
+}) {
   const m = useMessages();
   const locale = useLocale();
-  const router = useRouter();
-  const [selected, setSelected] = useState<BrainCategoryId | null>(null);
-  const [items, setItems] = useState<DbBrainItem[]>(initialItems);
+
+  const [notes, setNotes] = useState(initialNotes);
+  const [links, setLinks] = useState(initialLinks);
+  const [view, setView] = useState<View>({ kind: "overview" });
+  const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
+  const [capturing, setCapturing] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  // A synchronous lock. `capturing` is React state and updates asynchronously,
+  // so two quick Enters could both read `false` and save the thought twice.
+  const captureLock = useRef(false);
+
+  const now = useMemo(() => new Date(nowIso), [nowIso]);
+  const errorText = useCallback((code: BrainErrorCode) => m.brain.errors[code], [m]);
+
+  // The migration warning is for whoever operates the workspace, not the user,
+  // who sees a plain sentence instead.
+  useEffect(() => {
+    if (!linksAvailable) {
+      console.warn("[LifeOS] Connections are off: apply supabase/migrations/007_second_brain.sql to enable them.");
+    }
+  }, [linksAvailable]);
+
+  /* ── Derived ──────────────────────────────────────────────────── */
+
+  const byId = useMemo(() => new Map(notes.map((n) => [n.id, n])), [notes]);
+  const focus = useMemo(() => computeFocus({ notes, links, now }), [notes, links, now]);
+  const resurfaced = useMemo(() => pickResurface({ notes, links, now, seed }), [notes, links, now, seed]);
+  const results = useMemo(() => (query.trim() ? searchNotes(notes, query) : []), [notes, query]);
+
+  const openNote = view.kind === "note" ? byId.get(view.id) ?? null : null;
+
+  // The scene draws the most recent notes. Past a few hundred, a brain becomes
+  // noise rather than a map; everything stays reachable through search.
+  const rendered = useMemo(
+    () => [...notes].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, MAX_RENDERED_NODES),
+    [notes]
+  );
+  const nodes: GraphNode[] = useMemo(
+    () =>
+      rendered.map((n) => {
+        const cat = categoryById(n.category);
+        return {
+          id: n.id,
+          title: n.title,
+          position: nodePosition(n.id, cat.anchor),
+          color: cat.color,
+          done: n.done,
+          dim: view.kind === "region" && n.category !== view.region,
+        };
+      }),
+    [rendered, view]
+  );
+  const edges = useMemo(() => {
+    const pos = new Map(nodes.map((n) => [n.id, n.position]));
+    const sel = openNote?.id;
+    return links
+      .filter((l) => pos.has(l.fromId) && pos.has(l.toId))
+      .map((l) => ({ from: pos.get(l.fromId)!, to: pos.get(l.toId)!, active: l.fromId === sel || l.toId === sel }));
+  }, [nodes, links, openNote?.id]);
 
   const labels = useMemo(
-    () =>
-      categories.reduce(
-        (acc, c) => ({ ...acc, [c.id]: m.brain.cat[c.id].label }),
-        {} as Record<BrainCategoryId, string>
-      ),
+    () => Object.fromEntries(categories.map((c) => [c.id, m.brain.cat[c.id].label])) as Record<BrainCategoryId, string>,
     [m]
   );
 
-  const counts = useMemo(() => {
-    const by = (id: BrainCategoryId) => items.filter((i) => i.category === id).length;
-    return { ideas: by("ideas"), thoughts: by("thoughts"), insights: by("insights") };
-  }, [items]);
+  /* ── Navigation ───────────────────────────────────────────────── */
 
-  const capture = async () => {
-    const title = draft.trim();
-    if (!title) return;
-    setDraft("");
+  const open = useCallback((id: string) => {
+    setQuery("");
+    setView({ kind: "note", id });
+  }, []);
 
-    // Show it immediately, then let the AI classify and the DB persist it.
-    const tempId = `temp-${Date.now()}`;
-    const optimistic: DbBrainItem = {
-      id: tempId,
-      userKey: "",
-      createdAt: new Date().toISOString(),
-      category: "thoughts",
-      kind: "thought",
-      seedKey: null,
-      title,
-      detail: null,
-      done: false,
-      ai: false,
-    };
-    setItems((prev) => [optimistic, ...prev]);
-    setSelected("thoughts");
-
-    let category: BrainCategoryId = "thoughts";
-    let note: string | null = null;
-    try {
-      const res = await fetch("/api/brain/capture", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: title, locale }),
-      });
-      const data = (await res.json()) as { category?: BrainCategoryId; note?: string };
-      category = data.category ?? "thoughts";
-      note = data.note ?? null;
-    } catch {
-      /* fall through with the default category */
-    }
-
-    const kind = kindForCategory[category];
-    setItems((prev) =>
-      prev.map((i) => (i.id === tempId ? { ...i, category, kind, detail: note, ai: true } : i))
-    );
-    setSelected(category);
-
-    const saved = await createBrainItem({ title, category, kind, detail: note ?? undefined, ai: true });
-    if (saved.ok) {
-      toast(m.brain.captured);
-      router.refresh(); // pull back the persisted row (real id)
-    } else {
-      setItems((prev) => prev.filter((i) => i.id !== tempId));
-      toast(saved.error, "error");
-    }
-  };
-
-  const toggleTask = (id: string) => {
-    const target = items.find((i) => i.id === id);
-    if (!target) return;
-    const next = !target.done;
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, done: next } : i)));
-    setBrainItemDone(id, next).then((res) => {
-      if (!res.ok) setItems((prev) => prev.map((i) => (i.id === id ? { ...i, done: !next } : i)));
+  const back = useCallback(() => {
+    setView((v) => {
+      if (v.kind === "note") {
+        const n = byId.get(v.id);
+        return n ? { kind: "region", region: n.category } : { kind: "overview" };
+      }
+      return { kind: "overview" };
     });
-  };
+  }, [byId]);
+
+  const toggleRegion = useCallback((region: BrainCategoryId) => {
+    setQuery("");
+    setView((v) => (v.kind === "region" && v.region === region ? { kind: "overview" } : { kind: "region", region }));
+  }, []);
+
+  // "/" to search, Escape to step back — without stealing keys from inputs.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]");
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      } else if (e.key === "Escape" && !typing) {
+        if (query) setQuery("");
+        else back();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [query, back]);
+
+  /* ── Mutations — optimistic, rolled back on failure ───────────── */
+
+  const capture = useCallback(
+    async (text?: string) => {
+      const title = (text ?? draft).trim();
+      if (!title || captureLock.current) return;
+      captureLock.current = true;
+      setDraft("");
+      setCapturing(true);
+
+      const temp: BrainNote = {
+        id: tempId(),
+        category: "thoughts",
+        kind: "thought",
+        title,
+        detail: null,
+        done: false,
+        ai: false,
+        createdAt: new Date().toISOString(),
+      };
+      setNotes((prev) => [temp, ...prev]);
+
+      // Classification only. The person's words are saved exactly as written.
+      let category: BrainCategoryId = "thoughts";
+      try {
+        const res = await fetch("/api/brain/capture", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: title, locale }),
+        });
+        const data = (await res.json()) as { category?: string };
+        if (isCategory(data.category)) category = data.category;
+      } catch {
+        /* keep the default region; the note is not lost */
+      }
+
+      const saved = await safe(createNote({ title, category }));
+      // `safe` never throws, so the lock is always released — one network
+      // blip can't leave capture disabled until the page is reloaded.
+      captureLock.current = false;
+      setCapturing(false);
+      if (saved.ok) {
+        // Built field by field: the server row also carries the owner key,
+        // which has no business in client state.
+        const real: BrainNote = {
+          id: saved.data.id,
+          category,
+          kind: saved.data.kind,
+          title,
+          detail: saved.data.detail,
+          done: saved.data.done,
+          ai: saved.data.ai,
+          createdAt: saved.data.createdAt,
+        };
+        setNotes((prev) => prev.map((n) => (n.id === temp.id ? real : n)));
+        toast(`${m.brain.captured} · ${m.brain.cat[category].label}`);
+      } else {
+        setNotes((prev) => prev.filter((n) => n.id !== temp.id));
+        setDraft(title); // give the words back rather than lose them
+        toast(errorText(saved.code), "error");
+      }
+    },
+    [draft, locale, m, errorText]
+  );
+
+  const update = useCallback(
+    async (id: string, patch: NotePatch) => {
+      const before = byId.get(id);
+      if (!before) return;
+      setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+      const res = await safe(updateNote(id, patch));
+      if (!res.ok) {
+        setNotes((prev) => prev.map((n) => (n.id === id ? before : n)));
+        toast(errorText(res.code), "error");
+      }
+    },
+    [byId, errorText]
+  );
+
+  const remove = useCallback(
+    async (id: string) => {
+      const prevNotes = notes;
+      const prevLinks = links;
+      const gone = byId.get(id);
+      setNotes((p) => p.filter((n) => n.id !== id));
+      setLinks((p) => p.filter((l) => l.fromId !== id && l.toId !== id));
+      setView(gone ? { kind: "region", region: gone.category } : { kind: "overview" });
+      const res = await safe(deleteNote(id));
+      if (res.ok) toast(m.brain.note.deleted);
+      else {
+        setNotes(prevNotes);
+        setLinks(prevLinks);
+        toast(errorText(res.code), "error");
+      }
+    },
+    [notes, links, byId, m, errorText]
+  );
+
+  const link = useCallback(
+    async (a: string, b: string, origin: "user" | "suggested", reason?: string) => {
+      if (!linksAvailable) return toast(m.brain.links.unavailable, "error");
+      const [fromId, toId] = canonicalPair(a, b);
+      const temp: ClientLink = { id: tempId(), fromId, toId, reason: reason ?? null, origin };
+      setLinks((p) => [...p, temp]);
+      const res = await safe(linkNotes({ a, b, reason, origin }));
+      if (res.ok) {
+        const real: ClientLink = {
+          id: res.data.id,
+          fromId: res.data.fromId,
+          toId: res.data.toId,
+          reason: res.data.reason,
+          origin: res.data.origin,
+        };
+        // An idempotent re-link returns the existing row; don't list it twice.
+        setLinks((p) => [...p.filter((l) => l.id !== temp.id && l.id !== real.id), real]);
+        toast(m.brain.links.connected);
+      } else {
+        setLinks((p) => p.filter((l) => l.id !== temp.id));
+        toast(errorText(res.code), "error");
+      }
+    },
+    [linksAvailable, m, errorText]
+  );
+
+  const unlink = useCallback(
+    async (linkId: string) => {
+      const prev = links;
+      setLinks((p) => p.filter((l) => l.id !== linkId));
+      const res = await safe(unlinkNotes(linkId));
+      if (!res.ok) {
+        setLinks(prev);
+        toast(errorText(res.code), "error");
+      }
+    },
+    [links, errorText]
+  );
+
+  /* ── Dictation ────────────────────────────────────────────────── */
+
+  const dictation = useDictation({
+    locale,
+    onText: (text, final) => {
+      setDraft(text);
+      if (final && text) void capture(text);
+    },
+    onError: (e) => toast(e === "denied" ? m.brain.voiceDenied : m.brain.voiceError, "error"),
+  });
+
+  /* ── Render ───────────────────────────────────────────────────── */
 
   return (
-    <div className="grid overflow-hidden rounded-xl border border-border bg-surface lg:grid-cols-[1fr_360px]">
-      {/* ── 3D stage ─────────────────────────────────────────── */}
+    <div className="grid overflow-hidden rounded-xl border border-border bg-surface lg:grid-cols-[1fr_380px]">
+      {/* 3D stage */}
       <div className="relative min-h-[56vh] lg:min-h-[72vh]">
         <div
           className="pointer-events-none absolute inset-0"
           style={{ background: "radial-gradient(58% 58% at 50% 42%, rgba(34,211,238,0.12), transparent 72%)" }}
         />
         <div className="absolute inset-0">
-          <BrainScene selected={selected} onSelect={setSelected} labels={labels} />
+          <BrainScene
+            // The region marker only lights up when a region is what's being
+            // browsed; with a note open, its own label says enough.
+            selectedRegion={view.kind === "region" ? view.region : null}
+            onSelectRegion={toggleRegion}
+            labels={labels}
+            nodes={nodes}
+            edges={edges}
+            selectedNoteId={openNote?.id ?? null}
+            onSelectNote={open}
+          />
         </div>
 
-        {/* HUD */}
         <div className="pointer-events-none absolute left-5 top-5">
           <div className="flex items-center gap-2 text-sm font-medium">
             <Brain className="h-4 w-4 text-accent" /> {m.nav.brain}
           </div>
           <p className="mt-1 font-mono text-[0.72rem] text-muted-foreground">
-            {counts.ideas} {m.brain.hudIdeas} · {counts.thoughts} {m.brain.hudThoughts} · {counts.insights} {m.brain.hudInsights}
+            {plural(locale, notes.length, m.brain.hudNotes)} · {plural(locale, links.length, m.brain.hudLinks)}
           </p>
         </div>
         <div className="pointer-events-none absolute right-5 top-5 hidden items-center gap-1.5 rounded-full border border-border bg-surface/60 px-2.5 py-1 text-[0.7rem] text-muted-foreground backdrop-blur sm:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-success" /> {m.brain.dragHint}
+          <span className="h-1.5 w-1.5 rounded-full bg-success" /> {m.brain.hint}
         </div>
 
-        {/* Capture bar */}
-        <div className="absolute inset-x-4 bottom-4">
-          <div className="mx-auto flex max-w-xl items-center gap-2 rounded-xl border border-border bg-surface/80 px-3 py-1.5 backdrop-blur focus-within:border-border-strong">
+        {/* Capture */}
+        <form
+          className="absolute inset-x-4 bottom-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void capture();
+          }}
+        >
+          <div className="mx-auto flex max-w-xl items-center gap-2 rounded-xl border border-border bg-surface/85 px-3 py-1.5 backdrop-blur focus-within:border-border-strong">
             <Sparkles className="h-4 w-4 shrink-0 text-accent" />
             <input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && capture()}
-              placeholder={m.brain.capturePlaceholder}
+              onKeyDown={(e) => {
+                // Handled here, like every other text field in the app, rather
+                // than left to implicit form submission. Skipped while an input
+                // method is composing: there Enter confirms the accent or the
+                // character, it doesn't mean "send".
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void capture();
+                }
+              }}
+              placeholder={dictation.listening ? m.brain.voiceListening : m.brain.capturePlaceholder}
+              aria-label={m.brain.capturePlaceholder}
+              maxLength={500}
               className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted"
             />
-            <button className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:text-foreground" aria-label={m.brain.voice}>
-              <Mic className="h-4 w-4" />
-            </button>
+            {dictation.supported && (
+              <button
+                type="button"
+                onClick={dictation.listening ? dictation.stop : dictation.start}
+                aria-label={dictation.listening ? m.brain.voiceStop : m.brain.voiceStart}
+                aria-pressed={dictation.listening}
+                title={`${dictation.listening ? m.brain.voiceStop : m.brain.voiceStart} — ${m.brain.voiceDisclosure}`}
+                className={cn(
+                  "grid h-8 w-8 place-items-center rounded-md transition-colors",
+                  dictation.listening ? "bg-danger/15 text-danger" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {dictation.listening ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
+              </button>
+            )}
             <button
-              onClick={capture}
-              disabled={!draft.trim()}
+              type="submit"
+              disabled={!draft.trim() || capturing}
               className="grid h-8 w-8 place-items-center rounded-md bg-foreground text-background transition-opacity disabled:opacity-40"
               aria-label={m.brain.capture}
             >
               <ArrowUp className="h-4 w-4" />
             </button>
           </div>
-        </div>
+        </form>
       </div>
 
-      {/* ── Side panel ───────────────────────────────────────── */}
+      {/* Side panel */}
       <aside className="flex min-h-0 flex-col border-t border-border lg:max-h-[72vh] lg:border-l lg:border-t-0">
-        <div className="flex flex-wrap gap-1.5 border-b border-border p-3">
-          {categories.map((c) => {
-            const activeChip = selected === c.id;
-            return (
-              <button
-                key={c.id}
-                onClick={() => setSelected(activeChip ? null : c.id)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.78rem] transition-colors",
-                  activeChip ? "text-foreground" : "border-border text-muted-foreground hover:text-foreground"
-                )}
-                style={activeChip ? { borderColor: `${c.color}66`, background: `${c.color}14` } : undefined}
-              >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: c.color }} />
-                {labels[c.id]}
+        <div className="border-b border-border p-3">
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2/40 px-2.5 focus-within:border-border-strong">
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={m.brain.searchPlaceholder}
+              aria-label={m.brain.searchPlaceholder}
+              className="h-8 flex-1 bg-transparent text-[0.82rem] outline-none placeholder:text-muted"
+            />
+            {query ? (
+              <button type="button" onClick={() => setQuery("")} aria-label={m.brain.back} className="text-muted hover:text-foreground">
+                <X className="h-3.5 w-3.5" />
               </button>
-            );
-          })}
+            ) : (
+              <kbd className="rounded border border-border px-1 font-mono text-[0.62rem] text-muted">/</kbd>
+            )}
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <AnimatePresence mode="wait">
-            {selected ? (
-              <CategoryPanel key={selected} id={selected} items={items} onBack={() => setSelected(null)} onToggle={toggleTask} />
+            {query.trim() ? (
+              <SearchResults key="search" query={query} results={results} onOpen={open} />
+            ) : openNote ? (
+              <NoteDetail
+                key={`note-${openNote.id}`}
+                note={openNote}
+                notes={notes}
+                links={links}
+                linksAvailable={linksAvailable}
+                onBack={back}
+                onOpen={open}
+                onUpdate={update}
+                onDelete={remove}
+                onLink={link}
+                onUnlink={unlink}
+              />
+            ) : view.kind === "region" ? (
+              <RegionList key={`region-${view.region}`} region={view.region} notes={notes} onOpen={open} onBack={back} />
             ) : (
-              <Overview key="overview" onOpenNext={() => setSelected("next")} onPick={setSelected} />
+              <Overview key="overview" notes={notes} focus={focus} resurfaced={resurfaced} now={now} onOpen={open} onRegion={toggleRegion} />
             )}
           </AnimatePresence>
         </div>
       </aside>
     </div>
-  );
-}
-
-function Overview({ onOpenNext, onPick }: { onOpenNext: () => void; onPick: (id: BrainCategoryId) => void }) {
-  const m = useMessages();
-  return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.24, ease }}>
-      <div className="rounded-xl border border-accent/25 bg-accent/[0.06] p-4">
-        <div className="flex items-center gap-2 text-[0.78rem] font-medium text-accent">
-          <Sparkles className="h-3.5 w-3.5" /> {m.brain.focusTitle}
-        </div>
-        <p className="mt-2 text-[0.9rem] leading-relaxed text-foreground/85">{m.brain.focusBody}</p>
-        <button onClick={onOpenNext} className="mt-3 inline-flex items-center gap-1.5 text-[0.8125rem] font-medium text-accent hover:underline">
-          {m.brain.openNext} <CornerRightDown className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      <p className="mb-2 mt-6 text-[0.7rem] uppercase tracking-wider text-muted">{m.brain.regions}</p>
-      <div className="grid grid-cols-2 gap-2">
-        {categories.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => onPick(c.id)}
-            className="group flex items-start gap-2.5 rounded-lg border border-border bg-surface p-3 text-left transition-colors hover:border-border-strong"
-          >
-            <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md" style={{ background: `${c.color}18`, color: c.color }}>
-              <c.icon className="h-3.5 w-3.5" />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[0.82rem] font-medium">{m.brain.cat[c.id].label}</span>
-              <span className="block truncate text-[0.72rem] text-muted-foreground">{m.brain.cat[c.id].blurb}</span>
-            </span>
-          </button>
-        ))}
-      </div>
-    </motion.div>
-  );
-}
-
-function CategoryPanel({
-  id,
-  items,
-  onBack,
-  onToggle,
-}: {
-  id: BrainCategoryId;
-  items: DbBrainItem[];
-  onBack: () => void;
-  onToggle: (id: string) => void;
-}) {
-  const m = useMessages();
-  const cat = categories.find((c) => c.id === id)!;
-  const list = items.filter((i) => i.category === id);
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.24, ease }}>
-      <button onClick={onBack} className="mb-3 flex items-center gap-1.5 text-[0.8rem] text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-3.5 w-3.5" /> {m.brain.overview}
-      </button>
-
-      <div className="flex items-center gap-2.5">
-        <span className="grid h-9 w-9 place-items-center rounded-lg" style={{ background: `${cat.color}18`, color: cat.color }}>
-          <cat.icon className="h-4 w-4" />
-        </span>
-        <div>
-          <h3 className="text-[1.05rem] font-medium tracking-tight">{m.brain.cat[id].label}</h3>
-          <p className="text-[0.75rem] text-muted-foreground">{m.brain.cat[id].blurb}</p>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-col gap-2">
-        {list.map((it) => {
-          const { title, detail } = itemText(it, m);
-          return it.kind === "task" ? (
-            <button
-              key={it.id}
-              onClick={() => onToggle(it.id)}
-              className="flex items-start gap-2.5 rounded-lg border border-border bg-surface p-3 text-left transition-colors hover:border-border-strong"
-            >
-              {it.done ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-border-strong" />}
-              <span className={cn("text-[0.875rem] leading-snug", it.done && "text-muted-foreground line-through")}>
-                {title}
-                {it.ai && <AiTag />}
-              </span>
-            </button>
-          ) : (
-            <div key={it.id} className="rounded-lg border border-border bg-surface p-3">
-              <p className="text-[0.875rem] leading-snug">
-                {title}
-                {it.ai && <AiTag />}
-              </p>
-              {detail && <p className="mt-1 text-[0.78rem] leading-relaxed text-muted-foreground">{detail}</p>}
-            </div>
-          );
-        })}
-        {list.length === 0 && (
-          <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            {m.brain.nothingHere}
-          </p>
-        )}
-      </div>
-    </motion.div>
-  );
-}
-
-function AiTag() {
-  return (
-    <span className="ml-1.5 inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-1.5 py-0.5 align-middle text-[0.6rem] font-medium text-accent">
-      <Sparkles className="h-2.5 w-2.5" /> AI
-    </span>
   );
 }

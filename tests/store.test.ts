@@ -46,10 +46,23 @@ describe("seeding", () => {
   const userKey = "seed@test.dev";
   const data = seedDataset(userKey);
 
-  it("populates every collection", () => {
+  it("populates every collection except links", () => {
     for (const key of Object.keys(EMPTY_DATASET) as (keyof typeof EMPTY_DATASET)[]) {
+      if (key === "links") continue;
       expect(data[key].length, `${key} should be seeded`).toBeGreaterThan(0);
     }
+  });
+
+  it("does not seed links, which could not survive Supabase's fresh ids", () => {
+    // In Supabase, sample notes get new UUIDs on insert; a separate seed pass
+    // for links has no way to know them, so seeded links would dangle.
+    expect(data.links).toEqual([]);
+  });
+
+  it("backdates sample notes so resurfacing has something to show", () => {
+    const now = Date.now();
+    const weekOld = data.brain.filter((b) => now - Date.parse(b.createdAt) >= 7 * 86_400_000);
+    expect(weekOld.length).toBeGreaterThan(3);
   });
 
   it("scopes every row to the owner", () => {

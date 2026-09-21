@@ -15,12 +15,20 @@ import { join } from "node:path";
 const ROOT = join(__dirname, "..");
 const APP_GROUP = join(ROOT, "app", "(app)");
 
-/** Top-level route segments under app/(app), e.g. "brain", "agent". */
+/**
+ * Private pages that live outside the (app) group. Onboarding and generation
+ * write to the signed-in user's brain; reached signed out, they would write to
+ * the shared demo one instead.
+ */
+const PRIVATE_OUTSIDE_GROUP = ["onboarding", "generate"];
+
+/** Top-level route segments that require a session. */
 function privateSegments(): string[] {
-  return readdirSync(APP_GROUP).filter((name) => {
+  const grouped = readdirSync(APP_GROUP).filter((name) => {
     const full = join(APP_GROUP, name);
     return statSync(full).isDirectory() && !name.startsWith("(") && !name.startsWith("_");
   });
+  return [...grouped, ...PRIVATE_OUTSIDE_GROUP];
 }
 
 /** The segments the middleware matcher protects, read from its source. */

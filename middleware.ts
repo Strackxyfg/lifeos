@@ -59,5 +59,10 @@ export const config = {
     "/assessment/:path*",
     "/billing/:path*",
     "/settings/:path*",
+    // Outside the (app) group, but private all the same: setting up a brain
+    // writes to it, and signed out there is no brain to write to — only the
+    // shared demo one.
+    "/onboarding/:path*",
+    "/generate/:path*",
   ],
 };

@@ -4,6 +4,7 @@ import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { safeNext } from "@/lib/auth/safe-next";
 import { Loader2, ArrowRight } from "lucide-react";
 import { authenticate, type AuthState } from "@/app/actions/auth";
 import { useMessages } from "@/lib/i18n/client";
@@ -32,7 +33,8 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
 
   useEffect(() => {
     if (state.ok) {
-      router.push(next || (mode === "signup" ? "/onboarding" : "/dashboard"));
+      // The second brain is home now; a new account sets it up first.
+      router.push(safeNext(next, mode === "signup" ? "/onboarding" : "/brain"));
       router.refresh();
     }
   }, [state.ok, mode, next, router]);

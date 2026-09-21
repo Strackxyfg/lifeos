@@ -499,7 +499,7 @@ describe("export", () => {
 import { heuristicRegion } from "@/lib/brain/classify";
 
 describe("capture routing without AI", () => {
-  it("recognises French words whose accents broke the old \b patterns", () => {
+  it("recognises French words whose accents broke the old word-boundary patterns", () => {
     // `\bidée\b` never matched "idée": JS \b sees "é" as a non-word character.
     expect(heuristicRegion("Une idée pour la landing")).toBe("ideas");
     expect(heuristicRegion("Écrire l'article de blog")).toBe("next");

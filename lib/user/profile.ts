@@ -11,7 +11,6 @@ export interface Profile {
   /** First token of the name — used for greetings. */
   firstName: string;
   profession?: string;
-  plan: string;
   /** 1–2 letter avatar initials. */
   initials: string;
   email?: string;
@@ -71,7 +70,6 @@ export const getProfile = cache(async function getProfile(): Promise<Profile> {
     name,
     firstName: name.split(/\s+/)[0],
     profession: stored.profession,
-    plan: "Pro",
     initials: initialsOf(name === "there" ? "" : name),
     email,
   };

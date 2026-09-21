@@ -9,6 +9,14 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
   },
+  // Pages retired in the pivot. They showed fabricated data; old bookmarks
+  // and muscle-memory shortcuts land on the second brain instead of a 404.
+  async redirects() {
+    return [
+      { source: "/analytics", destination: "/brain", permanent: false },
+      { source: "/team", destination: "/brain", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

@@ -17,8 +17,6 @@ const MAP: Record<string, string> = {
   a: "/assistant",
   r: "/brain",
   g: "/agent",
-  n: "/analytics",
-  t: "/team",
   s: "/settings",
   b: "/billing",
 };

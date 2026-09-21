@@ -32,7 +32,6 @@ export function snapshotFacts(s: WorkspaceSnapshot, locale: Locale): string {
     `Finance: income ${money(s.finance.income, locale)}, expenses ${money(s.finance.expense, locale)}, net ${money(s.finance.net, locale)}. Biggest expense category: ${s.finance.topExpense}.`,
     `Pipeline: ${s.crm.openCount} open deals worth ${money(s.crm.openValue, locale)}; ${money(s.crm.wonValue, locale)} won. Next actions: ${s.crm.nextActions.join("; ")}.`,
     `Today's tasks: ${s.tasks.done}/${s.tasks.total} done, ${s.tasks.open} open.`,
-    `Habit streak: ${s.habitStreak} days.`,
   ].join("\n");
 }
 
@@ -83,14 +82,14 @@ export function computeInsight(
         `Côté finances, le net ressort à ${money(s.finance.net, locale)}.`
       : `${s.tasks.done} tâche${s.tasks.done > 1 ? "s" : ""} sur ${s.tasks.total} déjà faite${s.tasks.done > 1 ? "s" : ""}, ${s.tasks.open} restante${s.tasks.open > 1 ? "s" : ""}. ` +
         (blocked ? `« ${blocked} » est bloqué — à débloquer en priorité. ` : "") +
-        `${s.crm.openCount} opportunités ouvertes pour ${money(s.crm.openValue, locale)}. Série en cours : ${s.habitStreak} jours.`
+        `${s.crm.openCount} opportunités ouvertes pour ${money(s.crm.openValue, locale)}.`
     : kind === "weekly"
       ? `Your ${p.total} projects are averaging ${p.avgProgress}% progress — ${p.inProgress} in flight, ${p.done} done. ` +
         (blocked ? `"${blocked}" is blocked and remains your biggest risk. ` : "Nothing is blocked. ") +
         `Finance nets out at ${money(s.finance.net, locale)}.`
       : `${s.tasks.done} of ${s.tasks.total} tasks done, ${s.tasks.open} still open. ` +
         (blocked ? `"${blocked}" is blocked — clear it first. ` : "") +
-        `${s.crm.openCount} open deals worth ${money(s.crm.openValue, locale)}. Streak: ${s.habitStreak} days.`;
+        `${s.crm.openCount} open deals worth ${money(s.crm.openValue, locale)}.`;
 
   const actions = fr
     ? [

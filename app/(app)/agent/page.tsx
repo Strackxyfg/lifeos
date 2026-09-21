@@ -105,9 +105,9 @@ export default async function AgentPage() {
         <Card className="p-5">
           <p className="text-[0.75rem] text-muted-foreground">{m.agent.budget}</p>
           <p className="mt-1.5 text-lg font-medium tracking-tight">
-            {formatCurrency(state.spentTodayCents / 100)}{" "}
+            {formatCurrency(state.spentTodayCents / 100, locale)}{" "}
             <span className="text-sm text-muted-foreground">
-              / {formatCurrency(state.policy.dailyBudgetCents / 100)}
+              / {formatCurrency(state.policy.dailyBudgetCents / 100, locale)}
             </span>
           </p>
           <p className="mt-1 text-[0.75rem] text-muted-foreground">

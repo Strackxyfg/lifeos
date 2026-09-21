@@ -6,6 +6,7 @@
 # next.js
 /.next/
 /.next-verify/
+/.next-demo/
 /out/
 next-env.d.ts
 

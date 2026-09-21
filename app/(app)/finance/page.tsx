@@ -9,12 +9,12 @@ import { loadCollection } from "@/lib/data/live";
 import { QuickAdd } from "@/components/app/quick-add";
 import { createTransaction } from "@/app/actions/workspace";
 import { formatCurrency, cn } from "@/lib/utils";
-import { getMessages } from "@/lib/i18n/server";
+import { getMessages, getLocale } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Finance" };
 
 export default async function FinancePage() {
-  const [m, transactions] = await Promise.all([getMessages(), loadCollection("transactions")]);
+  const [m, locale, transactions] = await Promise.all([getMessages(), getLocale(), loadCollection("transactions")]);
   const { income, expense, net } = financeSummary(transactions);
 
   // Category breakdown of expenses.
@@ -64,7 +64,7 @@ export default async function FinancePage() {
           <Card key={k.l} className="p-4">
             <p className="text-[0.8125rem] text-muted-foreground">{k.l}</p>
             <div className="mt-1.5 flex items-baseline gap-2">
-              <span className="text-2xl font-medium tracking-tight">{formatCurrency(k.v)}</span>
+              <span className="text-2xl font-medium tracking-tight">{formatCurrency(k.v, locale)}</span>
               <span className={cn("flex items-center text-[0.72rem]", k.up ? "text-success" : "text-warning")}>
                 {k.up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
               </span>
@@ -100,7 +100,7 @@ export default async function FinancePage() {
                   <Td className="text-muted-foreground">{t.category}</Td>
                   <Td className="text-muted-foreground">{t.date}</Td>
                   <Td className={cn("text-right font-mono", t.type === "Income" ? "text-success" : "text-foreground/80")}>
-                    {t.type === "Income" ? "+" : "−"}{formatCurrency(t.amount)}
+                    {t.type === "Income" ? "+" : "−"}{formatCurrency(t.amount, locale)}
                   </Td>
                 </Tr>
               ))}
@@ -116,7 +116,7 @@ export default async function FinancePage() {
               <div key={cat}>
                 <div className="mb-1.5 flex justify-between text-sm">
                   <span>{cat}</span>
-                  <span className="font-mono text-muted-foreground">{formatCurrency(amt)}</span>
+                  <span className="font-mono text-muted-foreground">{formatCurrency(amt, locale)}</span>
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
                   <div className="h-full rounded-full bg-accent" style={{ width: `${(amt / maxCat) * 100}%` }} />

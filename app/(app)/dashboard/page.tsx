@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ArrowRight, CalendarDays, Mail, MessageSquare, Github } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { TodayTasks } from "@/components/app/today-tasks";
@@ -8,7 +8,7 @@ import { computeSnapshot, statusColor } from "@/lib/data/workspace";
 import { loadWorkspace } from "@/lib/data/live";
 import { cn, formatCurrency } from "@/lib/utils";
 import { getProfile } from "@/lib/user/profile";
-import { getMessages } from "@/lib/i18n/server";
+import { getMessages, getLocale } from "@/lib/i18n/server";
 import { fill } from "@/lib/i18n/config";
 import type { Messages } from "@/lib/i18n/dictionaries";
 
@@ -21,18 +21,13 @@ function greeting(m: Messages): string {
   return m.dashboard.evening;
 }
 
-const integrations = [
-  { name: "Google Calendar", icon: CalendarDays, ok: true },
-  { name: "Gmail", icon: Mail, ok: true },
-  { name: "Slack", icon: MessageSquare, ok: true },
-  { name: "GitHub", icon: Github, ok: false },
-];
 
 
 export default async function DashboardPage() {
-  const [{ firstName }, m, data] = await Promise.all([
+  const [{ firstName }, m, locale, data] = await Promise.all([
     getProfile(),
     getMessages(),
+    getLocale(),
     loadWorkspace(),
   ]);
 
@@ -43,8 +38,8 @@ export default async function DashboardPage() {
   const kpis = [
     { key: "kpiActiveProjects", value: String(activeProjects.length) },
     { key: "kpiWeeklyFocus", value: `${snapshot.projects.avgProgress}%` },
-    { key: "kpiMrr", value: formatCurrency(snapshot.finance.income) },
-    { key: "kpiHabitStreak", value: `${snapshot.habitStreak}d` },
+    { key: "kpiMrr", value: formatCurrency(snapshot.finance.income, locale) },
+    { key: "kpiNotes", value: String(data.brain.length) },
   ] as const;
 
   return (
@@ -53,7 +48,7 @@ export default async function DashboardPage() {
         title={`${greeting(m)}, ${firstName}`}
         description={fill(m.dashboard.subline, {
           open: snapshot.tasks.open,
-          streak: snapshot.habitStreak,
+          notes: data.brain.length,
         })}
       />
 
@@ -99,9 +94,9 @@ export default async function DashboardPage() {
         <AiInsights />
       </div>
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-3">
+      <div className="mt-3">
         {/* Today */}
-        <div className="lg:col-span-2">
+        <div>
           <TodayTasks
             initial={data.tasks.map((t) => ({
               id: t.id,
@@ -113,22 +108,6 @@ export default async function DashboardPage() {
           />
         </div>
 
-        {/* Integrations */}
-        <Card>
-          <CardHeader title={m.dashboard.integrations} />
-          <ul className="divide-y divide-border">
-            {integrations.map((i) => (
-              <li key={i.name} className="flex items-center gap-3 px-5 py-3">
-                <i.icon className="h-4 w-4 text-muted-foreground" />
-                <span className="flex-1 text-sm">{i.name}</span>
-                <span className={cn("flex items-center gap-1.5 text-[0.75rem]", i.ok ? "text-success" : "text-muted-foreground")}>
-                  <span className={cn("h-1.5 w-1.5 rounded-full", i.ok ? "bg-success" : "bg-border-strong")} />
-                  {i.ok ? m.common.connected : m.common.connect}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
       </div>
     </>
   );

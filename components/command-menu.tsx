@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Search, Sparkles, LayoutDashboard, Boxes, Users, Wallet,
-  Settings, CreditCard, ArrowRight, CornerDownLeft, BarChart3, UsersRound, Brain,
+  Settings, CreditCard, ArrowRight, CornerDownLeft, Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui/kbd";
@@ -37,8 +37,6 @@ export function CommandMenu() {
       { id: "proj", label: "Open Projects", hint: "G P", icon: Boxes, group: "Navigate", href: "/projects" },
       { id: "crm", label: "Open CRM", hint: "G C", icon: Users, group: "Navigate", href: "/crm" },
       { id: "fin", label: "Open Finance", hint: "G F", icon: Wallet, group: "Navigate", href: "/finance" },
-      { id: "analytics", label: "Open Analytics", icon: BarChart3, group: "Navigate", href: "/analytics" },
-      { id: "team", label: "Manage Team", icon: UsersRound, group: "Account", href: "/team" },
       { id: "billing", label: "Billing & plan", icon: CreditCard, group: "Account", href: "/billing" },
       { id: "settings", label: "Settings", hint: "⌘,", icon: Settings, group: "Account", href: "/settings" },
     ],

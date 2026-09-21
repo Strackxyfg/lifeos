@@ -8,19 +8,19 @@ import { loadCollection } from "@/lib/data/live";
 import { QuickAdd } from "@/components/app/quick-add";
 import { createDeal } from "@/app/actions/workspace";
 import { formatCurrency, cn } from "@/lib/utils";
-import { getMessages } from "@/lib/i18n/server";
+import { getMessages, getLocale } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "CRM" };
 
 export default async function CrmPage() {
-  const [m, deals] = await Promise.all([getMessages(), loadCollection("deals")]);
+  const [m, locale, deals] = await Promise.all([getMessages(), getLocale(), loadCollection("deals")]);
   const open = deals.filter((d) => d.stage !== "Won" && d.stage !== "Lost");
   const openValue = open.reduce((s, d) => s + d.value, 0);
   const wonValue = deals.filter((d) => d.stage === "Won").reduce((s, d) => s + d.value, 0);
 
   const kpis = [
-    { label: "Open pipeline", value: formatCurrency(openValue) },
-    { label: "Won this quarter", value: formatCurrency(wonValue) },
+    { label: "Open pipeline", value: formatCurrency(openValue, locale) },
+    { label: "Won this quarter", value: formatCurrency(wonValue, locale) },
     { label: "Open deals", value: String(open.length) },
   ];
 
@@ -79,7 +79,7 @@ export default async function CrmPage() {
             <div key={stage} className="rounded-xl border border-border bg-surface/50 p-2.5">
               <div className="mb-2.5 flex items-center justify-between px-1.5">
                 <span className="text-[0.8125rem] font-medium">{m.labels[stage]}</span>
-                <span className="text-[0.72rem] text-muted">{formatCurrency(total)}</span>
+                <span className="text-[0.72rem] text-muted">{formatCurrency(total, locale)}</span>
               </div>
               <div className="flex flex-col gap-2">
                 {items.map((d) => (
@@ -93,7 +93,7 @@ export default async function CrmPage() {
                     <p className="text-[0.875rem] font-medium">{d.company}</p>
                     <p className="text-[0.72rem] text-muted-foreground">{d.name}</p>
                     <div className="mt-2.5 flex items-center justify-between text-[0.72rem]">
-                      <span className="font-mono text-foreground/80">{formatCurrency(d.value)}</span>
+                      <span className="font-mono text-foreground/80">{formatCurrency(d.value, locale)}</span>
                       <span className="text-muted">{d.next}</span>
                     </div>
                   </div>

@@ -51,7 +51,7 @@ export function SidebarContent({ profile, onNavigate }: { profile: Profile; onNa
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{profile.name}</p>
-          <p className="truncate text-[0.75rem] text-muted-foreground">{m.common.proPlan}</p>
+          <p className="truncate text-[0.75rem] text-muted-foreground">{m.billing.accessPlan}</p>
         </div>
         <form action={signOut}>
           <button

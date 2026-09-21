@@ -162,37 +162,6 @@ export const pricing: {
   },
 ];
 
-export const testimonials: {
-  quote: string;
-  name: string;
-  role: string;
-}[] = [
-  {
-    quote:
-      "I've paid consultants $4k to build me a Notion setup. LifeOS did something better in under a minute.",
-    name: "Maya Chen",
-    role: "Founder, Reforge alum",
-  },
-  {
-    quote:
-      "The relations alone would've taken me a weekend. It even set up my weekly review ritual.",
-    name: "Daniel Okafor",
-    role: "Head of Ops, Series B startup",
-  },
-  {
-    quote:
-      "It feels less like a template and more like someone who actually understood how I work.",
-    name: "Priya Nair",
-    role: "Independent designer",
-  },
-  {
-    quote:
-      "My whole team is on the same system now. Onboarding a new hire is one click.",
-    name: "Tom Rivera",
-    role: "Agency owner",
-  },
-];
-
 export const faqs: { q: string; a: string }[] = [
   {
     q: "Do I need to already use Notion?",
@@ -212,7 +181,7 @@ export const faqs: { q: string; a: string }[] = [
   },
   {
     q: "How is my data handled?",
-    a: "We request the minimum Notion scopes needed, store tokens encrypted, and never train models on your content. You can revoke access at any time.",
+    a: "Your notes live in your own LifeOS account and you can export all of them at any time. The Notion connection is optional and can be revoked from Notion whenever you like.",
   },
   {
     q: "What if I don't like the result?",

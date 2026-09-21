@@ -88,7 +88,6 @@ export const todayTasks: TodayTask[] = [
   { id: "d4", done: false },
 ];
 
-export const habitStreak = 23;
 
 /**
  * A numeric snapshot of the workspace.
@@ -109,7 +108,6 @@ export interface WorkspaceSnapshot {
   finance: { income: number; expense: number; net: number; topExpense: string };
   crm: { openValue: number; wonValue: number; openCount: number; nextActions: string[] };
   tasks: { total: number; done: number; open: number };
-  habitStreak: number;
 }
 
 /** Shapes the snapshot needs — satisfied by both seed data and DB rows. */
@@ -173,7 +171,6 @@ export function computeSnapshot(input: SnapshotInput): WorkspaceSnapshot {
       done: tasks.filter((t) => t.done).length,
       open: tasks.filter((t) => !t.done).length,
     },
-    habitStreak,
   };
 }
 

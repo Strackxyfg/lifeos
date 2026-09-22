@@ -151,7 +151,17 @@ and two runners can't answer the same message twice.
 
 Previously `/act` only returned a verdict. It now **performs the effect itself**,
 in LifeOS ([`lib/agent/execute.ts`](../lib/agent/execute.ts)) — the runner still
-executes nothing. Wired today: `brain.write`, `task.write`, `project.write`.
+executes nothing. Wired today: `brain.write`, `brain.link`, `brain.weave`,
+`task.write`, `project.write`, `deal.write`.
+
+On the second brain the agent has the same powers as the app: `brain_related`
+shows what a note is connected to (with the meaning, the direction, the reason
+and whether the owner has reviewed it) and what looks related but is not
+connected yet; `brain_link` draws a connection with a kind (`advances`,
+`supports`, `extends`, `tension`, `related`) and a reason, marked `agent` and
+waiting for the owner's review; `brain_weave` runs the connection engine
+itself. A note written with `brain_write` is woven automatically, after the
+answer has gone back.
 
 Anything approved by policy but not yet built returns `not_implemented` and says
 so, rather than reporting a success that never happened. **The agent must never

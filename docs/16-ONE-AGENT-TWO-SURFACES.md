@@ -114,13 +114,16 @@ Ask on Telegram: *"retiens que ma priorité du mois est X"*. Then in LifeOS →
 
 Three distinct mechanisms, worth not confusing:
 
-**Reading your data.** Hermes already has it — `brain_read` and
-`workspace_read` over MCP. Ask it about your pipeline and it looks, rather
-than guessing.
+**Reading your data.** Hermes already has it — `brain_read`, `brain_search`,
+`brain_related` and `workspace_read` over MCP. Ask it about your pipeline and
+it looks, rather than guessing; ask it about a note and it sees what that note
+advances, supports or contradicts, and why.
 
-**Writing back.** When Hermes calls `brain_write`, `task_write` or
-`deal_write`, the result appears in the LifeOS UI. The second brain becomes
-shared memory you can *see* and edit, not just an opaque file on a VPS.
+**Writing back.** When Hermes calls `brain_write`, `brain_link`, `task_write`
+or `deal_write`, the result appears in the LifeOS UI. The second brain becomes
+shared memory you can *see* and edit, not just an opaque file on a VPS. A
+connection it draws arrives marked "Agent — to review": you keep it or remove
+it, and a removal is remembered.
 
 **Its own memory.** `SOUL.md` and `~/.hermes/memories/` stay local to Hermes.
 That is fine for working style and preferences. Anything you want visible in

@@ -3,6 +3,7 @@ import { authenticateRunner } from "@/lib/agent/token";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { computeSnapshot } from "@/lib/data/workspace";
 import { readProfileAnswers } from "@/lib/onboarding";
+import { toBrainLink } from "@/lib/brain/graph";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
   const db = createAdminClient();
   const scope = (t: string) => db.from(t).select("*").eq("user_key", auth.userKey);
 
-  const [projects, deals, transactions, tasks, brain, policy, profile] = await Promise.all([
+  const [projects, deals, transactions, tasks, brain, policy, profile, links] = await Promise.all([
     scope("lifeos_projects"),
     scope("lifeos_deals"),
     scope("lifeos_transactions"),
@@ -31,6 +32,9 @@ export async function GET(req: Request) {
     // Before migration 007 the table is missing: `data` is null and the
     // profile is simply absent, like for someone who skipped onboarding.
     db.from("lifeos_profiles").select("name, profession, answers").eq("user_key", auth.userKey).maybeSingle(),
+    // What the notes mean to each other (migrations 007–008). Selected with
+    // "*" so rows from before 008, without kind or direction, still come back.
+    scope("lifeos_brain_links"),
   ]);
 
   const rows = {
@@ -62,6 +66,16 @@ export async function GET(req: Request) {
       id: b.id, category: b.category, kind: b.kind,
       title: b.title, detail: b.detail, done: b.done,
     })),
+    connections: (links.data ?? []).map((l) => {
+      const link = toBrainLink({
+        id: l.id, fromId: l.from_id, toId: l.to_id, reason: l.reason,
+        origin: l.origin, kind: l.kind, sourceId: l.source_id,
+      });
+      return {
+        fromId: link.fromId, toId: link.toId, kind: link.kind, sourceId: link.sourceId,
+        reason: link.reason, reviewed: link.origin !== "ai" && link.origin !== "agent",
+      };
+    }),
     projects: rows.projects.map((p) => ({
       id: p.id, name: p.name, status: p.status, due: p.due, progress: p.progress,
     })),

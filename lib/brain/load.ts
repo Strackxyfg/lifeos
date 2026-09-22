@@ -1,8 +1,9 @@
 import "server-only";
-import { loadCollection, loadLinks } from "@/lib/data/live";
+import { loadCollection, loadDismissals, loadLinks } from "@/lib/data/live";
 import { isCategory, kindForCategory } from "@/lib/data/brain";
-import { liveLinks, type BrainNote } from "./graph";
-import type { DbBrainItem, DbBrainLink } from "@/lib/db/types";
+import { liveLinks, pairKey, toBrainLink, type BrainLink, type BrainNote } from "./graph";
+import { sanitizeConcepts } from "./concepts";
+import type { DbBrainItem } from "@/lib/db/types";
 import type { Messages } from "@/lib/i18n/dictionaries";
 
 /**
@@ -14,9 +15,11 @@ import type { Messages } from "@/lib/i18n/dictionaries";
  */
 export interface BrainView {
   notes: BrainNote[];
-  links: DbBrainLink[];
+  links: BrainLink[];
   /** False until migration 007 creates the links table. */
   linksAvailable: boolean;
+  /** Pairs the person said are not related, as `pairKey`s. */
+  dismissed: string[];
 }
 
 /** Demo notes carry an i18n key instead of text; real notes carry their own. */
@@ -41,12 +44,23 @@ export function toBrainNotes(items: DbBrainItem[], m: Messages): BrainNote[] {
       done: item.done,
       ai: item.ai,
       createdAt: item.createdAt,
+      // Stored JSON, so validated on the way out like any other input.
+      concepts: sanitizeConcepts(item.concepts),
     };
   });
 }
 
 export async function loadBrainView(m: Messages): Promise<BrainView> {
-  const [items, { links, available }] = await Promise.all([loadCollection("brain"), loadLinks()]);
+  const [items, { links, available }, dismissals] = await Promise.all([
+    loadCollection("brain"),
+    loadLinks(),
+    loadDismissals(),
+  ]);
   const notes = toBrainNotes(items, m);
-  return { notes, links: liveLinks(links, notes), linksAvailable: available };
+  return {
+    notes,
+    links: liveLinks(links.map(toBrainLink), notes),
+    linksAvailable: available,
+    dismissed: dismissals.map((d) => pairKey(d.fromId, d.toId)),
+  };
 }

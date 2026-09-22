@@ -4,6 +4,7 @@ import { loadBrainView } from "@/lib/brain/load";
 import { toJson, toMarkdown } from "@/lib/brain/export";
 import { CATEGORY_IDS } from "@/lib/data/brain";
 import { plural } from "@/lib/i18n/config";
+import { relationText } from "@/lib/brain/labels";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +59,7 @@ export async function GET(req: Request) {
       linkedTo: locale === "fr" ? `${m.brain.links.title} :` : `${m.brain.links.title}:`,
       done: m.brain.note.done,
       todo: locale === "fr" ? "à faire" : "to do",
+      relation: (kind, side) => relationText(kind, side, m).toLowerCase(),
     },
     now
   );

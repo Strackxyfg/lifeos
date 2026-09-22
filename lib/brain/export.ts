@@ -1,4 +1,6 @@
-import { canonicalPair, neighborsOf, type BrainNote, type LinkLike } from "./graph";
+import { canonicalPair, type BrainNote, type LinkLike } from "./graph";
+import { perspective, type Perspective, type RelationKind } from "./relations";
+import type { Concept } from "./concepts";
 import { CATEGORY_IDS, type BrainCategoryId, type BrainItemKind } from "@/lib/data/brain";
 
 /**
@@ -14,8 +16,6 @@ import { CATEGORY_IDS, type BrainCategoryId, type BrainItemKind } from "@/lib/da
 export type ExportNote = BrainNote;
 
 export interface ExportLink extends LinkLike {
-  reason?: string | null;
-  origin?: string;
   createdAt?: string;
 }
 
@@ -72,6 +72,11 @@ export interface MarkdownLabels {
   linkedTo: string;
   done: string;
   todo: string;
+  /**
+   * What a typed connection means from this note's side ("moves forward",
+   * "supported by"). Plain "related" connections are listed without it.
+   */
+  relation?: (kind: RelationKind, side: Perspective) => string;
 }
 
 export function toMarkdown(
@@ -113,12 +118,21 @@ export function toMarkdown(
       const detail = (n.detail ?? "").trim();
       if (detail) lines.push(detail, "");
 
-      const linked = [...neighborsOf(n.id, links)]
-        .map((id) => titles.get(id))
-        .filter((t): t is string => !!t)
-        .sort((a, b) => a.localeCompare(b));
+      const linked = links
+        .filter((l) => l.fromId === n.id || l.toId === n.id)
+        .map((l) => {
+          const title = titles.get(l.fromId === n.id ? l.toId : l.fromId);
+          if (!title) return null;
+          const kind = l.kind ?? "related";
+          const note = kind !== "related" && labels.relation
+            ? ` (${labels.relation(kind, perspective(kind, n.id, l.sourceId ?? null))})`
+            : "";
+          return { title, text: `[[${title}]]${note}` };
+        })
+        .filter((x): x is { title: string; text: string } => !!x)
+        .sort((a, b) => a.title.localeCompare(b.title));
       if (linked.length > 0) {
-        lines.push(`${labels.linkedTo} ${linked.map((t) => `[[${t}]]`).join(" · ")}`, "");
+        lines.push(`${labels.linkedTo} ${linked.map((x) => x.text).join(" · ")}`, "");
       }
 
       // Invisible when rendered; lets a future import match notes by identity
@@ -143,6 +157,8 @@ export interface JsonExport {
     done: boolean;
     ai: boolean;
     createdAt: string;
+    /** Added in the same format version: readers of version 1 ignore it. */
+    concepts: Concept[];
   }[];
   links: {
     fromId: string;
@@ -150,6 +166,9 @@ export interface JsonExport {
     reason: string | null;
     origin: string | null;
     createdAt: string | null;
+    kind: RelationKind;
+    /** The note a directed relation starts from, or null. */
+    sourceId: string | null;
   }[];
 }
 
@@ -167,6 +186,7 @@ export function toJson(notes: ExportNote[], links: ExportLink[], exportedAt: Dat
       done: n.done,
       ai: n.ai,
       createdAt: n.createdAt,
+      concepts: n.concepts ?? [],
     })),
     links: [...links]
       .map((l) => {
@@ -177,6 +197,8 @@ export function toJson(notes: ExportNote[], links: ExportLink[], exportedAt: Dat
           reason: l.reason ?? null,
           origin: l.origin ?? null,
           createdAt: l.createdAt ?? null,
+          kind: l.kind ?? "related",
+          sourceId: l.sourceId ?? null,
         };
       })
       .sort((a, b) => a.fromId.localeCompare(b.fromId) || a.toId.localeCompare(b.toId)),

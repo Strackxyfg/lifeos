@@ -5,10 +5,14 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, Plus } from "lucide-react";
 import { createNote } from "@/app/actions/brain";
-import { announceCaptured, classifyThought, OPEN_CAPTURE_EVENT } from "@/components/brain/classify-client";
+import { weaveNotes } from "@/app/actions/weave";
+import {
+  announceCaptured, announceLinked, classifyThought, OPEN_CAPTURE_EVENT,
+} from "@/components/brain/classify-client";
 import { toast } from "@/components/ui/toaster";
 import { buttonVariants } from "@/components/ui/button";
 import { useLocale, useMessages } from "@/lib/i18n/client";
+import { plural } from "@/lib/i18n/config";
 import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 
@@ -68,11 +72,22 @@ export function QuickCapture() {
           done: res.data.done,
           ai: res.data.ai,
           createdAt: res.data.createdAt,
+          concepts: [],
         });
         toast(`${m.brain.captured} · ${m.brain.cat[category].label}`);
         setText("");
         setOpen(false);
         router.refresh(); // counts on the dashboard and elsewhere follow
+        // Then connect it, without holding the person up: an open brain picks
+        // the connections up as they arrive; a failure here loses nothing.
+        void weaveNotes([res.data.id])
+          .then((w) => {
+            if (w.ok && w.data.created.length) {
+              announceLinked(w.data.created);
+              toast(plural(locale, w.data.created.length, m.brain.weave.created));
+            }
+          })
+          .catch(() => undefined);
       } else {
         toast(m.brain.errors[res.code], "error"); // the words stay in the field
       }

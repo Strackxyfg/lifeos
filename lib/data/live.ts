@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { getStore, getUserKey } from "@/lib/db/store";
 import { computeSnapshot, type WorkspaceSnapshot } from "./workspace";
-import type { Dataset, DbBrainLink } from "@/lib/db/types";
+import type { Dataset, DbBrainDismissal, DbBrainLink } from "@/lib/db/types";
 import { isMissingTable } from "@/lib/db/errors";
 
 export { isMissingTable };
@@ -29,6 +29,20 @@ export const loadLinks = cache(async function loadLinks(): Promise<{
 });
 
 /**
+ * Pairs the person said are not related (migration 008). Tolerant for the
+ * same reason as links: before the migration there is simply nothing to
+ * remember, and every page must still render.
+ */
+export const loadDismissals = cache(async function loadDismissals(): Promise<DbBrainDismissal[]> {
+  try {
+    return await getStore().list(await getUserKey(), "dismissals");
+  } catch (err) {
+    if (isMissingTable(err)) return [];
+    throw err;
+  }
+});
+
+/**
  * Reads the signed-in user's whole workspace in one pass.
  *
  * `cache()` matters here: the layout (for alerts) and the page both need the
@@ -38,15 +52,16 @@ export const loadLinks = cache(async function loadLinks(): Promise<{
 export const loadWorkspace = cache(async function loadWorkspace(): Promise<Dataset> {
   const store = getStore();
   const userKey = await getUserKey();
-  const [projects, deals, transactions, tasks, brain, { links }] = await Promise.all([
+  const [projects, deals, transactions, tasks, brain, { links }, dismissals] = await Promise.all([
     store.list(userKey, "projects"),
     store.list(userKey, "deals"),
     store.list(userKey, "transactions"),
     store.list(userKey, "tasks"),
     store.list(userKey, "brain"),
     loadLinks(),
+    loadDismissals(),
   ]);
-  return { projects, deals, transactions, tasks, brain, links };
+  return { projects, deals, transactions, tasks, brain, links, dismissals };
 });
 
 /** Single collection. Served from the cached full read to avoid a second query. */

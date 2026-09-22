@@ -54,7 +54,9 @@ export function computeFocus(input: {
   now: Date;
   limit?: number;
 }): FocusEntry[] {
-  const { notes, links, now, limit = 5 } = input;
+  const { notes, now, limit = 5 } = input;
+  // A step "in tension" with a goal pulls against it; it does not serve it.
+  const links = input.links.filter((l) => (l.kind ?? "related") !== "tension");
   const byId = new Map(notes.map((n) => [n.id, n]));
   const out: FocusEntry[] = [];
 
@@ -91,7 +93,8 @@ export function computeFocus(input: {
     if (idea.category !== "ideas" || idea.done) continue;
     const days = ageInDays(idea.createdAt, now);
     if (days >= FRESH_IDEA_DAYS) continue;
-    if (neighborsOf(idea.id, links).size > 0) continue;
+    // Any connection, tension included, means the idea is no longer loose.
+    if (neighborsOf(idea.id, input.links).size > 0) continue;
     out.push({ id: idea.id, reason: { code: "freshIdea", days }, score: 50 - days });
   }
 

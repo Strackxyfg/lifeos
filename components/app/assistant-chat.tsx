@@ -1,14 +1,32 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { Sparkles, ArrowUp, Mic, User } from "lucide-react";
+import { Sparkles, ArrowUp, Mic, Square, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 import { useMessages, useLocale } from "@/lib/i18n/client";
 import { fill } from "@/lib/i18n/config";
+import { useDictation } from "@/components/brain/use-dictation";
+import { toast } from "@/components/ui/toaster";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Source = { id: string; t: string };
+type Msg = { role: "user" | "assistant"; content: string; sources?: Source[] };
+
+/** The notes behind an answer, from the response header. Never throws. */
+function readSources(res: Response): Source[] {
+  try {
+    const raw = res.headers.get("X-Brain-Sources");
+    if (!raw) return [];
+    const list = JSON.parse(decodeURIComponent(raw)) as unknown;
+    return Array.isArray(list)
+      ? list.filter((s): s is Source => !!s && typeof s.id === "string" && typeof s.t === "string").slice(0, 6)
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 export function AssistantChat({ firstName = "there" }: { firstName?: string }) {
   const m = useMessages();
@@ -36,9 +54,12 @@ export function AssistantChat({ firstName = "there" }: { firstName?: string }) {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next, locale }),
+        // Only what the model needs: the sources shown under an answer are
+        // for the reader, not part of the conversation.
+        body: JSON.stringify({ messages: next.map(({ role, content: c }) => ({ role, content: c })), locale }),
       });
-      if (!res.body) throw new Error("no stream");
+      if (!res.ok || !res.body) throw new Error("no stream");
+      const sources = readSources(res);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -52,11 +73,11 @@ export function AssistantChat({ firstName = "there" }: { firstName?: string }) {
         if (!started) {
           started = true;
           setThinking(false);
-          setMessages((cur) => [...cur, { role: "assistant", content: acc }]);
+          setMessages((cur) => [...cur, { role: "assistant", content: acc, sources }]);
         } else {
           setMessages((cur) => {
             const copy = [...cur];
-            copy[copy.length - 1] = { role: "assistant", content: acc };
+            copy[copy.length - 1] = { role: "assistant", content: acc, sources };
             return copy;
           });
         }
@@ -65,9 +86,20 @@ export function AssistantChat({ firstName = "there" }: { firstName?: string }) {
       if (!started) setThinking(false);
     } catch {
       setThinking(false);
-      setMessages((cur) => [...cur, { role: "assistant", content: m.assistant.thinking }]);
+      // Said "Thinking…" — the one thing it was no longer doing.
+      setMessages((cur) => [...cur, { role: "assistant", content: m.assistant.failed }]);
     }
   };
+
+  // The microphone used to be a button with nothing behind it.
+  const dictation = useDictation({
+    locale,
+    onText: (text, final) => {
+      setInput(text);
+      if (final && text) void send(text);
+    },
+    onError: (e) => toast(e === "denied" ? m.brain.voiceDenied : m.brain.voiceError, "error"),
+  });
 
   return (
     <div className="flex h-[calc(100dvh-9rem)] flex-col rounded-xl border border-border bg-surface">
@@ -88,13 +120,29 @@ export function AssistantChat({ firstName = "there" }: { firstName?: string }) {
             >
               {msg.role === "assistant" ? <Sparkles className="h-4 w-4" /> : <User className="h-4 w-4" />}
             </span>
-            <div
-              className={cn(
-                "max-w-[80%] whitespace-pre-wrap rounded-xl px-4 py-3 text-[0.9375rem] leading-relaxed",
-                msg.role === "assistant" ? "bg-surface-2 text-foreground/90" : "bg-foreground text-background"
+            <div className={cn("max-w-[80%]", msg.role === "user" && "flex justify-end")}>
+              <div
+                className={cn(
+                  "whitespace-pre-wrap rounded-xl px-4 py-3 text-[0.9375rem] leading-relaxed",
+                  msg.role === "assistant" ? "bg-surface-2 text-foreground/90" : "bg-foreground text-background"
+                )}
+              >
+                {msg.content}
+              </div>
+              {msg.sources && msg.sources.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[0.7rem] text-muted">{m.assistant.sources}</span>
+                  {msg.sources.map((s) => (
+                    <Link
+                      key={s.id}
+                      href={`/brain?note=${encodeURIComponent(s.id)}`}
+                      className="max-w-[16rem] truncate rounded-full border border-border px-2 py-0.5 text-[0.72rem] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+                    >
+                      {s.t}
+                    </Link>
+                  ))}
+                </div>
               )}
-            >
-              {msg.content}
             </div>
           </motion.div>
         ))}
@@ -134,14 +182,31 @@ export function AssistantChat({ firstName = "there" }: { firstName?: string }) {
 
       <div className="border-t border-border p-3">
         <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2/50 px-3 py-1.5 focus-within:border-border-strong">
-          <button className="text-muted-foreground hover:text-foreground" aria-label="Voice input">
-            <Mic className="h-4 w-4" />
-          </button>
+          {dictation.supported && (
+            <button
+              type="button"
+              onClick={dictation.listening ? dictation.stop : dictation.start}
+              aria-label={dictation.listening ? m.brain.voiceStop : m.brain.voiceStart}
+              aria-pressed={dictation.listening}
+              title={m.brain.voiceDisclosure}
+              className={cn(
+                "grid h-7 w-7 place-items-center rounded-md transition-colors",
+                dictation.listening ? "bg-danger/15 text-danger" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {dictation.listening ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
+            </button>
+          )}
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send(input)}
-            placeholder={m.assistant.placeholder}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void send(input);
+              }
+            }}
+            placeholder={dictation.listening ? m.brain.voiceListening : m.assistant.placeholder}
             className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted"
           />
           <button

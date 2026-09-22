@@ -4,9 +4,8 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { NeuralBrain } from "./neural-brain";
 import { CategoryNode } from "./category-node";
-import { NoteGraph, type GraphNode } from "./note-graph";
+import { NoteGraph, type GraphEdge, type GraphNode } from "./note-graph";
 import { categories, type BrainCategoryId } from "@/lib/data/brain";
-import type { Vec3 } from "@/lib/brain/layout";
 
 export function BrainScene({
   selectedRegion,
@@ -21,7 +20,7 @@ export function BrainScene({
   onSelectRegion: (id: BrainCategoryId) => void;
   labels: Record<BrainCategoryId, string>;
   nodes: GraphNode[];
-  edges: { from: Vec3; to: Vec3; active: boolean }[];
+  edges: GraphEdge[];
   selectedNoteId: string | null;
   onSelectNote: (id: string) => void;
 }) {

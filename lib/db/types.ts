@@ -1,5 +1,7 @@
 import type { ProjectStatus, DealStage, TxnType } from "@/lib/data/workspace";
 import type { BrainCategoryId, BrainItemKind } from "@/lib/data/brain";
+import type { Concept } from "@/lib/brain/concepts";
+import type { LinkOrigin, RelationKind } from "@/lib/brain/relations";
 
 /**
  * Persisted entities. `userKey` scopes every row to its owner — it holds the
@@ -53,18 +55,32 @@ export interface DbBrainItem extends Owned {
   detail: string | null;
   done: boolean;
   ai: boolean;
+  /** What the note is about (migration 008). Absent before its first analysis. */
+  concepts?: Concept[];
+  /** Fingerprint of the text the concepts were read from — see `contentHash`. */
+  conceptsHash?: string | null;
 }
 
 /**
- * A synapse: two notes the person — or an accepted suggestion — connected.
- * Undirected, stored once with the smaller id first (see `canonicalPair`).
+ * A synapse between two notes. Stored once with the smaller id first (see
+ * `canonicalPair`); a directed relation keeps its direction in `sourceId`.
  */
 export interface DbBrainLink extends Owned {
   fromId: string;
   toId: string;
-  /** Why they belong together, in the person's words or the matcher's. */
+  /** Why they belong together, in the person's words or the engine's. */
   reason: string | null;
-  origin: "user" | "suggested";
+  origin: LinkOrigin;
+  /** Migration 008. Absent on older rows, and read as "related". */
+  kind?: RelationKind;
+  /** The note a directed relation starts from — one of the two ends, or null. */
+  sourceId?: string | null;
+}
+
+/** A pair of notes the person said are not related — never proposed again. */
+export interface DbBrainDismissal extends Owned {
+  fromId: string;
+  toId: string;
 }
 
 export interface Dataset {
@@ -74,6 +90,7 @@ export interface Dataset {
   tasks: DbTask[];
   brain: DbBrainItem[];
   links: DbBrainLink[];
+  dismissals: DbBrainDismissal[];
 }
 
 export type Collection = keyof Dataset;
@@ -108,6 +125,12 @@ export interface Store {
   saveProfile(userKey: string, patch: ProfilePatch): Promise<DbProfile>;
   /** Erases everything the person owns: every collection, and the profile. */
   clear(userKey: string): Promise<void>;
+  /**
+   * Whether migration 008 has been applied: typed connections, concepts on
+   * notes, and dismissals. The connection engine needs all three and stays
+   * off without them.
+   */
+  supportsSynapses(): Promise<boolean>;
   list<C extends Collection>(userKey: string, collection: C): Promise<Dataset[C]>;
   insert<C extends Collection>(
     userKey: string,

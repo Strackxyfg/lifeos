@@ -121,11 +121,14 @@ class LocalStore implements Store {
       const set = this.ensure(data, userKey) as unknown as Record<string, { id: string }[]>;
       set[collection] = set[collection].filter((r) => r.id !== id);
 
-      // Mirror the database's ON DELETE CASCADE: a note's links go with it.
-      // Without this the file store would keep synapses to a deleted note.
+      // Mirror the database's ON DELETE CASCADE: a note's links and
+      // dismissals go with it. Without this the file store would keep
+      // synapses to a deleted note.
       if (collection === "brain") {
-        const links = set.links as unknown as { fromId: string; toId: string }[];
-        set.links = links.filter((l) => l.fromId !== id && l.toId !== id) as unknown as { id: string }[];
+        for (const dependent of ["links", "dismissals"] as const) {
+          const rows = set[dependent] as unknown as { fromId: string; toId: string }[];
+          set[dependent] = rows.filter((l) => l.fromId !== id && l.toId !== id) as unknown as { id: string }[];
+        }
       }
     });
   }
@@ -151,6 +154,11 @@ class LocalStore implements Store {
       record.profile = profile;
       return profile;
     });
+  }
+
+  /** The file store has no schema to migrate. */
+  async supportsSynapses(): Promise<boolean> {
+    return true;
   }
 
   async clear(userKey: string): Promise<void> {

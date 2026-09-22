@@ -4,15 +4,16 @@ import type { DealStage } from "@/lib/data/workspace";
 import { isCategory, kindForCategory } from "@/lib/data/brain";
 import { isMissingTable } from "@/lib/data/live";
 import { toBrainNotes } from "@/lib/brain/load";
-import { brainIndex, brainSearch } from "@/lib/brain/agent-views";
+import { brainIndex, brainRelated, brainSearch } from "@/lib/brain/agent-views";
 import { aboutSection } from "@/lib/brain/context";
 import { contextLabels } from "@/lib/brain/labels";
 import { readProfileAnswers } from "@/lib/onboarding";
-import { canonicalPair, liveLinks, sameLink } from "@/lib/brain/graph";
+import { canonicalPair, liveLinks, pairKey, sameLink, toBrainLink, type BrainLink } from "@/lib/brain/graph";
+import { isRelationKind, sourceOf } from "@/lib/brain/relations";
 import { computeSnapshot } from "@/lib/data/workspace";
 import { snapshotFacts } from "@/lib/ai/insights";
 import { dictionaries } from "@/lib/i18n/dictionaries";
-import type { DbBrainLink } from "@/lib/db/types";
+
 import { getCapability } from "./capabilities";
 
 /**
@@ -54,13 +55,31 @@ export async function executeCapability(
   // run yet: an agent should still read notes while connections are pending.
   const loadBrain = async () => {
     const notes = toBrainNotes(await store.list(userKey, "brain"), dictionaries.en);
-    let links: DbBrainLink[] = [];
+    let links: BrainLink[] = [];
     try {
-      links = liveLinks(await store.list(userKey, "links"), notes);
+      links = liveLinks((await store.list(userKey, "links")).map(toBrainLink), notes);
     } catch (e) {
       if (!isMissingTable(e)) throw e;
     }
     return { notes, links };
+  };
+
+  /**
+   * Connects a note the agent just wrote, after the answer has gone back: the
+   * agent should not wait on a second model call to get its reply. Outside a
+   * request (a script, a test) there is nothing to schedule on, and weaving
+   * simply waits for the next capture or "organise".
+   */
+  const weaveLater = async (id: string) => {
+    try {
+      const { after } = await import("next/server");
+      after(async () => {
+        const { weave } = await import("@/lib/brain/weaver");
+        await weave(userKey, { focusIds: [id], locale: "en", m: dictionaries.en }).catch(() => undefined);
+      });
+    } catch {
+      /* not in a request scope */
+    }
   };
 
   // Who the person is, from onboarding — so the agent on Telegram knows what
@@ -92,6 +111,35 @@ export async function executeCapability(
         const [{ notes, links }, about] = await Promise.all([loadBrain(), loadAbout()]);
         const index = brainIndex(notes, links);
         return { ok: true, detail: `Read ${notes.length} notes.`, data: about ? `${about}\n\n${index}` : index };
+      }
+
+      case "brain.related": {
+        const id = str(payload.id ?? payload.note, 64);
+        if (!id) return { ok: false, error: "Give the id of a note.", code: "invalid_payload" };
+        const { notes, links } = await loadBrain();
+        let dismissed = new Set<string>();
+        try {
+          dismissed = new Set((await store.list(userKey, "dismissals")).map((d) => pairKey(d.fromId, d.toId)));
+        } catch (e) {
+          if (!isMissingTable(e)) throw e;
+        }
+        return { ok: true, detail: `Read the connections of ${id.slice(0, 12)}.`, data: brainRelated(notes, links, id, dismissed) };
+      }
+
+      case "brain.weave": {
+        const id = str(payload.id ?? payload.note, 64);
+        const { weave } = await import("@/lib/brain/weaver");
+        const report = await weave(userKey, { focusIds: id ? [id] : undefined, locale: "en", m: dictionaries.en });
+        if (!report.ai) return { ok: false, code: "not_implemented", error: "No AI provider is configured in LifeOS." };
+        if (report.stopped === "migration_pending") {
+          return { ok: false, code: "not_implemented", error: "Typed connections are not enabled yet (migration 008)." };
+        }
+        const summary =
+          `Analysed ${report.analysed} notes, judged ${report.judged} pairs, drew ${report.created.length} connections` +
+          (report.created.length ? " — all awaiting the owner's review." : ".") +
+          (report.stopped === "rate_limit" ? " Stopped early: the model's rate limit was reached; run again in a minute." : "") +
+          (report.stopped === "failed" ? " Stopped early: the model failed." : "");
+        return { ok: true, detail: summary, data: summary };
       }
 
       case "brain.search": {
@@ -129,6 +177,7 @@ export async function executeCapability(
           // The agent wrote it — unlike a person's capture, which is theirs.
           ai: true,
         });
+        await weaveLater(note.id);
         return { ok: true, detail: `Captured "${title.slice(0, 60)}" under ${category}.`, data: `id: ${note.id}` };
       }
 
@@ -140,20 +189,29 @@ export async function executeCapability(
         }
         // Same ownership rule as the app: both ends must be this user's notes.
         const { notes, links } = await loadBrain();
-        const mine = new Set(notes.map((n) => n.id.toLowerCase()));
-        if (!mine.has(a.toLowerCase()) || !mine.has(b.toLowerCase())) {
-          return { ok: false, error: "One of those notes does not exist.", code: "invalid_payload" };
-        }
+        const find = (id: string) => notes.find((n) => n.id.toLowerCase() === id.toLowerCase());
+        const A = find(a);
+        const B = find(b);
+        if (!A || !B) return { ok: false, error: "One of those notes does not exist.", code: "invalid_payload" };
         if (links.some((l) => sameLink(l, a, b))) return { ok: true, detail: "Already connected." };
 
-        const [fromId, toId] = canonicalPair(a, b);
+        const kind = isRelationKind(payload.kind) ? payload.kind : "related";
+        const typed = await store.supportsSynapses();
+        const [fromId, toId] = canonicalPair(A.id, B.id);
         await store.insert(userKey, "links", {
           fromId,
           toId,
           reason: str(payload.reason, 300),
-          origin: "suggested",
+          // Before migration 008 there is no "agent" origin: the connection is
+          // stored as a suggestion, as it always was.
+          ...(typed
+            ? { origin: "agent" as const, kind, sourceId: sourceOf(kind, A, B, A.id.toLowerCase()) }
+            : { origin: "suggested" as const }),
         });
-        return { ok: true, detail: "Connected the two notes." };
+        return {
+          ok: true,
+          detail: typed ? `Connected (${kind}) — awaiting the owner's review.` : "Connected the two notes.",
+        };
       }
 
       case "task.write": {

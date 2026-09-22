@@ -23,6 +23,7 @@ const TABLE: Record<Collection, string> = {
   tasks: "lifeos_tasks",
   brain: "lifeos_brain_items",
   links: "lifeos_brain_links",
+  dismissals: "lifeos_brain_dismissals",
 };
 
 /** One row per person, keyed by `user_key` (migration 007). */
@@ -34,6 +35,7 @@ const PROFILE_TABLE = "lifeos_profiles";
  * change leaves orphans behind.
  */
 const ERASE_ORDER: string[] = [
+  TABLE.dismissals,
   TABLE.links,
   TABLE.brain,
   TABLE.tasks,
@@ -72,6 +74,27 @@ function fromRow<T>(row: Record<string, unknown>): T {
  */
 class SupabaseStore implements Store {
   readonly backend = "supabase" as const;
+
+  /**
+   * Whether migration 008 is applied, and until when that answer holds. A
+   * "yes" cannot become "no" (nothing drops these columns), so it is kept for
+   * the life of the process; a "no" is re-checked every minute, so applying
+   * the migration takes effect without a redeploy.
+   */
+  private synapses: { value: boolean; until: number } | null = null;
+
+  async supportsSynapses(): Promise<boolean> {
+    if (this.synapses && Date.now() < this.synapses.until) return this.synapses.value;
+    const db = await client();
+    const probes = await Promise.all([
+      db.from(TABLE.links).select("kind, source_id").limit(1),
+      db.from(TABLE.brain).select("concepts, concepts_hash").limit(1),
+      db.from(TABLE.dismissals).select("id").limit(1),
+    ]);
+    const value = probes.every((p) => !p.error);
+    this.synapses = { value, until: value ? Number.POSITIVE_INFINITY : Date.now() + 60_000 };
+    return value;
+  }
 
   /**
    * In-flight seed operations, keyed `user:collection`. A single request fans

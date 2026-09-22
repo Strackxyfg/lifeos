@@ -3,7 +3,7 @@ import { isLocale, type Locale } from "@/lib/i18n/config";
 import { dictionaries } from "@/lib/i18n/dictionaries";
 import { requireUserKey } from "@/lib/auth/require-user";
 import { loadBrainView } from "@/lib/brain/load";
-import { buildBrainContext } from "@/lib/brain/context";
+import { groundAnswer } from "@/lib/brain/context";
 import { computeFocus } from "@/lib/brain/focus";
 import { contextLabels, focusReasonText } from "@/lib/brain/labels";
 import { getProfile } from "@/lib/user/profile";
@@ -13,7 +13,20 @@ export const dynamic = "force-dynamic";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
-function streamText(text: string, source: string): Response {
+/**
+ * The notes an answer was grounded in, for the client to show as sources.
+ * A header, so the answer itself can keep streaming as plain text; encoded,
+ * because header values must be ASCII and titles are not.
+ */
+function sourcesHeader(ids: string[], notes: { id: string; title: string }[]): string {
+  const byId = new Map(notes.map((n) => [n.id, n.title]));
+  const list = ids
+    .map((id) => ({ id, t: (byId.get(id) ?? "").slice(0, 80) }))
+    .filter((s) => s.t);
+  return encodeURIComponent(JSON.stringify(list));
+}
+
+function streamText(text: string, source: string, sources = ""): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -21,7 +34,9 @@ function streamText(text: string, source: string): Response {
       controller.close();
     },
   });
-  return new Response(stream, { headers: { "Content-Type": "text/plain; charset=utf-8", "X-AI": source } });
+  return new Response(stream, {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "X-AI": source, "X-Brain-Sources": sources },
+  });
 }
 
 /**
@@ -67,7 +82,7 @@ export async function POST(req: Request) {
     const text = lines.length
       ? `${m.assistant.noAi}\n\n${m.assistant.noAiFocus}\n${lines.join("\n")}`
       : `${m.assistant.noAi}\n\n${m.assistant.noAiEmpty}`;
-    return streamText(text, "none");
+    return streamText(text, "none", sourcesHeader(focus.map((f) => f.id), notes));
   }
 
   // Who is asking: the answers they gave at onboarding, kept on the profile.
@@ -77,10 +92,12 @@ export async function POST(req: Request) {
     profession: profile.profession,
     areas: profile.areas.map((a) => m.onboarding.areas[a]),
   };
-  const context = buildBrainContext({ notes, links, question, now, labels: contextLabels(m, locale), person });
+  const { text: context, sources } = groundAnswer({ notes, links, question, now, labels: contextLabels(m, locale), person });
   const grounding = [
     "You are the user's second brain — an extension of their own thinking, not a generic assistant.",
     "Below is what they have written in it. Ground every answer in these notes and refer to a note by its title in quotes when you rely on it.",
+    "The headings (goals, focus, related notes…) are sections, not notes: never quote a heading as if it were a note.",
+    "A line starting with ↳ is a connection between two notes — use it: it says how they relate and why.",
     "If the notes do not cover the question, say so plainly, then answer from general knowledge and make the switch obvious.",
     "Never invent facts about the user: no figures, deadlines or events they did not write down.",
     "",
@@ -114,7 +131,11 @@ export async function POST(req: Request) {
     });
 
     return new Response(stream, {
-      headers: { "Content-Type": "text/plain; charset=utf-8", "X-AI": ai.provider },
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-AI": ai.provider,
+        "X-Brain-Sources": sourcesHeader(sources, notes),
+      },
     });
   } catch {
     return streamText(m.assistant.failed, "error");

@@ -46,9 +46,10 @@ describe("seeding", () => {
   const userKey = "seed@test.dev";
   const data = seedDataset(userKey);
 
-  it("populates every collection except links", () => {
+  it("populates every collection except links and dismissals", () => {
     for (const key of Object.keys(EMPTY_DATASET) as (keyof typeof EMPTY_DATASET)[]) {
-      if (key === "links") continue;
+      // Both reference notes by id, which Supabase only assigns on insert.
+      if (key === "links" || key === "dismissals") continue;
       expect(data[key].length, `${key} should be seeded`).toBeGreaterThan(0);
     }
   });

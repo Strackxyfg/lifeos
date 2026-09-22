@@ -76,11 +76,26 @@ const SCHEMAS: Record<string, McpTool["inputSchema"]> = {
   "brain.link": {
     type: "object",
     properties: {
-      a: str("Id of the first note, as shown in brain_read or brain_search."),
+      a: str("Id of the first note, as shown in brain_read, brain_search or brain_related."),
       b: str("Id of the second note."),
-      reason: str("Why they belong together, in one short sentence."),
+      kind: str(
+        "What the connection means: advances (a moves b forward), supports (a backs b with a fact or reason), " +
+          "extends (a develops b), tension (they pull against each other), related (same subject). Default: related."
+      ),
+      reason: str("Why they belong together — one short, specific sentence the owner will read."),
     },
-    required: ["a", "b"],
+    required: ["a", "b", "reason"],
+  },
+  "brain.related": {
+    type: "object",
+    properties: { id: str("Id of the note, as shown in brain_read or brain_search.") },
+    required: ["id"],
+  },
+  "brain.weave": {
+    type: "object",
+    properties: {
+      id: str("Optional. Connect around this note only; without it, organise the whole brain."),
+    },
   },
   "task.write": {
     type: "object",

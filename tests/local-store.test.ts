@@ -51,6 +51,28 @@ describe("profile", () => {
   });
 });
 
+describe("synapses in the file store", () => {
+  it("has no migration to wait for", async () => {
+    expect(await store.supportsSynapses()).toBe(true);
+  });
+
+  it("drops a note's links and dismissals with it, like the database cascade", async () => {
+    const me = "cascade@test.dev";
+    const mk = (title: string) =>
+      store.insert(me, "brain", { category: "ideas", kind: "idea", seedKey: null, title, detail: null, done: false, ai: false });
+    const [a, b, keep] = [await mk("A"), await mk("B"), await mk("Keep")];
+    await store.insert(me, "links", { fromId: a.id, toId: b.id, reason: "r", origin: "ai", kind: "tension", sourceId: null });
+    await store.insert(me, "dismissals", { fromId: a.id, toId: keep.id });
+    await store.insert(me, "dismissals", { fromId: b.id, toId: keep.id });
+
+    await store.remove(me, "brain", a.id);
+
+    expect(await store.list(me, "links")).toEqual([]);
+    const left = await store.list(me, "dismissals");
+    expect(left.map((d) => [d.fromId, d.toId])).toEqual([[b.id, keep.id]]);
+  });
+});
+
 describe("erasing someone's data", () => {
   it("removes every note, link and the profile — and nobody else's", async () => {
     const me = "erase@test.dev";

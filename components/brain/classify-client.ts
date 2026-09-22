@@ -1,5 +1,5 @@
 import { isCategory, type BrainCategoryId } from "@/lib/data/brain";
-import type { BrainNote } from "@/lib/brain/graph";
+import type { BrainLink, BrainNote } from "@/lib/brain/graph";
 import type { Locale } from "@/lib/i18n/config";
 
 /**
@@ -27,9 +27,15 @@ export async function classifyThought(text: string, locale: Locale): Promise<Bra
  * follow a server refresh.
  */
 export const CAPTURED_EVENT = "lifeos:captured";
+/** Connections drawn outside the brain page, for an open brain to add. */
+export const LINKED_EVENT = "lifeos:linked";
 /** Opens the topbar capture from anywhere — the command menu uses it. */
 export const OPEN_CAPTURE_EVENT = "lifeos:capture";
 
 export function announceCaptured(note: BrainNote) {
   window.dispatchEvent(new CustomEvent<BrainNote>(CAPTURED_EVENT, { detail: note }));
+}
+
+export function announceLinked(links: BrainLink[]) {
+  if (links.length) window.dispatchEvent(new CustomEvent<BrainLink[]>(LINKED_EVENT, { detail: links }));
 }

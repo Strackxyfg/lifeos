@@ -17,6 +17,19 @@ import type { Vec3 } from "@/lib/brain/layout";
  * what keeps a few hundred of them smooth on a laptop.
  */
 
+/**
+ * A synapse as drawn: its colour says what kind of connection it is, and a
+ * dashed line says it was drawn by LifeOS or the agent and awaits review.
+ */
+export interface GraphEdge {
+  from: Vec3;
+  to: Vec3;
+  /** Touches the selected note. */
+  active: boolean;
+  color: string;
+  pending: boolean;
+}
+
 export interface GraphNode {
   id: string;
   title: string;
@@ -38,7 +51,7 @@ export function NoteGraph({
   onSelect,
 }: {
   nodes: GraphNode[];
-  edges: { from: Vec3; to: Vec3; active: boolean }[];
+  edges: GraphEdge[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -86,12 +99,36 @@ export function NoteGraph({
     m.instanceMatrix.needsUpdate = true;
   });
 
-  const { base, active } = useMemo(() => {
-    const b: number[] = [];
-    const a: number[] = [];
-    for (const e of edges) (e.active ? a : b).push(...e.from, ...e.to);
-    return { base: new Float32Array(b), active: new Float32Array(a) };
+  // Three batches — settled, touching the selection, awaiting review — each a
+  // single draw call, with a colour per vertex so every line keeps its kind.
+  const generation = useRef(0);
+  const batches = useMemo(() => {
+    // Every rebuild gets a fresh geometry (see the keys below).
+    generation.current += 1;
+    const make = () => ({ pos: [] as number[], col: [] as number[] });
+    const groups = { base: make(), active: make(), pending: make() };
+    const c = new THREE.Color();
+    for (const e of edges) {
+      const g = e.active ? groups.active : e.pending ? groups.pending : groups.base;
+      g.pos.push(...e.from, ...e.to);
+      c.set(e.color);
+      g.col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    }
+    const out = (g: { pos: number[]; col: number[] }) => ({ pos: new Float32Array(g.pos), col: new Float32Array(g.col) });
+    return {
+      id: generation.current,
+      base: out(groups.base),
+      active: out(groups.active),
+      pending: out(groups.pending),
+    };
   }, [edges]);
+
+  // Dashes are measured along each segment; the distances must be computed
+  // whenever the geometry is rebuilt.
+  const dashed = useRef<THREE.LineSegments>(null);
+  useLayoutEffect(() => {
+    dashed.current?.computeLineDistances();
+  }, [batches.pending]);
 
   useEffect(() => () => void (document.body.style.cursor = ""), []);
 
@@ -110,22 +147,45 @@ export function NoteGraph({
 
   return (
     <group>
-      {/* Keyed by length: a buffer that changes size needs a fresh geometry,
-          or the old draw range lingers and paints phantom lines. */}
-      {base.length > 0 && (
-        <lineSegments key={`b${base.length}`} frustumCulled={false}>
+      {/* Keyed by rebuild: a buffer that changes needs a fresh geometry, or
+          the old draw range lingers and paints phantom lines. */}
+      {batches.base.pos.length > 0 && (
+        <lineSegments key={`b${batches.id}`} frustumCulled={false}>
           <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[base, 3]} />
+            <bufferAttribute attach="attributes-position" args={[batches.base.pos, 3]} />
+            <bufferAttribute attach="attributes-color" args={[batches.base.col, 3]} />
           </bufferGeometry>
-          <lineBasicMaterial color="#7dd3fc" transparent opacity={0.28} depthWrite={false} toneMapped={false} />
+          <lineBasicMaterial vertexColors transparent opacity={0.45} depthWrite={false} toneMapped={false} />
         </lineSegments>
       )}
-      {active.length > 0 && (
-        <lineSegments key={`a${active.length}`} frustumCulled={false}>
+      {batches.pending.pos.length > 0 && (
+        <lineSegments
+          ref={dashed}
+          key={`p${batches.id}`}
+          frustumCulled={false}
+        >
           <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[active, 3]} />
+            <bufferAttribute attach="attributes-position" args={[batches.pending.pos, 3]} />
+            <bufferAttribute attach="attributes-color" args={[batches.pending.col, 3]} />
           </bufferGeometry>
-          <lineBasicMaterial color="#e0f2fe" transparent opacity={0.9} depthWrite={false} toneMapped={false} />
+          <lineDashedMaterial
+            vertexColors
+            dashSize={0.035}
+            gapSize={0.03}
+            transparent
+            opacity={0.6}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </lineSegments>
+      )}
+      {batches.active.pos.length > 0 && (
+        <lineSegments key={`a${batches.id}`} frustumCulled={false}>
+          <bufferGeometry>
+            <bufferAttribute attach="attributes-position" args={[batches.active.pos, 3]} />
+            <bufferAttribute attach="attributes-color" args={[batches.active.col, 3]} />
+          </bufferGeometry>
+          <lineBasicMaterial vertexColors transparent opacity={0.95} depthWrite={false} toneMapped={false} />
         </lineSegments>
       )}
 

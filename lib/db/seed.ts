@@ -87,6 +87,7 @@ export function seedDataset(userKey: string): Dataset {
     // Links can't be seeded: in Supabase the sample notes get fresh UUIDs on
     // insert, which a separate seed pass for links has no way to know.
     links: [],
+    dismissals: [],
   };
 }
 
@@ -104,4 +105,5 @@ export const EMPTY_DATASET: Dataset = {
   tasks: [],
   brain: [],
   links: [],
+  dismissals: [],
 };

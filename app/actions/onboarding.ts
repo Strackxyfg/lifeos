@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { getAuthenticatedUserKey, getStore } from "@/lib/db/store";
 import { isMissingTable } from "@/lib/db/errors";
-import { onboardingSchema, starterBrain } from "@/lib/onboarding";
+import { onboardingSchema, splitThoughts, starterBrain } from "@/lib/onboarding";
 import { heuristicRegion } from "@/lib/brain/classify";
+import { classifyTexts } from "@/lib/ai/brain-ai";
 import { canonicalPair, sameLink } from "@/lib/brain/graph";
 import { normalize } from "@/lib/brain/text";
 import { kindForCategory, type BrainCategoryId } from "@/lib/data/brain";
@@ -14,7 +15,7 @@ export type OnboardingResult =
   | {
       ok: true;
       /** The notes the brain starts with, new or already there. */
-      notes: { title: string; category: BrainCategoryId; isNew: boolean }[];
+      notes: { id: string; title: string; category: BrainCategoryId; isNew: boolean }[];
       linked: number;
       /** False while migration 007 is pending: the profile lives in a cookie only. */
       profileStored: boolean;
@@ -30,9 +31,9 @@ export type OnboardingResult =
  * than duplicated, and a link that already exists is left alone. So a failure
  * halfway is fixed by simply submitting again.
  *
- * Classification uses the keyword heuristic, not the model: onboarding must
- * not depend on an AI key, and the person sees where each note landed and
- * can move it in one click.
+ * Goals and the next step have fixed regions. The free-form thoughts are
+ * filed by the model when one is configured, by keyword rules otherwise: the
+ * person sees where each landed and can move it in one click.
  */
 export async function completeOnboarding(input: unknown): Promise<OnboardingResult> {
   // Strict key: the demo fallback would write this person's goals into the
@@ -46,7 +47,15 @@ export async function completeOnboarding(input: unknown): Promise<OnboardingResu
 
   try {
     const store = getStore();
-    const plan = starterBrain(answers, heuristicRegion);
+    // Each line of "what's on your mind" is filed by the model when there is
+    // one — "a referral programme" is an idea, "our best clients come by word
+    // of mouth" an insight, which keywords cannot tell — and by the keyword
+    // rules otherwise, or if the model fails. Onboarding never waits on AI to
+    // succeed.
+    const lines = splitThoughts(answers.mind);
+    const byModel = await classifyTexts(lines).catch(() => lines.map(() => null));
+    const regionOf = new Map(lines.map((l, i) => [l, byModel[i]]));
+    const plan = starterBrain(answers, (text) => regionOf.get(text) ?? heuristicRegion(text));
 
     // 1 — Notes. Reuse by title, create the rest, in plan order.
     const existing = await store.list(userKey, "brain");
@@ -58,7 +67,7 @@ export async function completeOnboarding(input: unknown): Promise<OnboardingResu
       const found = byTitle.get(normalize(planned.title));
       if (found) {
         idByKey.set(planned.key, found);
-        notes.push({ title: planned.title, category: planned.category, isNew: false });
+        notes.push({ id: found, title: planned.title, category: planned.category, isNew: false });
         continue;
       }
       const created = await store.insert(userKey, "brain", {
@@ -72,7 +81,7 @@ export async function completeOnboarding(input: unknown): Promise<OnboardingResu
       });
       byTitle.set(normalize(planned.title), created.id);
       idByKey.set(planned.key, created.id);
-      notes.push({ title: planned.title, category: planned.category, isNew: true });
+      notes.push({ id: created.id, title: planned.title, category: planned.category, isNew: true });
     }
 
     // 2 — Links. Optional: before migration 007 the table is missing, and the
@@ -80,13 +89,21 @@ export async function completeOnboarding(input: unknown): Promise<OnboardingResu
     let linked = 0;
     try {
       const links = await store.list(userKey, "links");
+      const typed = await store.supportsSynapses();
       for (const [a, b] of plan.links) {
         const ida = idByKey.get(a);
         const idb = idByKey.get(b);
         if (!ida || !idb || ida === idb) continue;
         if (!links.some((l) => sameLink(l, ida, idb))) {
           const [fromId, toId] = canonicalPair(ida, idb);
-          await store.insert(userKey, "links", { fromId, toId, reason: null, origin: "user" });
+          await store.insert(userKey, "links", {
+            fromId,
+            toId,
+            reason: null,
+            origin: "user",
+            // Planned links run from a step to the goal it serves.
+            ...(typed ? { kind: "advances" as const, sourceId: ida.toLowerCase() } : {}),
+          });
         }
         linked += 1;
       }

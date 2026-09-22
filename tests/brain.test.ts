@@ -431,6 +431,7 @@ describe("export", () => {
     ...note(id, category, title),
     kind: "note",
     ai: false,
+    concepts: [],
     ...extra,
   });
 
@@ -490,7 +491,10 @@ describe("export", () => {
     expect(j.version).toBe(1);
     expect(j.notes.map((n) => n.id)).toEqual(["a", "z"]);
     expect(j.notes[1]).toMatchObject({ ai: true, detail: "d", kind: "note" });
-    expect(j.links).toEqual([{ fromId: "a", toId: "z", reason: "lié", origin: "user", createdAt: null }]);
+    expect(j.links).toEqual([
+      { fromId: "a", toId: "z", reason: "lié", origin: "user", createdAt: null, kind: "related", sourceId: null },
+    ]);
+    expect(j.notes[1].concepts).toEqual([]);
   });
 });
 
@@ -538,6 +542,7 @@ describe("assistant context", () => {
     recent: "Recent",
     empty: "EMPTY",
     reason: (r) => r.code,
+    relation: (kind, side) => `${kind}/${side}`,
   };
   const brain = [
     note("g", "goals", "Atteindre 50 clients payants d'ici décembre", { createdAt: daysAgo(20) }),
@@ -651,7 +656,8 @@ describe("agent views of the brain", () => {
     expect(r).toContain("[k1] Coût par clic LinkedIn");
     expect(r).toContain("5 à 8 € en France.");
     const s = brainSearch(brain, links, "études");
-    expect(s).toContain('Connected to: "Atteindre 50 clients"');
+    expect(s).toContain('"Atteindre 50 clients"');
+    expect(s).toContain("Connections:\n- related to [g1]");
   });
 
   it("says so when nothing matches, or the brain is empty", () => {

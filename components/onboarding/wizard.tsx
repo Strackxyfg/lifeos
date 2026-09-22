@@ -5,8 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Brain, Check, Loader2, Sparkles } from "lucide-react";
+
 import { AREA_IDS, questions, type AreaId, type OnboardingDraft, type Question } from "@/lib/onboarding";
 import { completeOnboarding, type OnboardingResult } from "@/app/actions/onboarding";
+import { weaveNotes } from "@/app/actions/weave";
+import { RelationChip } from "@/components/brain/relation-chip";
+import { perspective } from "@/lib/brain/relations";
+import type { BrainLink } from "@/lib/brain/graph";
 import { categoryById } from "@/lib/data/brain";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { fill, plural } from "@/lib/i18n/config";
@@ -340,6 +345,26 @@ function Summary({ result, name, onOpen }: { result: Done; name: string; onOpen:
   const locale = useLocale();
   const t = m.onboarding;
 
+  // The first thing the brain does with what was just written: connect it.
+  // Shown as it happens; if there is no model, or it finds nothing, or it
+  // fails, this simply stays out of the way — the brain is built either way.
+  const [woven, setWoven] = useState<{ phase: "running" | "done"; links: BrainLink[] }>({ phase: "running", links: [] });
+  // One call, kept across remounts: React may mount an effect twice, and a
+  // second weaving run finds everything already connected — it would replace
+  // the real result with "nothing found".
+  const run = useRef<ReturnType<typeof weaveNotes> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    run.current ??= weaveNotes(result.notes.map((n) => n.id).slice(0, 20));
+    run.current
+      .then((res) => alive && setWoven({ phase: "done", links: res.ok ? res.data.created : [] }))
+      .catch(() => alive && setWoven({ phase: "done", links: [] }));
+    return () => {
+      alive = false;
+    };
+  }, [result]);
+  const titleOf = new Map(result.notes.map((n) => [n.id, n.title]));
+
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease }}>
       <span className="grid h-12 w-12 place-items-center rounded-xl border border-accent/30 bg-accent/10">
@@ -373,6 +398,32 @@ function Summary({ result, name, onOpen }: { result: Done; name: string; onOpen:
           );
         })}
       </ul>
+
+      {woven.phase === "running" ? (
+        <p className="mt-4 flex items-center gap-2 text-[0.8125rem] text-muted-foreground" role="status">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" /> {t.weaving}
+        </p>
+      ) : woven.links.length > 0 ? (
+        <motion.section initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease }} className="mt-4">
+          <p className="flex items-center gap-2 text-[0.8125rem] font-medium text-accent">
+            <Sparkles className="h-3.5 w-3.5" /> {plural(locale, woven.links.length, t.woven)}
+          </p>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {woven.links.map((l) => {
+              const first = l.sourceId ?? l.fromId;
+              const second = first === l.fromId ? l.toId : l.fromId;
+              return (
+                <li key={l.id} className="rounded-lg border border-dashed border-accent/30 px-3.5 py-2.5 text-[0.8125rem] leading-snug">
+                  <span>{titleOf.get(first)}</span>{" "}
+                  <RelationChip kind={l.kind} side={perspective(l.kind, first, l.sourceId)} className="mx-1 align-middle" />{" "}
+                  <span>{titleOf.get(second)}</span>
+                  {l.reason && <span className="mt-1 block text-[0.72rem] text-muted-foreground">{l.reason}</span>}
+                </li>
+              );
+            })}
+          </ul>
+        </motion.section>
+      ) : null}
 
       <button
         type="button"

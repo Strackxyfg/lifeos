@@ -34,10 +34,12 @@ export const CAPABILITIES: Capability[] = [
   { id: "workspace.read", tier: "safe", label: "Read projects, deals and finance", labelFr: "Lire projets, opportunités et finances", rationale: "No side effects." },
   { id: "analyze", tier: "safe", label: "Analyse and summarise", labelFr: "Analyser et résumer", rationale: "Computation only." },
   { id: "brain.search", tier: "safe", label: "Search your second brain", labelFr: "Chercher dans votre second cerveau", rationale: "No side effects." },
+  { id: "brain.related", tier: "safe", label: "See what a note is connected to", labelFr: "Voir à quoi une note est reliée", rationale: "No side effects." },
 
   // ── Internal writes ────────────────────────────────────────────────
   { id: "brain.write", tier: "low", label: "Capture notes and ideas", labelFr: "Capturer notes et idées", rationale: "Private to LifeOS, reversible." },
-  { id: "brain.link", tier: "low", label: "Connect notes", labelFr: "Relier des notes", rationale: "Private to LifeOS, reversible — a connection can be removed." },
+  { id: "brain.link", tier: "low", label: "Connect notes", labelFr: "Relier des notes", rationale: "Private to LifeOS, reversible — a connection can be removed, and it is marked for your review." },
+  { id: "brain.weave", tier: "low", label: "Let LifeOS connect your notes", labelFr: "Laisser LifeOS relier vos notes", rationale: "Private to LifeOS; every connection drawn is marked for your review and can be removed." },
   { id: "task.write", tier: "low", label: "Create and update tasks", labelFr: "Créer et modifier des tâches", rationale: "Private to LifeOS, reversible." },
   { id: "project.write", tier: "low", label: "Create and update projects", labelFr: "Créer et modifier des projets", rationale: "Private to LifeOS, reversible." },
   { id: "deal.write", tier: "low", label: "Update the sales pipeline", labelFr: "Mettre à jour le pipeline commercial", rationale: "Private to LifeOS, reversible." },

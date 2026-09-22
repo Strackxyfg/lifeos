@@ -2,6 +2,12 @@ import { fill, plural, type Locale } from "@/lib/i18n/config";
 import type { Messages } from "@/lib/i18n/dictionaries";
 import type { FocusReason } from "./focus";
 import type { ContextLabels } from "./context";
+import type { Perspective, RelationKind } from "./relations";
+
+/** A typed connection seen from one note: "Moves forward", "Supported by". */
+export function relationText(kind: RelationKind, side: Perspective, m: Messages): string {
+  return m.brain.relation[kind][side];
+}
 
 /**
  * Human wording for a focus reason. One function for the screen and for the
@@ -32,5 +38,6 @@ export function contextLabels(m: Messages, locale: Locale): ContextLabels {
     recent: m.assistant.contextRecent,
     empty: m.assistant.contextEmpty,
     reason: (r) => focusReasonText(r, m, locale),
+    relation: (kind, side) => relationText(kind, side, m),
   };
 }

@@ -17,7 +17,10 @@ export function searchNotes<N extends NoteLike>(notes: N[], query: string, limit
   const scored: { note: N; score: number }[] = [];
   for (const note of notes) {
     const title = normalize(note.title);
-    const body = normalize(note.detail ?? "");
+    // Concepts count as body text: a search for "referral" finds the note
+    // about "parrainage" once it has been analysed.
+    const concepts = (note.concepts ?? []).map((c) => `${c.l} ${c.k}`).join(" ");
+    const body = normalize(`${note.detail ?? ""} ${concepts}`);
 
     let score = 0;
     let all = true;

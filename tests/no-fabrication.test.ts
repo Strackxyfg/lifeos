@@ -29,6 +29,15 @@ const FORBIDDEN: { what: string; pattern: RegExp }[] = [
     pattern: /Connecting calendars|Training your AI assistant|Setting up automations|Computing KPIs/,
   },
   { what: "a simulated build presented as progress", pattern: /mode: "simulated"/ },
+  // The landing page, before the pivot.
+  { what: "an invented waitlist size", pattern: /2,400\+|already waiting/ },
+  { what: "a waitlist that stored nothing", pattern: /You're on the list/ },
+  { what: "an invented generation time", pattern: /Generated in|>47s</ },
+  { what: "a status light that measured nothing", pattern: /All systems operational/ },
+  { what: "a guarantee on a product that takes no payment", pattern: /money-back|14-day guarantee/i },
+  { what: "a company form that does not exist", pattern: /LifeOS AI, Inc\./ },
+  { what: "integrations that were never built", pattern: /name: "(Gmail|Slack|Google Calendar|GitHub)"/ },
+  { what: "total income labelled as recurring revenue", pattern: /kpiMrr|"MRR"/ },
   {
     what: "a hardcoded priority presented as analysis",
     pattern: /investor deck is your only|deck investisseurs est votre seul|close the three warm leads|closez les trois leads/i,

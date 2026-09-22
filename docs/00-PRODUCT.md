@@ -1,160 +1,161 @@
-# LifeOS AI — description produit
+# LifeOS — description produit
 
-> État au 21 septembre 2026, **établi depuis le code**, pas depuis le cahier des
-> charges initial. Plusieurs choses ont changé depuis ; certaines promesses du
-> site ne sont pas encore construites. Les deux sont indiqués.
+> État au 22 septembre 2026, **établi depuis le code**. Depuis le 21, le produit
+> a pivoté : ce n'est plus un générateur d'espaces Notion, c'est un second
+> cerveau souverain avec un agent IA. Notion devient un export facultatif.
 
-**Légende** — ✅ fonctionnel · 🟡 démonstration ou partiel · ⛔ annoncé, pas construit
+**Légende** — ✅ fonctionnel · 🟡 partiel · ⛔ pas construit
 
 ---
 
 ## En une phrase
 
-LifeOS AI construit en moins d'une minute un espace Notion complet et
-personnalisé à partir de 10 questions, puis le fait vivre avec une IA qui
-résume, conseille et — sous votre contrôle — agit à votre place.
+Un second cerveau qui vous appartient : vous capturez vos pensées, LifeOS les
+range, les relie et en tire votre focus du jour ; un agent IA travaille à partir
+de ce que vous avez écrit, dans l'application et sur Telegram, dans les limites
+que vous fixez.
 
 ## Pour qui
 
-Fondateurs, freelances et managers qui veulent un vrai système d'organisation
-sans passer un week-end à le construire, ni payer un consultant pour le faire.
+Fondateurs, freelances et managers qui pensent vite et oublient autant. Ils
+veulent un endroit unique pour leurs idées, leurs objectifs et leurs prochaines
+actions, et un assistant qui les connaît vraiment.
 
 ---
 
-## 1. Génération de l'espace Notion ✅
+## 1. Le second cerveau ✅
 
-- **10 questions** : prénom, métier, objectifs (projets, finances, clients,
-  habitudes, apprentissage, équipe, contenu…), nombre de projets, taille
-  d'équipe, chiffre d'affaires, usage actuel de Notion, besoin d'un CRM, d'un
-  suivi financier, d'une base de connaissances.
-- **Connexion Notion** par OAuth, protégée contre le détournement (CSRF).
-- **Jusqu'à 11 bases liées**, choisies selon les réponses : Projets, Tâches,
-  Objectifs, Planning hebdo, Habitudes, Journal, CRM, Finance, Base de
-  connaissances, Lectures, Comptes rendus de réunion — plus une page d'accueil.
-- **Relations entre bases** (projets ↔ tâches…), construites en deux passes.
-- **Progression en direct** pendant la génération.
+- **Capture** au clavier ou à la voix, depuis la page du cerveau ou depuis
+  n'importe quelle page (bouton « Capturer »). Chaque pensée est rangée dans
+  une des **six régions** : objectifs, prochaines actions, idées, pensées,
+  connaissances, insights. Classement par IA, repli sur des règles si l'IA est
+  absente. Déplaçable en un clic.
+- **Connexions** entre notes. LifeOS **suggère** les notes liées et montre les
+  mots qu'elles partagent ; vous décidez. Similarité explicable (IDF), sans
+  service d'embeddings.
+- **Focus** déterministe : d'abord les actions qui font avancer un objectif,
+  puis les objectifs sans prochaine action, puis ce qui attend, puis les idées
+  récentes non reliées.
+- **Résurgence** : chaque jour, une note d'il y a une semaine ou plus revient,
+  de préférence une note isolée.
+- **Recherche** instantanée, insensible aux accents.
+- **Carte 3D** interactive : régions, notes et connexions.
+- **Export complet** en Markdown (liens Obsidian) et en JSON.
 
----
+## 2. L'accueil — natif, sans Notion ✅
 
-## 2. L'application
+Sept questions construisent le cerveau sur-le-champ :
 
-| Module | État | Ce qu'il fait |
-| --- | --- | --- |
-| Tableau de bord | ✅ | indicateurs réels du workspace |
-| Projets · CRM · Finance | ✅ | données réelles, persistées, états vides soignés |
-| Second cerveau 3D | ✅ | cerveau interactif qu'on fait tourner ; 5 catégories — idées, pensées, prochaines actions, connaissances, insights ; capture assistée par IA |
-| Assistant IA | ✅ | conversation en streaming qui connaît votre workspace |
-| Résumé quotidien · bilan hebdo | ✅ | générés par IA depuis vos vraies données |
-| Français / anglais | ✅ | interface intégralement bilingue |
-| Analytics | 🟡 | graphiques de démonstration, données fictives |
-| Équipe | 🟡 | page statique, aucune gestion réelle des membres |
-| Facturation | ⛔ | plans définis, mais **aucun bouton ne déclenche le paiement** |
+| Question | Où va la réponse |
+| --- | --- |
+| Prénom, métier | profil |
+| Objectif principal, second objectif | notes « objectif » |
+| Prochaine action | note « prochaine action », **reliée à l'objectif** |
+| Ce que vous avez en tête | une note par ligne, rangée par région |
+| Domaines de vie | profil (l'assistant et l'agent en tiennent compte) |
 
----
+Relancer l'accueil ne duplique rien : une note dont le titre existe déjà est
+réutilisée. Le brouillon survit à un rechargement et à une reconnexion.
 
-## 3. L'agent autonome — le différenciateur
+## 3. L'assistant ✅
+
+Il répond **à partir du second cerveau** : qui vous êtes (profil), vos
+objectifs, votre focus et les notes liées à la question. Il cite les notes sur
+lesquelles il s'appuie et dit quand elles ne couvrent pas la question. Sans clé
+IA, il le dit et affiche le focus au lieu d'inventer.
+
+## 4. L'agent autonome ✅
 
 Un agent IA qui travaille sur vos données, **sur un serveur séparé — jamais
 sur votre ordinateur** — et qui ne peut rien faire de dangereux sans vous.
 
-### Calibration
-Test de 33 questions : le **Mini-IPIP** (20 items de personnalité, validés
-scientifiquement, domaine public) et 12 items opérationnels (rapport à la
-délégation, au risque, à la communication). Contrôles anti-triche : question
-d'attention, détection des réponses toutes identiques. Un profil invalide
-bride l'agent au minimum.
+- **Calibration** : test de 33 questions (Mini-IPIP + items opérationnels),
+  avec contrôles anti-triche.
+- **Autonomie au choix** : observer, assister, agir, étendre.
+- **Garde-fous** : cinq niveaux de risque ; le haut risque exige toujours votre
+  accord ; certaines actions sont impossibles à tout niveau (argent, signature,
+  secrets, suppression définitive, sécurité) ; arrêt d'urgence ; journal
+  d'audit non modifiable. Il rédige, vous envoyez.
+- **Où lui parler** : dans l'app et sur Telegram. En mode relais
+  (`AGENT_BACKEND=hermes`), c'est le même agent Hermes, avec la même mémoire.
+- **Ce qu'il lit** : le second cerveau (avec votre profil) et le résumé de
+  l'activité, via MCP.
 
-### Autonomie au choix
-Quatre niveaux — **observer, assister, agir, étendre**. Le test recommande,
-vous décidez ; l'écart est tracé.
-
-### Garde-fous
-- **Cinq niveaux de risque** par action. Le haut risque — envoyer un e-mail,
-  lancer une publicité — exige **toujours** votre accord, quel que soit le
-  niveau d'autonomie.
-- **Jamais possible**, à aucun niveau : déplacer de l'argent, signer ou
-  accepter des conditions en votre nom, lire des secrets, supprimer
-  définitivement des données, modifier les réglages de sécurité.
-- **Arrêt d'urgence**, quotas et budget quotidiens, **journal d'audit non
-  modifiable**.
-- **Il rédige, vous envoyez.** E-mails, campagnes et propositions commerciales
-  arrivent en brouillon dans l'app ; rien ne part sans votre validation.
-
-### Où lui parler
-Chat intégré à LifeOS, et **Telegram** (appairage par code à usage unique — un
-inconnu qui trouve le bot n'atteint jamais vos données).
-
-### Ouvert
-Serveur **MCP** standard : l'agent peut être **Hermes Agent** ou tout client
-MCP. Un même agent peut répondre à la fois dans LifeOS et sur Telegram, avec
-une mémoire commune.
-
-### Ce qu'il sait réellement faire aujourd'hui
-
-| | |
+| | Aujourd'hui |
 | --- | --- |
-| ✅ | lire le second cerveau et le workspace · créer notes, tâches, projets, opportunités · rédiger e-mails, campagnes, propositions · envoyer un e-mail validé *(si un fournisseur d'envoi est configuré)* |
-| ⛔ | écrire dans Notion · gérer l'agenda · chercher sur le web · publier sur Slack · lancer une publicité · appeler un service externe · exécuter du code |
+| ✅ | lire et chercher dans le second cerveau · créer et relier des notes · créer tâches, projets, opportunités · rédiger e-mails, campagnes, propositions · envoyer un e-mail validé *(si un fournisseur d'envoi est configuré)* |
+| ⛔ | agenda · recherche web · Slack · publicité · services externes · exécution de code — ces actions répondent « non implémenté » au lieu de prétendre avoir réussi |
 
-Les actions ⛔ répondent « non implémenté » au lieu de prétendre avoir réussi :
-l'agent ne peut pas dire qu'il a envoyé quelque chose qu'il n'a pas envoyé.
+## 5. Le reste de l'activité ✅
 
----
+Tableau de bord, projets, clients (CRM) et finances, avec de vraies données
+persistées. Résumé du jour et bilan de la semaine générés à la demande depuis
+ces données.
 
-## 4. Tarifs — promis et réel
+## 6. Notion — export facultatif ✅
 
-| Plan | Prix | Promis sur le site | Réellement disponible |
-| --- | --- | --- | --- |
-| **Starter** | 19 $/mois | génération complète, 10 bases, synchro Google & Apple Calendar, résumés quotidiens, 1 espace | tout **sauf la synchro agenda** |
-| **Pro** | 49 $/mois | + CRM & Finance, bilans hebdo IA, Gmail · Slack · GitHub, assistant vocal, 3 espaces | **ni Gmail/Slack/GitHub, ni assistant vocal** |
-| **Founder** | 99 $/mois | + collaboration d'équipe, automatisations, analytics & KPI, espaces illimités | **aucune des trois premières** |
+Depuis les Paramètres, une fois Notion connecté : LifeOS montre les bases qu'il
+va créer (un socle, plus un module par domaine de vie choisi), attend votre
+clic, puis les crée dans la page partagée avec une page d'accueil. L'écran de
+progression n'affiche que les étapes réellement exécutées. Sans connexion, il
+refuse au lieu de simuler.
 
-Les limites par plan (nombre d'espaces, de générations) sont définies mais
-**jamais appliquées**.
+## 7. Vos données ✅
 
-**Seule intégration réellement branchée : Notion.** Le site affiche aussi
-Google Calendar, Gmail, Slack, GitHub et Stripe comme intégrations.
+- Export Markdown / JSON à tout moment.
+- **Suppression complète** depuis les Paramètres (mot à taper, vérifié côté
+  serveur) : notes, connexions, projets, opportunités, transactions, tâches,
+  profil. Le compte et le contenu Notion restent.
 
----
+## 8. Tarifs — accès anticipé
 
-## 5. Technique
+Gratuit, sans carte. Prix affichés pour après l'accès anticipé :
+**Essentiel 19 $**, **Pro 49 $**, **Souverain 99 $** par mois. Chaque promesse
+de la grille correspond à une fonction qui existe. Rien n'est facturé : le
+paiement n'est pas branché.
+
+## 9. Technique
 
 Next.js 15 · React 19 · TypeScript strict · Supabase (authentification,
-Postgres, sécurité ligne par ligne) · API Notion · Groq / Cerebras · Stripe ·
-Vercel · agent sur VPS en conteneur durci · 116 tests automatisés.
+Postgres, sécurité ligne par ligne) · Groq / Cerebras · API Notion · agent sur
+VPS · interface intégralement bilingue (langue détectée au premier passage) ·
+256 tests automatisés, dont des gardes contre les fausses allégations et les
+routes non protégées.
 
 ---
 
-## 6. Avant de lancer — trois bloquants
+## 10. Avant de lancer
 
-**1. Personne ne peut payer.** La création de session Stripe existe dans le
-code mais n'est appelée nulle part ; le bouton « Change plan » renvoie vers une
-ancre de la page. Le produit ne peut pas générer un euro.
+1. **Appliquer la migration 007** (connexions et profil) dans Supabase. Sans
+   elle, l'app fonctionne en mode dégradé : pas de connexions, profil limité au
+   navigateur.
+2. **Paiement** : Stripe n'est pas branché. Aucun revenu possible.
+3. **Pages légales** : mentions légales, CGU et politique de confidentialité
+   sont obligatoires pour un site commercial en France (LCEN, RGPD). Elles
+   n'existent pas.
+4. **Cohérence « souverain »** : les prix sont en dollars ; la région Supabase
+   n'est pas vérifiée ; les questions et notes pertinentes partent chez Groq ou
+   Cerebras (États-Unis). Le site ne revendique donc aucun hébergement européen.
+   Pour que la promesse tienne : prix en euros, Supabase en région UE, et un
+   fournisseur de modèle européen (Mistral, par exemple) en option.
 
-**2. Les témoignages sont inventés.** Quatre citations avec des noms et
-fonctions fictifs — dont une qui invoque une entreprise réelle — affichées en
-production sur la page d'accueil.
+## Ce qui a été retiré parce que c'était faux
 
-**3. Le site promet des fonctions qui n'existent pas.** Synchro agenda,
-Gmail/Slack/GitHub, assistant vocal, collaboration d'équipe, automatisations,
-analytics.
-
-Les points 2 et 3 relèvent en France des **pratiques commerciales trompeuses**
-(Code de la consommation). Les faux avis de consommateurs figurent sur la liste
-noire européenne depuis la directive « Omnibus » : ils sont interdits en toutes
-circonstances, sans qu'il soit nécessaire de prouver un préjudice. À faire
-valider par un avocat avant lancement.
-
----
+Témoignages inventés (y compris sur la page de connexion) · « 2 400+ personnes
+en attente » · une liste d'attente qui n'enregistrait rien et promettait un
+e-mail jamais envoyé · « Généré en 47 s » · garantie de remboursement sur un
+produit qui ne facture rien · « All systems operational » · « LifeOS AI, Inc. »
+· intégrations Google Agenda, Gmail, Slack, GitHub, Stripe affichées
+« Connecté » · e-mails de bilan jamais envoyés · fuseau horaire codé en dur ·
+bouton de suppression sans effet · étapes de génération Notion jamais
+exécutées · série d'habitudes de 23 jours transmise à l'IA · « MRR » qui était
+le total des revenus.
 
 ## Ce qui rend le produit défendable
 
-- **La vitesse** : un système complet en une minute, là où un consultant
-  facture des milliers d'euros et un week-end de configuration.
-- **La personnalisation** : 10 réponses déterminent les bases, leurs relations
-  et leur contenu.
-- **Un agent qu'on peut réellement laisser travailler** : c'est rare. La
-  plupart des agents sont soit bridés au point d'être inutiles, soit
-  dangereux. Le partage *rédiger librement / envoyer sous contrôle*, les
-  garde-fous non contournables et l'exécution hors de la machine de
-  l'utilisateur sont le vrai différenciateur.
+- **Un cerveau qui vous appartient** : formats ouverts, export et suppression
+  à tout moment, rien d'inventé à l'écran.
+- **Un focus qui découle de vos objectifs**, pas d'une liste de tâches de plus.
+- **Un agent qu'on peut réellement laisser travailler** : rédiger librement,
+  envoyer sous contrôle, garde-fous non contournables, exécution hors de la
+  machine de l'utilisateur, le même agent dans l'app et sur Telegram.

@@ -5,27 +5,23 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Plus } from "lucide-react";
 import { Section, SectionHeader } from "@/components/ui/section";
 import { Reveal } from "@/components/ui/reveal";
-import { faqs } from "@/lib/content/site";
+import { useMessages } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 
 export function Faq() {
+  const t = useMessages().landing.faq;
   const [open, setOpen] = useState<number | null>(0);
 
   return (
     <Section id="faq">
       <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr]">
         <Reveal>
-          <SectionHeader
-            align="left"
-            eyebrow="FAQ"
-            title="Questions, answered"
-            description="Everything you need to know before your first workspace."
-          />
+          <SectionHeader align="left" eyebrow={t.eyebrow} title={t.title} description={t.description} />
         </Reveal>
 
         <Reveal className="divide-y divide-border border-t border-border">
-          {faqs.map((item, i) => {
+          {t.items.map((item, i) => {
             const isOpen = open === i;
             return (
               <div key={item.q}>

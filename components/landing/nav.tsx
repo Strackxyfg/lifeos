@@ -3,13 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Command, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { site } from "@/lib/content/site";
 import { buttonVariants } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
+import { LanguageSwitch } from "@/components/ui/language-switch";
+import { useMessages } from "@/lib/i18n/client";
 
 export function Nav() {
+  const m = useMessages();
+  const t = m.landing.nav;
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -18,6 +20,13 @@ export function Nav() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  const links = [
+    { label: t.how, href: "#how" },
+    { label: t.features, href: "#features" },
+    { label: t.pricing, href: "#pricing" },
+    { label: t.faq, href: "#faq" },
+  ];
 
   return (
     <motion.header
@@ -40,7 +49,7 @@ export function Nav() {
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
-          {site.nav.map((item) => (
+          {links.map((item) => (
             <a
               key={item.href}
               href={item.href}
@@ -52,22 +61,12 @@ export function Nav() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => window.dispatchEvent(new Event("lifeos:command"))}
-            className="hidden items-center gap-2 rounded-md border border-border bg-surface/60 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:flex"
-            aria-label="Open command menu"
-          >
-            <Command className="h-3.5 w-3.5" />
-            <Kbd>⌘K</Kbd>
-          </button>
-          <a
-            href="/login"
-            className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "max-sm:hidden")}
-          >
-            Sign in
+          <LanguageSwitch />
+          <a href="/login" className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "max-sm:hidden")}>
+            {t.signIn}
           </a>
           <a href="/signup" className={buttonVariants({ size: "sm" })}>
-            Get early access
+            {t.start}
           </a>
         </div>
       </div>

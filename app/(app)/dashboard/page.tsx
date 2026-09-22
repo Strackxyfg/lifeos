@@ -21,8 +21,6 @@ function greeting(m: Messages): string {
   return m.dashboard.evening;
 }
 
-
-
 export default async function DashboardPage() {
   const [{ firstName }, m, locale, data] = await Promise.all([
     getProfile(),
@@ -37,8 +35,10 @@ export default async function DashboardPage() {
   // KPIs derived from persisted rows, not hardcoded.
   const kpis = [
     { key: "kpiActiveProjects", value: String(activeProjects.length) },
-    { key: "kpiWeeklyFocus", value: `${snapshot.projects.avgProgress}%` },
-    { key: "kpiMrr", value: formatCurrency(snapshot.finance.income, locale) },
+    // Labelled for what they are: an average of project progress (it was
+    // called "Weekly focus") and all income recorded (it was called "MRR").
+    { key: "kpiProgress", value: `${snapshot.projects.avgProgress}%` },
+    { key: "kpiIncome", value: formatCurrency(snapshot.finance.income, locale) },
     { key: "kpiNotes", value: String(data.brain.length) },
   ] as const;
 

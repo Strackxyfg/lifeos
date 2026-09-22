@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { AnimatePresence } from "framer-motion";
 import { ArrowUp, Brain, Mic, Search, Sparkles, Square, X } from "lucide-react";
-import { categories, categoryById, isCategory, type BrainCategoryId } from "@/lib/data/brain";
+import { categories, categoryById, type BrainCategoryId } from "@/lib/data/brain";
 import { canonicalPair, type BrainNote } from "@/lib/brain/graph";
 import { computeFocus } from "@/lib/brain/focus";
 import { pickResurface } from "@/lib/brain/resurface";
@@ -17,6 +17,7 @@ import {
 import { Overview, RegionList, SearchResults } from "./brain-panels";
 import { NoteDetail, type ClientLink, type NotePatch } from "./note-detail";
 import { useDictation } from "./use-dictation";
+import { CAPTURED_EVENT, classifyThought } from "./classify-client";
 import type { GraphNode } from "./note-graph";
 import { toast } from "@/components/ui/toaster";
 import { plural } from "@/lib/i18n/config";
@@ -81,6 +82,16 @@ export function SecondBrain({
 
   const now = useMemo(() => new Date(nowIso), [nowIso]);
   const errorText = useCallback((code: BrainErrorCode) => m.brain.errors[code], [m]);
+
+  // A thought captured from the topbar joins the brain without a reload.
+  useEffect(() => {
+    const onCaptured = (e: Event) => {
+      const note = (e as CustomEvent<BrainNote>).detail;
+      if (note?.id) setNotes((prev) => (prev.some((n) => n.id === note.id) ? prev : [note, ...prev]));
+    };
+    window.addEventListener(CAPTURED_EVENT, onCaptured);
+    return () => window.removeEventListener(CAPTURED_EVENT, onCaptured);
+  }, []);
 
   // The migration warning is for whoever operates the workspace, not the user,
   // who sees a plain sentence instead.
@@ -194,18 +205,7 @@ export function SecondBrain({
       setNotes((prev) => [temp, ...prev]);
 
       // Classification only. The person's words are saved exactly as written.
-      let category: BrainCategoryId = "thoughts";
-      try {
-        const res = await fetch("/api/brain/capture", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: title, locale }),
-        });
-        const data = (await res.json()) as { category?: string };
-        if (isCategory(data.category)) category = data.category;
-      } catch {
-        /* keep the default region; the note is not lost */
-      }
+      const category = await classifyThought(title, locale);
 
       const saved = await safe(createNote({ title, category }));
       // `safe` never throws, so the lock is always released — one network

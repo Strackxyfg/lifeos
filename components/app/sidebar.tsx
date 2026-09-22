@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Sparkles, LogOut } from "lucide-react";
-import { primaryNav, secondaryNav, type NavItem } from "@/lib/content/app-nav";
+import { primaryNav, secondaryNav, workNav, type NavItem } from "@/lib/content/app-nav";
 import { signOut } from "@/app/actions/sign-out";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
@@ -26,7 +26,7 @@ export function SidebarContent({ profile, onNavigate }: { profile: Profile; onNa
 
   return (
     <>
-      <Link href="/dashboard" onClick={onNavigate} className="mb-6 flex items-center gap-2 px-2 font-medium tracking-tight">
+      <Link href="/brain" onClick={onNavigate} className="mb-6 flex items-center gap-2 px-2 font-medium tracking-tight">
         <span className="grid h-7 w-7 place-items-center rounded-lg bg-foreground text-background">
           <Sparkles className="h-4 w-4" />
         </span>
@@ -42,6 +42,8 @@ export function SidebarContent({ profile, onNavigate }: { profile: Profile; onNa
       </button>
 
       <NavGroup items={primaryNav} pathname={pathname} labels={m.nav} onNavigate={onNavigate} />
+      <div className="my-4 border-t border-border" />
+      <NavGroup items={workNav} pathname={pathname} labels={m.nav} onNavigate={onNavigate} />
       <div className="my-4 border-t border-border" />
       <NavGroup items={secondaryNav} pathname={pathname} labels={m.nav} onNavigate={onNavigate} />
 

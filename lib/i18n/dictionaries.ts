@@ -42,7 +42,8 @@ const frItems: Record<string, ItemText> = {
  */
 const en = {
   common: {
-    newWorkspace: "New workspace",
+    capture: "Capture",
+    captureHint: "Enter to save · Shift+Enter for a new line",
     signOut: "Sign out",
     searchRun: "Search or run…",
     save: "Save changes",
@@ -54,32 +55,158 @@ const en = {
     newProject: "New project",
     newDeal: "New deal",
     addEntry: "Add entry",
-    inviteMember: "Invite member",
     nothingHere: "Nothing here",
+  },
+  landing: {
+    meta: {
+      title: "LifeOS — A second brain that belongs to you",
+      description:
+        "Capture your thoughts, connect them, find them again. Your goals decide your focus, and an AI agent works from what you wrote.",
+    },
+    nav: { how: "How it works", features: "Product", pricing: "Pricing", faq: "FAQ", signIn: "Sign in", start: "Get started" },
+    hero: {
+      badge: "Early access · free",
+      title: "A second brain that belongs to you.",
+      lead: "Capture what you think, connect it, find it again. Your goals decide what matters today, and an AI agent works from what you wrote — in the app and on Telegram.",
+      primary: "Create my second brain",
+      secondary: "See how it works",
+      foot: "Free during early access · No card · Export everything, any time",
+    },
+    preview: {
+      example: "Example",
+      title: "Second brain",
+      stats: "24 notes · 11 connections",
+      focus: "Focus",
+      capture: "Capture a thought…",
+      goal: "Sign 10 new clients by December",
+      notes: [
+        { title: "Call Marc on Tuesday about the pilot", reason: "Moves “Sign 10 new clients by December” forward", region: "next" },
+        { title: "Write two client case studies", reason: "Waiting for 5 days", region: "next" },
+        { title: "A referral programme: one free month per client", reason: "New idea, not connected to anything yet", region: "ideas" },
+      ],
+    },
+    how: {
+      eyebrow: "How it works",
+      title: "Write it down once. It keeps working for you.",
+      description: "No template to fill in. Two minutes of questions, then your brain grows with every thought you capture.",
+      steps: [
+        {
+          title: "Capture",
+          desc: "Type or dictate. Each thought is filed in its region — goals, next steps, ideas, knowledge — and moves in one click.",
+        },
+        {
+          title: "Connect",
+          desc: "LifeOS spots notes that talk about the same thing and suggests linking them, showing the words they share. You decide.",
+        },
+        {
+          title: "Focus",
+          desc: "Your goals decide what comes first. Focus puts forward the actions that move them, and brings back what you'd forgotten.",
+        },
+        {
+          title: "Delegate",
+          desc: "Your agent reads your second brain and acts within the limits you set, in the app and on Telegram. Everything it does is logged.",
+        },
+      ],
+    },
+    features: {
+      eyebrow: "Why it's different",
+      title: "Not a template. A second you.",
+      description: "Everything it shows comes from what you wrote. Nothing is invented to look impressive.",
+      items: [
+        {
+          title: "A brain you can see",
+          desc: "Your notes as a living 3D map: six regions, the connections between them, and why each one exists.",
+        },
+        {
+          title: "An assistant that knows you",
+          desc: "It answers from your goals and notes, names the notes it relied on, and says so when they don't cover the question.",
+        },
+        {
+          title: "An agent with guardrails",
+          desc: "You choose how much it may do on its own. Riskier actions wait for your approval, everything is logged, and one switch stops it.",
+        },
+        {
+          title: "Your data, your formats",
+          desc: "Export everything as Markdown (ready for Obsidian) or JSON whenever you like, or erase it all. Notion is an optional export.",
+        },
+      ],
+      more: "Projects, clients and finances live alongside, so your agent sees the whole picture.",
+    },
+    pricing: {
+      eyebrow: "Pricing",
+      title: "Free during early access.",
+      description: "These prices apply once early access ends. Nothing is billed today and no card is asked for.",
+      cta: "Start free",
+      featured: "Most complete",
+    },
+    faq: {
+      eyebrow: "FAQ",
+      title: "Questions, answered",
+      description: "What it does, what it doesn't, and where your data goes.",
+      items: [
+        {
+          q: "Do I need Notion?",
+          a: "No. LifeOS works on its own. If you use Notion, you can export a Notion workspace shaped by your profile. It's optional, and your second brain stays in LifeOS.",
+        },
+        {
+          q: "Where is my data, and can I leave?",
+          a: "In your LifeOS account. You can export all of it as Markdown or JSON at any time, and erase it from Settings. Open formats, no lock-in.",
+        },
+        {
+          q: "What does the agent actually do?",
+          a: "It reads your second brain, suggests actions and carries out those your autonomy level allows. Riskier ones wait for your approval, everything is logged, and one switch turns it off. It answers in the app and on Telegram.",
+        },
+        {
+          q: "Which AI does it use?",
+          a: "Answers come from a language model run by an inference provider (currently Groq or Cerebras). To answer, your question and the notes relevant to it are sent to that provider. Focus, search and connections work without any model.",
+        },
+        {
+          q: "What does it cost?",
+          a: "Nothing during early access, and no card is asked for. The prices that will apply afterwards are listed above.",
+        },
+        {
+          q: "Where does voice dictation send my audio?",
+          a: "Dictation uses your browser's speech service (Google in Chrome, Apple in Safari). LifeOS never receives the audio, only the text you keep.",
+        },
+      ],
+    },
+    cta: {
+      title: "Start your second brain tonight.",
+      lead: "Two minutes of questions. Then everything you capture has a place.",
+      button: "Create my second brain",
+    },
+    footer: {
+      tagline: "A second brain that belongs to you.",
+      product: "Product",
+      account: "Account",
+    },
+  },
+  command: {
+    title: "Command menu",
+    placeholder: "Search commands…",
+    empty: "No results",
+    capture: "Capture a thought",
+    ask: "Ask your second brain",
   },
   nav: {
     dashboard: "Dashboard",
     projects: "Projects",
     crm: "CRM",
     finance: "Finance",
-    analytics: "Analytics",
     assistant: "Assistant",
     brain: "Second Brain",
     agent: "Agent",
-    team: "Team",
     billing: "Billing",
     settings: "Settings",
   },
   pages: {
-    projects: { title: "Projects", desc: "Everything in flight, grouped by status and wired to your goals." },
+    projects: { title: "Projects", desc: "Everything in flight, grouped by status." },
     crm: { title: "CRM", desc: "Contacts and deals, from first touch to closed-won." },
     finance: { title: "Finance", desc: "Income, expenses, and runway — rolled up from your ledger." },
-    analytics: { title: "Analytics", desc: "KPIs computed across your workspace, refreshed hourly." },
-    assistant: { title: "Assistant", desc: "Your personalized AI, trained on your workspace and goals." },
-    billing: { title: "Billing", desc: "Manage your plan, usage, and invoices." },
-    team: { title: "Team", desc: "Invite people to share your workspace and collaborate." },
-    settings: { title: "Settings", desc: "Profile, workspace, and connections." },
-    brain: { title: "Second Brain", desc: "Your ideas, thoughts and next moves — mapped to an interactive neural space, powered by AI." },
+    assistant: { title: "Assistant", desc: "Answers from your second brain: your goals, your focus, your notes." },
+    billing: { title: "Billing", desc: "Your access, and the plans at launch." },
+    settings: { title: "Settings", desc: "Profile, your data, and connections." },
+    brain: { title: "Second Brain", desc: "Your goals, ideas and next steps — connected, and mapped in an interactive space." },
   },
   billing: {
     accessTitle: "Your access",
@@ -167,8 +294,8 @@ const en = {
     sublineTasks: { one: "{n} task open", other: "{n} tasks open" },
     sublineNotes: { one: "{n} note in your second brain", other: "{n} notes in your second brain" },
     kpiActiveProjects: "Active projects",
-    kpiWeeklyFocus: "Weekly focus",
-    kpiMrr: "MRR",
+    kpiProgress: "Average project progress",
+    kpiIncome: "Income recorded",
     kpiNotes: "Notes in your brain",
     projects: "Projects",
     viewAll: "View all",
@@ -183,7 +310,6 @@ const en = {
     askAssistant: "Ask your assistant",
     today: "Today",
     doneCount: "{done} of {total} done",
-    integrations: "Integrations",
     tasks: {
       d1: "Review weekly finance rollup",
       d2: "Ship onboarding polish",
@@ -464,7 +590,7 @@ const en = {
   },
   empty: {
     projectsTitle: "No projects yet",
-    projectsDesc: "Generate your Notion workspace, or add a project to get started.",
+    projectsDesc: "Add your first project to get started.",
     dealsTitle: "No deals yet",
     dealsDesc: "Add your first contact or deal to start tracking your pipeline.",
     financeTitle: "No entries yet",
@@ -585,9 +711,9 @@ const en = {
     brandLine: "A second brain that belongs to you. Capture it, connect it, find it again — and let your agent do the work, on your terms.",
     brandFoot: "Export everything, any time · Open formats · No lock-in",
     signInTitle: "Welcome back",
-    signInSub: "Sign in to your workspace.",
-    signUpTitle: "Create your LifeOS",
-    signUpSub: "Build your operating system in 60 seconds.",
+    signInSub: "Sign in to your second brain.",
+    signUpTitle: "Create your second brain",
+    signUpSub: "Two minutes of questions, and it starts with what matters to you.",
     google: "Continue with Google",
     or: "or",
     passwordPh: "Password",
@@ -628,7 +754,8 @@ export type Messages = typeof en;
 
 const fr: Messages = {
   common: {
-    newWorkspace: "Nouvel espace",
+    capture: "Capturer",
+    captureHint: "Entrée pour enregistrer · Maj+Entrée pour aller à la ligne",
     signOut: "Se déconnecter",
     searchRun: "Rechercher ou lancer…",
     save: "Enregistrer",
@@ -640,32 +767,158 @@ const fr: Messages = {
     newProject: "Nouveau projet",
     newDeal: "Nouvelle opportunité",
     addEntry: "Ajouter une écriture",
-    inviteMember: "Inviter un membre",
     nothingHere: "Rien ici",
+  },
+  landing: {
+    meta: {
+      title: "LifeOS — Un second cerveau qui vous appartient",
+      description:
+        "Capturez vos pensées, reliez-les, retrouvez-les. Vos objectifs guident votre focus, et un agent IA travaille à partir de ce que vous avez écrit.",
+    },
+    nav: { how: "Comment ça marche", features: "Produit", pricing: "Tarifs", faq: "FAQ", signIn: "Se connecter", start: "Commencer" },
+    hero: {
+      badge: "Accès anticipé · gratuit",
+      title: "Un second cerveau qui vous appartient.",
+      lead: "Capturez ce que vous pensez, reliez-le, retrouvez-le. Vos objectifs décident de ce qui compte aujourd'hui, et un agent IA travaille à partir de ce que vous avez écrit — dans l'application et sur Telegram.",
+      primary: "Créer mon second cerveau",
+      secondary: "Voir comment ça marche",
+      foot: "Gratuit pendant l'accès anticipé · Sans carte · Export complet à tout moment",
+    },
+    preview: {
+      example: "Exemple",
+      title: "Second cerveau",
+      stats: "24 notes · 11 connexions",
+      focus: "Focus",
+      capture: "Capturez une pensée…",
+      goal: "Signer 10 nouveaux clients d'ici décembre",
+      notes: [
+        { title: "Appeler Marc mardi pour le pilote", reason: "Fait avancer « Signer 10 nouveaux clients d'ici décembre »", region: "next" },
+        { title: "Rédiger deux études de cas clients", reason: "En attente depuis 5 jours", region: "next" },
+        { title: "Un programme de parrainage : un mois offert par client", reason: "Idée récente, reliée à rien pour l'instant", region: "ideas" },
+      ],
+    },
+    how: {
+      eyebrow: "Comment ça marche",
+      title: "Notez-le une fois. Il travaille pour vous ensuite.",
+      description: "Aucun modèle à remplir. Deux minutes de questions, puis votre cerveau grandit à chaque pensée capturée.",
+      steps: [
+        {
+          title: "Capturer",
+          desc: "Écrivez ou dictez. Chaque pensée est rangée dans sa région — objectifs, prochaines actions, idées, connaissances — et se déplace en un clic.",
+        },
+        {
+          title: "Relier",
+          desc: "LifeOS repère les notes qui parlent de la même chose et propose de les relier, en montrant les mots qu'elles partagent. Vous décidez.",
+        },
+        {
+          title: "Se concentrer",
+          desc: "Vos objectifs décident de ce qui passe en premier. Le focus met en avant les actions qui les font avancer, et ressort ce que vous aviez oublié.",
+        },
+        {
+          title: "Déléguer",
+          desc: "Votre agent lit votre second cerveau et agit dans les limites que vous fixez, dans l'application et sur Telegram. Tout ce qu'il fait est journalisé.",
+        },
+      ],
+    },
+    features: {
+      eyebrow: "Ce qui change",
+      title: "Pas un modèle. Un deuxième vous.",
+      description: "Tout ce qu'il affiche vient de ce que vous avez écrit. Rien n'est inventé pour impressionner.",
+      items: [
+        {
+          title: "Un cerveau que vous voyez",
+          desc: "Vos notes sous forme de carte 3D vivante : six régions, les connexions entre elles, et la raison d'être de chacune.",
+        },
+        {
+          title: "Un assistant qui vous connaît",
+          desc: "Il répond à partir de vos objectifs et de vos notes, cite celles sur lesquelles il s'appuie, et le dit quand elles ne couvrent pas la question.",
+        },
+        {
+          title: "Un agent avec des garde-fous",
+          desc: "Vous choisissez ce qu'il peut faire seul. Les actions sensibles attendent votre accord, tout est journalisé, et un interrupteur l'arrête.",
+        },
+        {
+          title: "Vos données, vos formats",
+          desc: "Exportez tout en Markdown (prêt pour Obsidian) ou en JSON quand vous voulez, ou effacez tout. Notion est un export facultatif.",
+        },
+      ],
+      more: "Projets, clients et finances vivent à côté, pour que votre agent ait une vue d'ensemble.",
+    },
+    pricing: {
+      eyebrow: "Tarifs",
+      title: "Gratuit pendant l'accès anticipé.",
+      description: "Ces prix s'appliqueront à la fin de l'accès anticipé. Rien n'est facturé aujourd'hui et aucune carte n'est demandée.",
+      cta: "Commencer gratuitement",
+      featured: "Le plus complet",
+    },
+    faq: {
+      eyebrow: "FAQ",
+      title: "Vos questions",
+      description: "Ce qu'il fait, ce qu'il ne fait pas, et où vont vos données.",
+      items: [
+        {
+          q: "Faut-il utiliser Notion ?",
+          a: "Non. LifeOS fonctionne seul. Si vous utilisez Notion, vous pouvez y exporter un espace construit à partir de votre profil. C'est facultatif, et votre second cerveau reste dans LifeOS.",
+        },
+        {
+          q: "Où sont mes données, et puis-je partir ?",
+          a: "Dans votre compte LifeOS. Vous pouvez tout exporter en Markdown ou en JSON à tout moment, et tout effacer depuis les Paramètres. Formats ouverts, aucun enfermement.",
+        },
+        {
+          q: "Que fait l'agent, concrètement ?",
+          a: "Il lit votre second cerveau, propose des actions et réalise celles que votre niveau d'autonomie autorise. Les plus sensibles attendent votre accord, tout est journalisé, et un interrupteur le coupe. Il répond dans l'application et sur Telegram.",
+        },
+        {
+          q: "Quelle IA utilisez-vous ?",
+          a: "Les réponses viennent d'un modèle de langage exécuté par un fournisseur d'inférence (actuellement Groq ou Cerebras). Pour répondre, votre question et les notes qui s'y rapportent lui sont envoyées. Le focus, la recherche et les connexions fonctionnent sans aucun modèle.",
+        },
+        {
+          q: "Combien ça coûte ?",
+          a: "Rien pendant l'accès anticipé, et aucune carte n'est demandée. Les prix qui s'appliqueront ensuite sont indiqués plus haut.",
+        },
+        {
+          q: "Où part l'audio de la dictée vocale ?",
+          a: "La dictée utilise le service vocal de votre navigateur (Google dans Chrome, Apple dans Safari). LifeOS ne reçoit jamais l'audio, seulement le texte que vous gardez.",
+        },
+      ],
+    },
+    cta: {
+      title: "Commencez votre second cerveau ce soir.",
+      lead: "Deux minutes de questions. Ensuite, tout ce que vous capturez a sa place.",
+      button: "Créer mon second cerveau",
+    },
+    footer: {
+      tagline: "Un second cerveau qui vous appartient.",
+      product: "Produit",
+      account: "Compte",
+    },
+  },
+  command: {
+    title: "Menu des commandes",
+    placeholder: "Rechercher une commande…",
+    empty: "Aucun résultat",
+    capture: "Capturer une pensée",
+    ask: "Interroger votre second cerveau",
   },
   nav: {
     dashboard: "Tableau de bord",
     projects: "Projets",
     crm: "CRM",
     finance: "Finances",
-    analytics: "Analytique",
     assistant: "Assistant",
     brain: "Second cerveau",
     agent: "Agent",
-    team: "Équipe",
     billing: "Facturation",
     settings: "Paramètres",
   },
   pages: {
-    projects: { title: "Projets", desc: "Tout ce qui est en cours, regroupé par statut et relié à vos objectifs." },
+    projects: { title: "Projets", desc: "Tout ce qui est en cours, regroupé par statut." },
     crm: { title: "CRM", desc: "Contacts et opportunités, du premier contact à la signature." },
     finance: { title: "Finances", desc: "Revenus, dépenses et trésorerie — consolidés depuis votre grand livre." },
-    analytics: { title: "Analytique", desc: "Vos KPIs calculés sur tout l'espace, actualisés chaque heure." },
-    assistant: { title: "Assistant", desc: "Votre IA personnalisée, entraînée sur votre espace et vos objectifs." },
-    billing: { title: "Facturation", desc: "Gérez votre formule, votre usage et vos factures." },
-    team: { title: "Équipe", desc: "Invitez des personnes à partager votre espace et collaborer." },
-    settings: { title: "Paramètres", desc: "Profil, espace et connexions." },
-    brain: { title: "Second cerveau", desc: "Vos idées, pensées et prochaines actions — dans un espace neuronal interactif, propulsé par l'IA." },
+    assistant: { title: "Assistant", desc: "Répond à partir de votre second cerveau : vos objectifs, votre focus, vos notes." },
+    billing: { title: "Facturation", desc: "Votre accès, et les formules au lancement." },
+    settings: { title: "Paramètres", desc: "Profil, vos données et connexions." },
+    brain: { title: "Second cerveau", desc: "Vos objectifs, idées et prochaines actions — reliés, et cartographiés dans un espace interactif." },
   },
   billing: {
     accessTitle: "Votre accès",
@@ -751,8 +1004,8 @@ const fr: Messages = {
     sublineTasks: { one: "{n} tâche ouverte", other: "{n} tâches ouvertes" },
     sublineNotes: { one: "{n} note dans votre second cerveau", other: "{n} notes dans votre second cerveau" },
     kpiActiveProjects: "Projets actifs",
-    kpiWeeklyFocus: "Focus hebdo",
-    kpiMrr: "MRR",
+    kpiProgress: "Avancement moyen des projets",
+    kpiIncome: "Revenus enregistrés",
     kpiNotes: "Notes dans votre cerveau",
     projects: "Projets",
     viewAll: "Tout voir",
@@ -767,7 +1020,6 @@ const fr: Messages = {
     askAssistant: "Demander à l'assistant",
     today: "Aujourd'hui",
     doneCount: "{done} sur {total} fait",
-    integrations: "Intégrations",
     tasks: {
       d1: "Revoir la consolidation financière hebdo",
       d2: "Livrer les finitions de l'onboarding",
@@ -1048,7 +1300,7 @@ const fr: Messages = {
   },
   empty: {
     projectsTitle: "Aucun projet",
-    projectsDesc: "Générez votre espace Notion, ou ajoutez un projet pour démarrer.",
+    projectsDesc: "Ajoutez un premier projet pour démarrer.",
     dealsTitle: "Aucune opportunité",
     dealsDesc: "Ajoutez un premier contact ou une opportunité pour suivre votre pipeline.",
     financeTitle: "Aucune écriture",
@@ -1168,9 +1420,9 @@ const fr: Messages = {
     brandLine: "Un second cerveau qui vous appartient. Capturez, reliez, retrouvez — et laissez votre agent travailler, selon vos règles.",
     brandFoot: "Tout exportable, à tout moment · Formats ouverts · Aucun verrouillage",
     signInTitle: "Bon retour",
-    signInSub: "Connectez-vous à votre espace.",
-    signUpTitle: "Créez votre LifeOS",
-    signUpSub: "Construisez votre système d'exploitation en 60 secondes.",
+    signInSub: "Connectez-vous à votre second cerveau.",
+    signUpTitle: "Créez votre second cerveau",
+    signUpSub: "Deux minutes de questions, et il démarre avec ce qui compte pour vous.",
     google: "Continuer avec Google",
     or: "ou",
     passwordPh: "Mot de passe",

@@ -1,19 +1,16 @@
 "use client";
 
-import { Command, Plus } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
+import { Command } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { LanguageSwitch } from "@/components/ui/language-switch";
 import { MobileNav } from "./mobile-nav";
 import { Notifications } from "./notifications";
-import { cn } from "@/lib/utils";
-import { useMessages } from "@/lib/i18n/client";
+import { QuickCapture } from "./quick-capture";
 import type { Profile } from "@/lib/user/profile";
 import type { Alert } from "@/lib/data/alerts";
 
 export function Topbar({ profile, alerts }: { profile: Profile; alerts: Alert[] }) {
-  const m = useMessages();
   return (
     <header className="glass sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border px-4 lg:px-6">
       <div className="flex items-center gap-2">
@@ -34,9 +31,7 @@ export function Topbar({ profile, alerts }: { profile: Profile; alerts: Alert[] 
         <LanguageSwitch />
         <ThemeToggle />
         <Notifications alerts={alerts} />
-        <a href="/onboarding" className={cn(buttonVariants({ size: "sm" }))}>
-          <Plus className="h-4 w-4" /> {m.common.newWorkspace}
-        </a>
+        <QuickCapture />
       </div>
     </header>
   );

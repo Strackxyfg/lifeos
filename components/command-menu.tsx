@@ -5,17 +5,19 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Search, Sparkles, LayoutDashboard, Boxes, Users, Wallet,
-  Settings, CreditCard, ArrowRight, CornerDownLeft, Brain,
+  Settings, CreditCard, ArrowRight, CornerDownLeft, Brain, Bot, Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui/kbd";
+import { useMessages } from "@/lib/i18n/client";
+import { OPEN_CAPTURE_EVENT } from "@/components/brain/classify-client";
 
 type Command = {
   id: string;
   label: string;
   hint?: string;
   icon: typeof Boxes;
-  group: string;
+  group: "actions" | "navigate" | "account";
   href?: string;
   action?: () => void;
 };
@@ -23,6 +25,7 @@ type Command = {
 /** Fire this anywhere to open the palette: window.dispatchEvent(new Event("lifeos:command")) */
 export function CommandMenu() {
   const router = useRouter();
+  const m = useMessages();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -30,17 +33,21 @@ export function CommandMenu() {
 
   const commands: Command[] = useMemo(
     () => [
-      { id: "gen", label: "Generate a new workspace", hint: "60s", icon: Sparkles, group: "Actions", href: "/onboarding" },
-      { id: "assistant", label: "Ask your assistant", hint: "G A", icon: Sparkles, group: "Actions", href: "/assistant" },
-      { id: "brain", label: "Open Second Brain", hint: "G R", icon: Brain, group: "Navigate", href: "/brain" },
-      { id: "dash", label: "Go to Dashboard", hint: "G D", icon: LayoutDashboard, group: "Navigate", href: "/dashboard" },
-      { id: "proj", label: "Open Projects", hint: "G P", icon: Boxes, group: "Navigate", href: "/projects" },
-      { id: "crm", label: "Open CRM", hint: "G C", icon: Users, group: "Navigate", href: "/crm" },
-      { id: "fin", label: "Open Finance", hint: "G F", icon: Wallet, group: "Navigate", href: "/finance" },
-      { id: "billing", label: "Billing & plan", icon: CreditCard, group: "Account", href: "/billing" },
-      { id: "settings", label: "Settings", hint: "⌘,", icon: Settings, group: "Account", href: "/settings" },
+      {
+        id: "capture", label: m.command.capture, icon: Plus, group: "actions",
+        action: () => window.dispatchEvent(new Event(OPEN_CAPTURE_EVENT)),
+      },
+      { id: "ask", label: m.command.ask, hint: "G A", icon: Sparkles, group: "actions", href: "/assistant" },
+      { id: "brain", label: m.nav.brain, hint: "G R", icon: Brain, group: "navigate", href: "/brain" },
+      { id: "agent", label: m.nav.agent, hint: "G G", icon: Bot, group: "navigate", href: "/agent" },
+      { id: "dash", label: m.nav.dashboard, hint: "G D", icon: LayoutDashboard, group: "navigate", href: "/dashboard" },
+      { id: "proj", label: m.nav.projects, hint: "G P", icon: Boxes, group: "navigate", href: "/projects" },
+      { id: "crm", label: m.nav.crm, hint: "G C", icon: Users, group: "navigate", href: "/crm" },
+      { id: "fin", label: m.nav.finance, hint: "G F", icon: Wallet, group: "navigate", href: "/finance" },
+      { id: "billing", label: m.nav.billing, hint: "G B", icon: CreditCard, group: "account", href: "/billing" },
+      { id: "settings", label: m.nav.settings, hint: "G S", icon: Settings, group: "account", href: "/settings" },
     ],
-    []
+    [m]
   );
 
   const run = (c?: Command) => {
@@ -105,7 +112,7 @@ export function CommandMenu() {
           />
           <motion.div
             role="dialog"
-            aria-label="Command menu"
+            aria-label={m.command.title}
             className="glass relative w-full max-w-xl overflow-hidden rounded-xl border border-border-strong shadow-lift"
             initial={{ opacity: 0, scale: 0.98, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -119,14 +126,14 @@ export function CommandMenu() {
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search commands…"
+                placeholder={m.command.placeholder}
                 className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted"
               />
               <Kbd>ESC</Kbd>
             </div>
             <ul className="max-h-80 overflow-y-auto p-2">
               {results.length === 0 && (
-                <li className="px-3 py-6 text-center text-sm text-muted-foreground">No results</li>
+                <li className="px-3 py-6 text-center text-sm text-muted-foreground">{m.command.empty}</li>
               )}
               {results.map((c, i) => (
                 <li key={c.id}>
@@ -138,7 +145,7 @@ export function CommandMenu() {
                       i === active ? "bg-surface-2 text-foreground" : "text-muted-foreground"
                     )}
                   >
-                    <c.icon className={cn("h-4 w-4", c.group === "Actions" && "text-accent")} />
+                    <c.icon className={cn("h-4 w-4", c.group === "actions" && "text-accent")} />
                     <span className="flex-1">{c.label}</span>
                     {c.hint && <span className="text-[0.7rem] text-muted">{c.hint}</span>}
                     {i === active && <CornerDownLeft className="h-3.5 w-3.5 text-muted" />}

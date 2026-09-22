@@ -1,15 +1,19 @@
 import { NotionClient } from "./client";
 import { selectBlueprints } from "./blueprint";
-import type { OnboardingAnswers } from "@/lib/onboarding";
-
-export type GenerationStep =
-  | "verify" | "databases" | "relations" | "dashboards"
-  | "templates" | "automations" | "seed" | "assistant" | "done";
+import type { GenerationStep } from "./phases";
+import type { AreaId } from "@/lib/onboarding";
 
 export interface GenerationEvent {
-  step: GenerationStep;
-  label: string;
+  step: GenerationStep | "done";
   progress: number; // 0..1
+  /** The database being created, during the `databases` step. */
+  db?: string;
+}
+
+/** What the generator needs to know about the person. */
+export interface GenerationInput {
+  name: string | null;
+  areas: readonly AreaId[];
 }
 
 export interface WorkspaceManifest {
@@ -20,7 +24,10 @@ export interface WorkspaceManifest {
 
 /**
  * Orchestrates a full workspace build against the Notion API.
- * Deterministic order, idempotent-friendly, emits progress for the UI.
+ * Deterministic order, emits progress for the UI.
+ *
+ * Not idempotent: every run creates a fresh set of databases. The caller is
+ * responsible for not running it twice by accident.
  *
  * Relations are wired in a second pass because a relation property needs its
  * target database to already exist.
@@ -28,25 +35,25 @@ export interface WorkspaceManifest {
 export async function generateWorkspace(opts: {
   token: string;
   rootPageId: string;
-  answers: Partial<OnboardingAnswers>;
+  person: GenerationInput;
   onProgress?: (e: GenerationEvent) => void;
 }): Promise<WorkspaceManifest> {
-  const { token, rootPageId, answers, onProgress } = opts;
+  const { token, rootPageId, person, onProgress } = opts;
   const notion = new NotionClient(token);
-  const emit = (step: GenerationStep, label: string, progress: number) =>
-    onProgress?.({ step, label, progress });
+  const emit = (step: GenerationEvent["step"], progress: number, db?: string) =>
+    onProgress?.({ step, progress, db });
 
-  emit("verify", "Verifying access", 0.05);
+  emit("verify", 0.05);
   await notion.me();
 
-  const plan = selectBlueprints(answers);
+  const plan = selectBlueprints(person.areas);
   const idByKey = new Map<string, string>();
   const databases: WorkspaceManifest["databases"] = [];
 
   // Pass 1 — create databases without relation properties.
   for (let i = 0; i < plan.length; i++) {
     const bp = plan[i];
-    emit("databases", `Creating ${bp.title}`, 0.1 + (i / plan.length) * 0.4);
+    emit("databases", 0.1 + (i / plan.length) * 0.4, bp.title);
     // Relation properties live on `bp.relations` and are added in pass 2,
     // once every target database exists.
     const created = await notion.createDatabase({
@@ -60,7 +67,7 @@ export async function generateWorkspace(opts: {
   }
 
   // Pass 2 — wire relations now that all targets exist.
-  emit("relations", "Wiring relations & rollups", 0.55);
+  emit("relations", 0.55);
   for (const bp of plan) {
     if (!bp.relations) continue;
     const dbId = idByKey.get(bp.key)!;
@@ -70,21 +77,18 @@ export async function generateWorkspace(opts: {
     }
   }
 
-  emit("dashboards", "Composing dashboards", 0.7);
+  emit("home", 0.7);
   await createHomeDashboard(notion, rootPageId, databases);
 
-  emit("seed", "Adding starter content", 0.85);
-  await seedStarters(notion, idByKey, answers);
-
-  emit("assistant", "Training your assistant", 0.95);
-  // Persist manifest + assistant config in Supabase (handled by caller).
+  emit("seed", 0.85);
+  await seedStarters(notion, idByKey, person);
 
   const manifest: WorkspaceManifest = {
     rootPageId,
     databases,
     createdAt: new Date().toISOString(),
   };
-  emit("done", "Your workspace is ready", 1);
+  emit("done", 1);
   return manifest;
 }
 
@@ -101,14 +105,15 @@ async function createHomeDashboard(
       {
         object: "block",
         type: "heading_2",
-        heading_2: { rich_text: [{ text: { content: "This week" } }] },
+        heading_2: { rich_text: [{ text: { content: "Built by LifeOS" } }] },
       },
       {
         object: "block",
         type: "callout",
         callout: {
           icon: { emoji: "✨" },
-          rich_text: [{ text: { content: "Your LifeOS is live. Linked views appear below." } }],
+          // Said "Linked views appear below" — no views were ever created.
+          rich_text: [{ text: { content: "Your databases sit alongside this page, in the page you shared with LifeOS." } }],
         },
       },
     ],
@@ -118,14 +123,14 @@ async function createHomeDashboard(
 async function seedStarters(
   notion: NotionClient,
   idByKey: Map<string, string>,
-  answers: Partial<OnboardingAnswers>
+  person: GenerationInput
 ) {
   const projects = idByKey.get("projects");
   if (projects) {
     await notion.createPage({
       parent: { database_id: projects },
       properties: {
-        Name: { title: [{ text: { content: `Welcome, ${answers.name ?? "there"} 👋` } }] },
+        Name: { title: [{ text: { content: person.name ? `Welcome, ${person.name} 👋` : "Welcome 👋" } }] },
         Status: { select: { name: "In progress" } },
         Priority: { select: { name: "High" } },
       },

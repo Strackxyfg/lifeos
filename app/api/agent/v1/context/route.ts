@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateRunner } from "@/lib/agent/token";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { computeSnapshot } from "@/lib/data/workspace";
+import { readProfileAnswers } from "@/lib/onboarding";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,13 +21,16 @@ export async function GET(req: Request) {
   const db = createAdminClient();
   const scope = (t: string) => db.from(t).select("*").eq("user_key", auth.userKey);
 
-  const [projects, deals, transactions, tasks, brain, policy] = await Promise.all([
+  const [projects, deals, transactions, tasks, brain, policy, profile] = await Promise.all([
     scope("lifeos_projects"),
     scope("lifeos_deals"),
     scope("lifeos_transactions"),
     scope("lifeos_tasks"),
     scope("lifeos_brain_items"),
     db.from("agent_policies").select("*").eq("user_key", auth.userKey).maybeSingle(),
+    // Before migration 007 the table is missing: `data` is null and the
+    // profile is simply absent, like for someone who skipped onboarding.
+    db.from("lifeos_profiles").select("name, profession, answers").eq("user_key", auth.userKey).maybeSingle(),
   ]);
 
   const rows = {
@@ -45,6 +49,14 @@ export async function GET(req: Request) {
   });
 
   return NextResponse.json({
+    // Who the person is, as told at onboarding.
+    profile: profile.data
+      ? {
+          name: profile.data.name,
+          profession: profile.data.profession,
+          areas: readProfileAnswers(profile.data.answers).areas,
+        }
+      : null,
     snapshot,
     brain: rows.brain.map((b) => ({
       id: b.id, category: b.category, kind: b.kind,

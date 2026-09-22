@@ -78,9 +78,36 @@ export interface Dataset {
 
 export type Collection = keyof Dataset;
 
+/**
+ * Who the person is, as told during onboarding and edited in Settings.
+ *
+ * One row per person, not a collection. Goals and first thoughts are *not*
+ * kept here: they become notes in the brain, where the person can edit or
+ * delete them. A copy in the profile would outlive that deletion and keep
+ * feeding the assistant something the person had removed.
+ */
+export interface DbProfile {
+  userKey: string;
+  name: string | null;
+  profession: string | null;
+  /** Structured answers that have no home in the brain — see `ProfileAnswers`. */
+  answers: Record<string, unknown>;
+  /** When onboarding first completed. Never moved by a re-run. */
+  onboardedAt: string | null;
+  updatedAt: string;
+}
+
+export type ProfilePatch = Partial<Pick<DbProfile, "name" | "profession" | "answers" | "onboardedAt">>;
+
 /** The contract both adapters implement. */
 export interface Store {
   readonly backend: "supabase" | "local";
+  /** The person's profile, or null if they have none yet. */
+  getProfile(userKey: string): Promise<DbProfile | null>;
+  /** Creates or updates the profile; fields absent from `patch` are kept. */
+  saveProfile(userKey: string, patch: ProfilePatch): Promise<DbProfile>;
+  /** Erases everything the person owns: every collection, and the profile. */
+  clear(userKey: string): Promise<void>;
   list<C extends Collection>(userKey: string, collection: C): Promise<Dataset[C]>;
   insert<C extends Collection>(
     userKey: string,

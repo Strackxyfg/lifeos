@@ -6,6 +6,7 @@ import { loadBrainView } from "@/lib/brain/load";
 import { buildBrainContext } from "@/lib/brain/context";
 import { computeFocus } from "@/lib/brain/focus";
 import { contextLabels, focusReasonText } from "@/lib/brain/labels";
+import { getProfile } from "@/lib/user/profile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,7 +70,14 @@ export async function POST(req: Request) {
     return streamText(text, "none");
   }
 
-  const context = buildBrainContext({ notes, links, question, now, labels: contextLabels(m, locale) });
+  // Who is asking: the answers they gave at onboarding, kept on the profile.
+  const profile = await getProfile();
+  const person = {
+    name: profile.name === "there" ? undefined : profile.name,
+    profession: profile.profession,
+    areas: profile.areas.map((a) => m.onboarding.areas[a]),
+  };
+  const context = buildBrainContext({ notes, links, question, now, labels: contextLabels(m, locale), person });
   const grounding = [
     "You are the user's second brain — an extension of their own thinking, not a generic assistant.",
     "Below is what they have written in it. Ground every answer in these notes and refer to a note by its title in quotes when you rely on it.",

@@ -22,6 +22,10 @@ export function focusReasonText(r: FocusReason, m: Messages, locale: Locale): st
 
 export function contextLabels(m: Messages, locale: Locale): ContextLabels {
   return {
+    about: m.assistant.contextAbout,
+    name: m.assistant.aboutName,
+    work: m.assistant.aboutWork,
+    areas: m.assistant.aboutAreas,
     goals: m.brain.cat.goals.label,
     focus: m.brain.focusTitle,
     relevant: m.assistant.contextRelevant,

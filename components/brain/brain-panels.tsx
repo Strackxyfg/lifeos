@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, Check, Circle, History, Sparkles, Target } from "lucide-react";
+import { ArrowLeft, ArrowRight, Brain, Check, Circle, History, Sparkles, Target } from "lucide-react";
 import { categories, categoryById, type BrainCategoryId } from "@/lib/data/brain";
 import type { BrainNote } from "@/lib/brain/graph";
 import type { FocusEntry } from "@/lib/brain/focus";
@@ -92,6 +93,23 @@ export function Overview({
 
   return (
     <motion.div {...enter}>
+      {notes.length === 0 && (
+        // A brand-new account, or one that skipped onboarding: say how to
+        // start rather than showing six empty regions.
+        <section className="mb-6 rounded-xl border border-accent/30 bg-accent/5 p-4">
+          <p className="flex items-center gap-2 text-[0.875rem] font-medium">
+            <Brain className="h-4 w-4 text-accent" /> {m.brain.emptyTitle}
+          </p>
+          <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-muted-foreground">{m.brain.emptyBody}</p>
+          <Link
+            href="/onboarding"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-[0.8125rem] font-medium text-background"
+          >
+            {m.brain.emptyCta} <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </section>
+      )}
+
       <section aria-labelledby="focus-title">
         <h2 id="focus-title" className="flex items-center gap-2 text-[0.78rem] font-medium text-accent">
           <Target className="h-3.5 w-3.5" /> {m.brain.focusTitle}

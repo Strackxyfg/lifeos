@@ -5,6 +5,9 @@ import { isCategory, kindForCategory } from "@/lib/data/brain";
 import { isMissingTable } from "@/lib/data/live";
 import { toBrainNotes } from "@/lib/brain/load";
 import { brainIndex, brainSearch } from "@/lib/brain/agent-views";
+import { aboutSection } from "@/lib/brain/context";
+import { contextLabels } from "@/lib/brain/labels";
+import { readProfileAnswers } from "@/lib/onboarding";
 import { canonicalPair, liveLinks, sameLink } from "@/lib/brain/graph";
 import { computeSnapshot } from "@/lib/data/workspace";
 import { snapshotFacts } from "@/lib/ai/insights";
@@ -60,13 +63,35 @@ export async function executeCapability(
     return { notes, links };
   };
 
+  // Who the person is, from onboarding — so the agent on Telegram knows what
+  // the assistant in the app knows. Optional until migration 007 has run.
+  const loadAbout = async () => {
+    try {
+      const p = await store.getProfile(userKey);
+      if (!p) return null;
+      const en = dictionaries.en;
+      return aboutSection(
+        {
+          name: p.name ?? undefined,
+          profession: p.profession ?? undefined,
+          areas: readProfileAnswers(p.answers).areas.map((a) => en.onboarding.areas[a]),
+        },
+        contextLabels(en, "en")
+      );
+    } catch (e) {
+      if (!isMissingTable(e)) throw e;
+      return null;
+    }
+  };
+
   try {
     switch (capabilityId) {
       // Reads used to answer "Read granted." with nothing attached — the agent
       // was allowed to read the brain and given no way to. They return data now.
       case "brain.read": {
-        const { notes, links } = await loadBrain();
-        return { ok: true, detail: `Read ${notes.length} notes.`, data: brainIndex(notes, links) };
+        const [{ notes, links }, about] = await Promise.all([loadBrain(), loadAbout()]);
+        const index = brainIndex(notes, links);
+        return { ok: true, detail: `Read ${notes.length} notes.`, data: about ? `${about}\n\n${index}` : index };
       }
 
       case "brain.search": {

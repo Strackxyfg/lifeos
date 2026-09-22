@@ -528,6 +528,10 @@ import { buildBrainContext, type ContextLabels } from "@/lib/brain/context";
 
 describe("assistant context", () => {
   const labels: ContextLabels = {
+    about: "About",
+    name: "Name:",
+    work: "Work:",
+    areas: "Areas:",
     goals: "Goals",
     focus: "Focus",
     relevant: "Relevant",
@@ -577,6 +581,30 @@ describe("assistant context", () => {
     const c = ctx("LinkedIn", 120);
     expect(c.length).toBeLessThanOrEqual(120);
     expect(c).toContain("## Goals");
+  });
+
+  const person = { name: "Camille", profession: "Fondatrice d'une agence", areas: ["Clients & ventes"] };
+
+  it("starts with who the person is", () => {
+    const c = buildBrainContext({ notes: brain, links: [], question: "x", now: NOW, labels, person });
+    expect(c.startsWith("## About\n- Name: Camille\n- Work: Fondatrice d'une agence\n- Areas: Clients & ventes")).toBe(true);
+  });
+
+  it("keeps who they are when the budget forces sections out", () => {
+    const c = buildBrainContext({ notes: brain, links: [], question: "LinkedIn", now: NOW, labels, person, budget: 150 });
+    expect(c.length).toBeLessThanOrEqual(150);
+    expect(c).toContain("Camille");
+  });
+
+  it("knows the person even before they have written a note", () => {
+    const c = buildBrainContext({ notes: [], links: [], question: "x", now: NOW, labels, person });
+    expect(c).toContain("Camille");
+    expect(c).toContain("EMPTY");
+  });
+
+  it("leaves out what the profile does not say, rather than inventing it", () => {
+    const c = buildBrainContext({ notes: brain, links: [], question: "x", now: NOW, labels, person: { areas: [] } });
+    expect(c).not.toContain("## About");
   });
 });
 

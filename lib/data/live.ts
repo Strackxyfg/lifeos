@@ -3,19 +3,9 @@ import { cache } from "react";
 import { getStore, getUserKey } from "@/lib/db/store";
 import { computeSnapshot, type WorkspaceSnapshot } from "./workspace";
 import type { Dataset, DbBrainLink } from "@/lib/db/types";
+import { isMissingTable } from "@/lib/db/errors";
 
-/**
- * A table that a pending migration will create — as opposed to a real failure.
- *
- * Code deploys the moment it is pushed; migrations are applied by hand. In
- * between, the new table does not exist, and treating that like any other
- * error would take down every page that reads it. Postgres says 42P01,
- * PostgREST says PGRST205 / "schema cache".
- */
-export function isMissingTable(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /PGRST205|42P01|schema cache|does not exist/i.test(msg);
-}
+export { isMissingTable };
 
 /**
  * The second brain's links, or an explicit "not available yet".

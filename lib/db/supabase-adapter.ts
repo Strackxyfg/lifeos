@@ -1,7 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRlsClient } from "@/lib/supabase/rls";
-import type { Collection, Dataset, Store } from "./types";
+import type { Collection, Dataset, DbProfile, ProfilePatch, Store } from "./types";
 import { seedDataset, shouldSeed } from "./seed";
+import { isMissingTable } from "./errors";
 
 /**
  * All user data goes through the request-scoped RLS client, so Postgres
@@ -23,6 +24,24 @@ const TABLE: Record<Collection, string> = {
   brain: "lifeos_brain_items",
   links: "lifeos_brain_links",
 };
+
+/** One row per person, keyed by `user_key` (migration 007). */
+const PROFILE_TABLE = "lifeos_profiles";
+
+/**
+ * Erasure order. Links first because they point at notes; the foreign key
+ * would cascade anyway, but relying on that silently is how a future schema
+ * change leaves orphans behind.
+ */
+const ERASE_ORDER: string[] = [
+  TABLE.links,
+  TABLE.brain,
+  TABLE.tasks,
+  TABLE.transactions,
+  TABLE.deals,
+  TABLE.projects,
+  PROFILE_TABLE,
+];
 
 /** camelCase (TS) → snake_case (Postgres). */
 function toColumn(key: string): string {
@@ -159,6 +178,38 @@ class SupabaseStore implements Store {
       .eq("user_key", userKey);
 
     if (error) throw new Error(`[supabase] remove ${collection}: ${error.message}`);
+  }
+
+  async getProfile(userKey: string): Promise<DbProfile | null> {
+    const db = await client();
+    const { data, error } = await db.from(PROFILE_TABLE).select("*").eq("user_key", userKey).maybeSingle();
+    if (error) throw new Error(`[supabase] profile ${error.code ?? ""}: ${error.message}`);
+    return data ? fromRow<DbProfile>(data) : null;
+  }
+
+  async saveProfile(userKey: string, patch: ProfilePatch): Promise<DbProfile> {
+    const db = await client();
+    // Only the fields present in the patch are sent, so the upsert's
+    // ON CONFLICT DO UPDATE touches only those columns and keeps the rest.
+    const present = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+    const { data, error } = await db
+      .from(PROFILE_TABLE)
+      .upsert(toRow({ ...present, userKey, updatedAt: new Date().toISOString() }), { onConflict: "user_key" })
+      .select()
+      .single();
+    if (error) throw new Error(`[supabase] save profile ${error.code ?? ""}: ${error.message}`);
+    return fromRow<DbProfile>(data);
+  }
+
+  async clear(userKey: string): Promise<void> {
+    const db = await client();
+    for (const table of ERASE_ORDER) {
+      const { error } = await db.from(table).delete().eq("user_key", userKey);
+      // A table a pending migration will create holds nothing to erase.
+      if (error && !isMissingTable(`${error.code ?? ""} ${error.message}`)) {
+        throw new Error(`[supabase] clear ${table}: ${error.message}`);
+      }
+    }
   }
 }
 

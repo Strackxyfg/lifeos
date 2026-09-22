@@ -1,13 +1,15 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Collection, Dataset, Store } from "./types";
+import type { Collection, Dataset, DbProfile, ProfilePatch, Store } from "./types";
 import { seedDataset, shouldSeed, EMPTY_DATASET } from "./seed";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const DATA_FILE = path.join(DATA_DIR, "lifeos.json");
 
-type FileShape = Record<string, Dataset>;
+/** Per person: their collections, plus the profile that is not a collection. */
+type UserRecord = Dataset & { profile?: DbProfile };
+type FileShape = Record<string, UserRecord>;
 
 /**
  * File-backed store used when Supabase env vars are absent.
@@ -34,6 +36,17 @@ class LocalStore implements Store {
   private async writeFile(data: FileShape): Promise<void> {
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
+  }
+
+  /**
+   * A read that waits for pending writes. Reading the file directly could see
+   * it half-written by a concurrent mutation, fail to parse, and report an
+   * empty store.
+   */
+  private read<T>(fn: (data: FileShape) => T): Promise<T> {
+    const next = this.queue.then(async () => fn(await this.readFile()));
+    this.queue = next.catch(() => undefined);
+    return next;
   }
 
   /** Runs a read-modify-write atomically with respect to other mutations. */
@@ -114,6 +127,37 @@ class LocalStore implements Store {
         const links = set.links as unknown as { fromId: string; toId: string }[];
         set.links = links.filter((l) => l.fromId !== id && l.toId !== id) as unknown as { id: string }[];
       }
+    });
+  }
+
+  async getProfile(userKey: string): Promise<DbProfile | null> {
+    return this.read((data) => data[userKey]?.profile ?? null);
+  }
+
+  async saveProfile(userKey: string, patch: ProfilePatch): Promise<DbProfile> {
+    return this.mutate((data) => {
+      const record = this.ensure(data, userKey) as UserRecord;
+      const present = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+      const profile: DbProfile = {
+        name: null,
+        profession: null,
+        answers: {},
+        onboardedAt: null,
+        ...record.profile,
+        ...present,
+        userKey,
+        updatedAt: new Date().toISOString(),
+      };
+      record.profile = profile;
+      return profile;
+    });
+  }
+
+  async clear(userKey: string): Promise<void> {
+    // Dropping the record rather than emptying it: the next read then starts
+    // the person from scratch exactly as a first visit would.
+    await this.mutate((data) => {
+      delete data[userKey];
     });
   }
 }

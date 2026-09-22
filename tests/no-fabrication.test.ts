@@ -23,6 +23,12 @@ const FORBIDDEN: { what: string; pattern: RegExp }[] = [
   { what: "a fake renewal date", pattern: /Renews August/ },
   { what: "the fabricated habit streak", pattern: /habitStreak|\b23-day\b|série de 23/ },
   { what: "an invented weekly score", pattern: /68\s?% (on-track|dans les temps)/ },
+  { what: "a hardcoded timezone shown as the user's", pattern: /America\/Los_Angeles/ },
+  {
+    what: "build steps the Notion generator never performed",
+    pattern: /Connecting calendars|Training your AI assistant|Setting up automations|Computing KPIs/,
+  },
+  { what: "a simulated build presented as progress", pattern: /mode: "simulated"/ },
   {
     what: "a hardcoded priority presented as analysis",
     pattern: /investor deck is your only|deck investisseurs est votre seul|close the three warm leads|closez les trois leads/i,

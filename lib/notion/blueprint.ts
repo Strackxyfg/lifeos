@@ -1,5 +1,5 @@
 import type { NotionPropertySchema } from "./client";
-import type { OnboardingAnswers } from "@/lib/onboarding";
+import type { AreaId } from "@/lib/onboarding";
 
 /**
  * The LifeOS blueprint layer.
@@ -155,14 +155,18 @@ export const blueprints: Record<string, DatabaseBlueprint> = {
   },
 };
 
-/** Resolve which blueprints to build for a given user. Deterministic + testable. */
-export function selectBlueprints(a: Partial<OnboardingAnswers>): DatabaseBlueprint[] {
+/**
+ * Which databases to build: a core set, plus one module per area of life the
+ * person said the brain should help with. Deterministic, so the count shown
+ * before a build is the count the build creates.
+ */
+export function selectBlueprints(areas: readonly AreaId[]): DatabaseBlueprint[] {
   const keys = new Set<string>([
     "projects", "tasks", "goals", "weeklyPlanner", "habits", "journal",
   ]);
-  if (a.needsCrm) keys.add("crm");
-  if (a.needsFinance) keys.add("finance");
-  if (a.needsLearning) { keys.add("knowledge"); keys.add("reading"); }
-  if (a.goals?.includes("Team & meetings") || (a.team && a.team !== "Solo")) keys.add("meetings");
+  if (areas.includes("clients")) keys.add("crm");
+  if (areas.includes("money")) keys.add("finance");
+  if (areas.includes("learning")) { keys.add("knowledge"); keys.add("reading"); }
+  if (areas.includes("team")) keys.add("meetings");
   return Array.from(keys).map((k) => blueprints[k]);
 }

@@ -1,33 +1,48 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { setProfile } from "@/lib/user/profile";
+import { getAuthenticatedUserKey } from "@/lib/db/store";
+import { loadStoredProfile, saveProfile } from "@/lib/user/profile";
+import { AREA_IDS, LIMITS } from "@/lib/onboarding";
 
 const schema = z.object({
-  name: z.string().min(1, "Name can't be empty.").max(60),
-  profession: z.string().max(80).optional(),
+  name: z.string().trim().min(1).max(LIMITS.name),
+  profession: z.string().trim().max(LIMITS.profession),
+  areas: z.array(z.enum(AREA_IDS)).max(AREA_IDS.length),
 });
 
-export type ProfileState = { ok: boolean; message?: string; at?: number };
+export type ProfileState = { ok: boolean; code?: "unauthorized" | "invalid" | "failed"; at?: number };
 
 /**
- * Persist profile edits from Settings. Writes the same profile cookie the whole
- * app reads via getProfile(), so the greeting + sidebar update on refresh.
- * `at` makes each success a distinct state so repeated saves re-trigger the UI.
+ * Saves profile edits from Settings: to the database (so they follow the
+ * person across devices) and to the display cookie. `at` makes each result a
+ * distinct state, so saving twice in a row still shows feedback twice.
  */
-export async function updateProfile(
-  _prev: ProfileState,
-  formData: FormData
-): Promise<ProfileState> {
+export async function updateProfile(_prev: ProfileState, formData: FormData): Promise<ProfileState> {
+  const at = Date.now();
+  const userKey = await getAuthenticatedUserKey();
+  if (!userKey) return { ok: false, code: "unauthorized", at };
+
   const parsed = schema.safeParse({
-    name: formData.get("name"),
-    profession: (formData.get("profession") as string) || undefined,
+    name: formData.get("name") ?? "",
+    profession: formData.get("profession") ?? "",
+    areas: formData.getAll("areas"),
   });
+  if (!parsed.success) return { ok: false, code: "invalid", at };
+  const { name, profession, areas } = parsed.data;
 
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Check your details.", at: Date.now() };
+  try {
+    const prior = await loadStoredProfile();
+    await saveProfile(userKey, {
+      name,
+      profession: profession || null,
+      answers: { ...(prior?.answers ?? {}), areas },
+    });
+    revalidatePath("/", "layout");
+    return { ok: true, at };
+  } catch (err) {
+    console.error("[profile] save failed", err);
+    return { ok: false, code: "failed", at };
   }
-
-  await setProfile({ name: parsed.data.name, profession: parsed.data.profession });
-  return { ok: true, message: "Profile updated", at: Date.now() };
 }

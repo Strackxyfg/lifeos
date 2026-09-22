@@ -17,8 +17,8 @@ export interface NotionConnection {
  *     integration. Far quicker to set up and enough to build into your own
  *     workspace while developing.
  *
- * Returns null when neither is available, in which case generation runs as a
- * clearly-labelled simulation instead of silently pretending to work.
+ * Returns null when neither is available. The Notion export then refuses to
+ * run and says to connect first — it used to play a simulated build instead.
  */
 export async function getNotionConnection(userKey: string): Promise<NotionConnection | null> {
   if (isSupabaseConfigured()) {

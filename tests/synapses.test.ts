@@ -54,7 +54,7 @@ describe("relations", () => {
 
   it("reads rows written before relations had kinds as plain, undirected connections", () => {
     const old = toBrainLink({ id: "1", fromId: "a", toId: "b", reason: null, origin: "suggested" });
-    expect(old).toEqual({ id: "1", fromId: "a", toId: "b", reason: null, origin: "suggested", kind: "related", sourceId: null });
+    expect(old).toEqual({ id: "1", fromId: "a", toId: "b", reason: null, origin: "suggested", kind: "related", sourceId: null, resolvedBy: null });
   });
 
   it("never trusts a malformed row", () => {

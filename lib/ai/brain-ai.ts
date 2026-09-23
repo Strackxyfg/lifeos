@@ -4,6 +4,7 @@ import { extractJson } from "./json";
 import { sanitizeConcepts, type Concept } from "@/lib/brain/concepts";
 import { parseVerdicts, type PairCandidate, type Verdict } from "@/lib/brain/weave";
 import { ATOMIZE_LIMITS, dumpLanguage, prepareDump, sanitizeAtoms, type AtomizeResult } from "@/lib/brain/atomize";
+import { sanitizeOptions, type DecisionOption } from "@/lib/brain/decide";
 import type { NoteLike } from "@/lib/brain/graph";
 import { isCategory, type BrainCategoryId } from "@/lib/data/brain";
 import type { Locale } from "@/lib/i18n/config";
@@ -400,4 +401,54 @@ export async function proposeSteps(input: {
     if (out.length === 5) break;
   }
   return out;
+}
+
+/* ── 4. From a tension to a decision ──────────────────────────────── */
+
+function decideSystem(locale: Locale): string {
+  return [
+    "You help one person decide between two notes of their second brain that pull against each other (A and B).",
+    "Propose 2 or 3 decisions they could take — each concrete, one sentence, written as their own decision",
+    "(\"Je garde…\", \"Je reporte…\", \"I will…\"), under 140 characters.",
+    "- Ground every option in what their notes say: the two notes, what each is connected to, their goals.",
+    "- Never invent a fact, figure, date, price or person that is not in the notes.",
+    "- At least one option should keep something of both sides when the notes allow it.",
+    "- If the notes do not say enough to decide, make one option the thing to find out first.",
+    "- \"why\" is one short sentence naming the note of theirs that supports the option by what it says — never",
+    "  call a note \"A\" or \"B\": the person will read this later, saved with the decision, without those labels.",
+    `- Write in ${languageOf(locale)}.`,
+    "Answer with JSON only: {\"options\":[{\"title\":\"...\",\"why\":\"...\"}]}",
+  ].join("\n");
+}
+
+export async function proposeDecisions(input: {
+  a: NoteLike;
+  b: NoteLike;
+  /** Why they are in tension, if the connection says. */
+  reason: string | null;
+  aConnected: NoteLike[];
+  bConnected: NoteLike[];
+  goals: NoteLike[];
+  locale: Locale;
+}): Promise<DecisionOption[]> {
+  const { a, b, reason, aConnected, bConnected, goals, locale } = input;
+  const section = (title: string, list: NoteLike[], chars: number) =>
+    list.length ? [title, ...list.map((n) => `- ${describe(n, chars)}`), ""] : [];
+
+  const raw = await completeJson({
+    task: "decide",
+    system: decideSystem(locale),
+    accept: (d) => sanitizeOptions(d).length > 0,
+    user: [
+      `A: ${describe(a, 600)}`,
+      ...section("CONNECTED TO A", aConnected.slice(0, 6), 200),
+      `B: ${describe(b, 600)}`,
+      ...section("CONNECTED TO B", bConnected.slice(0, 6), 200),
+      ...(reason ? [`WHY THEY PULL AGAINST EACH OTHER: ${clip(oneLine(reason), 200)}`, ""] : []),
+      ...section("THEIR OPEN GOALS", goals.slice(0, 5), 0),
+    ].join("\n"),
+    maxTokens: 450,
+    temperature: 0.3,
+  });
+  return sanitizeOptions(extractJson(raw));
 }

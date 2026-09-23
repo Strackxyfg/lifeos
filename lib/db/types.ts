@@ -59,6 +59,10 @@ export interface DbBrainItem extends Owned {
   concepts?: Concept[];
   /** Fingerprint of the text the concepts were read from — see `contentHash`. */
   conceptsHash?: string | null;
+  /** Spaced review (migration 009): the day it is next due, the interval, the last review. */
+  reviewDue?: string | null;
+  reviewInterval?: number | null;
+  reviewedAt?: string | null;
 }
 
 /**
@@ -75,6 +79,8 @@ export interface DbBrainLink extends Owned {
   kind?: RelationKind;
   /** The note a directed relation starts from — one of the two ends, or null. */
   sourceId?: string | null;
+  /** Migration 009: the decision note that resolved this tension. */
+  resolvedBy?: string | null;
 }
 
 /** A pair of notes the person said are not related — never proposed again. */
@@ -131,6 +137,11 @@ export interface Store {
    * off without them.
    */
   supportsSynapses(): Promise<boolean>;
+  /**
+   * Whether migration 009 has been applied: spaced review on notes, and
+   * tensions resolved by a decision.
+   */
+  supportsMemory(): Promise<boolean>;
   list<C extends Collection>(userKey: string, collection: C): Promise<Dataset[C]>;
   insert<C extends Collection>(
     userKey: string,

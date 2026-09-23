@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -13,7 +14,7 @@ import { focusReasonText } from "@/lib/brain/labels";
 import { isUnreviewed, perspective } from "@/lib/brain/relations";
 import type { Theme } from "@/lib/brain/concepts";
 import type { MindMap } from "@/lib/brain/mindmap";
-import { degreeMap } from "@/lib/brain/graph";
+import { degreeMap, openTensions } from "@/lib/brain/graph";
 import { RelationChip, UnreviewedBadge } from "./relation-chip";
 import { fill, plural } from "@/lib/i18n/config";
 import { useLocale, useMessages } from "@/lib/i18n/client";
@@ -99,11 +100,17 @@ export function Overview({
   onConstellation,
   onReview,
   onWeave,
+  onDecide,
+  review,
 }: {
   notes: BrainNote[];
   links: BrainLink[];
   focus: FocusEntry[];
   resurfaced: BrainNote | null;
+  /** Opens the decision view for a tension. */
+  onDecide: (linkId: string) => void;
+  /** Today's review, when the brain can remember answers; it replaces the resurfaced note. */
+  review?: ReactNode;
   themes: Theme[];
   mindmap: MindMap;
   now: Date;
@@ -131,7 +138,7 @@ export function Overview({
     return a && b ? { a, b } : null;
   };
   const toReview = links.filter((l) => isUnreviewed(l.origin) && !l.id.startsWith("temp-")).reverse();
-  const tensions = links.filter((l) => l.kind === "tension");
+  const tensions = openTensions(links);
 
   return (
     <motion.div {...enter}>
@@ -228,6 +235,14 @@ export function Overview({
               return e ? (
                 <li key={l.id} className="rounded-lg border border-border bg-surface p-2.5">
                   <ConnectionLine link={l} a={e.a} b={e.b} onOpen={onOpen} />
+                  <button
+                    type="button"
+                    onClick={() => onDecide(l.id)}
+                    className="mt-2 inline-flex items-center gap-1 rounded border px-1.5 py-px text-[0.68rem] transition-colors hover:bg-[#fb7185]/10"
+                    style={{ borderColor: "#fb718566", color: "#fb7185" }}
+                  >
+                    <Zap className="h-3 w-3" /> {m.brain.decide.action}
+                  </button>
                 </li>
               ) : null;
             })}
@@ -235,7 +250,9 @@ export function Overview({
         </section>
       )}
 
-      {resurfaced && (
+      {review}
+
+      {!review && resurfaced && (
         <section aria-labelledby="resurface-title" className="mt-6">
           <h2 id="resurface-title" className="flex items-center gap-2 text-[0.78rem] font-medium text-muted-foreground">
             <History className="h-3.5 w-3.5" /> {m.brain.resurfaceTitle}

@@ -49,6 +49,7 @@ export function NoteDetail({
   onDismiss,
   onFindLinks,
   onAdoptSteps,
+  onDecide,
 }: {
   note: BrainNote;
   notes: BrainNote[];
@@ -70,6 +71,7 @@ export function NoteDetail({
   onDismiss: (a: string, b: string) => void;
   onFindLinks: (id: string) => Promise<void>;
   onAdoptSteps: (id: string, steps: string[]) => Promise<boolean>;
+  onDecide: (linkId: string) => void;
 }) {
   const m = useMessages();
   const locale = useLocale();
@@ -412,6 +414,26 @@ export function NoteDetail({
                             </button>
                           </div>
                           {link.reason && <p className="mt-1 text-[0.72rem] leading-snug text-muted-foreground">{link.reason}</p>}
+                          {link.kind === "tension" && !isTemp(link.id) && (
+                            link.resolvedBy ? (
+                              <button
+                                type="button"
+                                onClick={() => onOpen(link.resolvedBy!)}
+                                className="mt-1.5 inline-flex items-center gap-1 rounded border border-success/40 px-1.5 py-px text-[0.66rem] text-success hover:bg-success/10"
+                              >
+                                <Check className="h-3 w-3" /> {m.brain.decide.decided}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => onDecide(link.id)}
+                                className="mt-1.5 inline-flex items-center gap-1 rounded border px-1.5 py-px text-[0.66rem] hover:bg-[#fb7185]/10"
+                                style={{ borderColor: "#fb718566", color: "#fb7185" }}
+                              >
+                                {m.brain.decide.action}
+                              </button>
+                            )
+                          )}
                         </div>
                         <button
                           type="button"

@@ -28,6 +28,10 @@ export interface BrainNote extends NoteLike {
   kind: BrainItemKind;
   ai: boolean;
   concepts: Concept[];
+  /** Spaced review (migration 009); absent before it, and on notes never reviewed. */
+  reviewDue?: string | null;
+  reviewInterval?: number | null;
+  reviewedAt?: string | null;
 }
 
 export interface LinkLike {
@@ -39,6 +43,8 @@ export interface LinkLike {
   sourceId?: string | null;
   origin?: LinkOrigin;
   reason?: string | null;
+  /** A tension resolved by this decision note (migration 009). */
+  resolvedBy?: string | null;
 }
 
 /**
@@ -104,6 +110,8 @@ export interface BrainLink extends LinkLike {
   origin: LinkOrigin;
   kind: RelationKind;
   sourceId: string | null;
+  /** The decision note that resolved this tension, if it has been decided. */
+  resolvedBy: string | null;
 }
 
 export function toBrainLink(row: {
@@ -114,6 +122,7 @@ export function toBrainLink(row: {
   origin?: unknown;
   kind?: unknown;
   sourceId?: unknown;
+  resolvedBy?: unknown;
 }): BrainLink {
   const kind = isRelationKind(row.kind) ? row.kind : "related";
   const source = typeof row.sourceId === "string" ? row.sourceId.toLowerCase() : null;
@@ -130,7 +139,14 @@ export function toBrainLink(row: {
       DIRECTED.has(kind) && source && (source === row.fromId.toLowerCase() || source === row.toId.toLowerCase())
         ? source
         : null,
+    // Only a tension is decided.
+    resolvedBy: kind === "tension" && typeof row.resolvedBy === "string" && row.resolvedBy ? row.resolvedBy : null,
   };
+}
+
+/** Tensions that still ask to be decided. */
+export function openTensions<L extends LinkLike & { resolvedBy?: string | null }>(links: L[]): L[] {
+  return links.filter((l) => l.kind === "tension" && !l.resolvedBy);
 }
 
 /* ── Similarity ───────────────────────────────────────────────────── */

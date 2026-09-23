@@ -174,6 +174,7 @@ function fromBrain(kind: InsightKind, s: WorkspaceSnapshot, locale: Locale, d: B
       .join(" ");
     d.focus.forEach((f) => push(act(f)));
     if (tension) push(fr ? `Arbitrer ${q(clip(tension.a, 40))} / ${q(clip(tension.b, 40))}.` : `Decide between ${q(clip(tension.a, 40))} and ${q(clip(tension.b, 40))}.`);
+    if (d.dueForReview) push(fr ? `Revoir ${pl(d.dueForReview, "note", "notes")} dans votre second cerveau.` : `Review ${pl(d.dueForReview, "note", "notes")} in your second brain.`);
     push(fr ? "Capturer ce qui vous passe par la tête avant midi." : "Capture what is on your mind before noon.");
     return { headline, body, actions, source: "computed", generatedAt: new Date().toISOString() };
   }

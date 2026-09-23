@@ -82,6 +82,7 @@ class SupabaseStore implements Store {
    * the migration takes effect without a redeploy.
    */
   private synapses: { value: boolean; until: number } | null = null;
+  private memory: { value: boolean; until: number } | null = null;
 
   async supportsSynapses(): Promise<boolean> {
     if (this.synapses && Date.now() < this.synapses.until) return this.synapses.value;
@@ -93,6 +94,19 @@ class SupabaseStore implements Store {
     ]);
     const value = probes.every((p) => !p.error);
     this.synapses = { value, until: value ? Number.POSITIVE_INFINITY : Date.now() + 60_000 };
+    return value;
+  }
+
+  /** Whether migration 009 is applied — cached like `supportsSynapses`. */
+  async supportsMemory(): Promise<boolean> {
+    if (this.memory && Date.now() < this.memory.until) return this.memory.value;
+    const db = await client();
+    const probes = await Promise.all([
+      db.from(TABLE.brain).select("review_due, review_interval, reviewed_at").limit(1),
+      db.from(TABLE.links).select("resolved_by").limit(1),
+    ]);
+    const value = probes.every((p) => !p.error);
+    this.memory = { value, until: value ? Number.POSITIVE_INFINITY : Date.now() + 60_000 };
     return value;
   }
 

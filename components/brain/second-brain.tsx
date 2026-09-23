@@ -23,6 +23,11 @@ import { ConstellationList, Overview, RegionList, SearchResults, ThemeList, type
 import { NoteDetail, type NotePatch } from "./note-detail";
 import { BrainDump } from "./brain-dump";
 import { BrainAnswer } from "./brain-answer";
+import { ReviewCard } from "./review-card";
+import { TensionDecision, type Decided } from "./tension-decision";
+import { DAILY_REVIEWS, reviewQueue, schedule, type ReviewAnswer } from "@/lib/brain/review";
+import { dayKey } from "@/lib/brain/resurface";
+import { reviewNote } from "@/app/actions/memory";
 import type { ThoughtTrace } from "@/lib/brain/context";
 import { useDictation } from "./use-dictation";
 import { CAPTURED_EVENT, LINKED_EVENT, OPEN_DUMP_EVENT, classifyThought } from "./classify-client";
@@ -50,7 +55,9 @@ type View =
   /** The brain dump, with the text it opens with. */
   | { kind: "dump"; text: string }
   /** A question asked of the brain. */
-  | { kind: "ask"; question: string };
+  | { kind: "ask"; question: string }
+  /** Deciding a tension. */
+  | { kind: "decide"; linkId: string };
 
 /** A paste this long, or on several lines, is a dump rather than one thought. */
 const isDump = (text: string) => text.includes("\n") || text.length > 280;
@@ -83,6 +90,7 @@ export function SecondBrain({
   initialDismissed,
   linksAvailable,
   synapses,
+  memory,
   aiEnabled,
   voiceEnabled,
   initialNoteId,
@@ -98,6 +106,8 @@ export function SecondBrain({
   linksAvailable: boolean;
   /** Migration 008: typed connections, concepts, dismissals. */
   synapses: boolean;
+  /** Migration 009: spaced review, decided tensions. */
+  memory: boolean;
   /** An AI provider is configured. */
   aiEnabled: boolean;
   /** A transcription provider is configured, for voice memos. */
@@ -131,6 +141,8 @@ export function SecondBrain({
   // How the brain read the question being answered, drawn in 3D. `run`
   // restarts the drawing when the person replays it.
   const [trace, setTrace] = useState<{ data: ThoughtTrace; run: number } | null>(null);
+  // Reviews answered since the page opened: today's batch shrinks with them.
+  const [answered, setAnswered] = useState(0);
   // How the neurons are coloured: by region (what a note is) or by
   // constellation (what it belongs with).
   const [colorBy, setColorBy] = useState<"region" | "constellation">("region");
@@ -183,6 +195,11 @@ export function SecondBrain({
   const byId = useMemo(() => new Map(notes.map((n) => [n.id, n])), [notes]);
   const focus = useMemo(() => computeFocus({ notes, links, now }), [notes, links, now]);
   const resurfaced = useMemo(() => pickResurface({ notes, links, now, seed }), [notes, links, now, seed]);
+  const today = dayKey(now);
+  const queue = useMemo(
+    () => reviewQueue({ notes: notes.filter((n) => !n.id.startsWith("temp-")), today, limit: Math.max(0, DAILY_REVIEWS - answered) }),
+    [notes, today, answered]
+  );
   const results = useMemo(() => (query.trim() ? searchNotes(notes, query) : []), [notes, query]);
   const themeList = useMemo(() => findThemes(notes), [notes]);
   // The shape of the brain. Pure and on the device; recomputed only when
@@ -196,6 +213,13 @@ export function SecondBrain({
   );
 
   const openNote = view.kind === "note" ? byId.get(view.id) ?? null : null;
+  const decisionView = useMemo(() => {
+    if (view.kind !== "decide") return null;
+    const link = links.find((l) => l.id === view.linkId);
+    const a = link && byId.get(link.fromId);
+    const b = link && byId.get(link.toId);
+    return link && a && b ? { link, a, b } : null;
+  }, [view, links, byId]);
 
   // A trace belongs to its answer: leaving the answer puts the brain back.
   useEffect(() => {
@@ -308,6 +332,14 @@ export function SecondBrain({
     setQuery("");
     setTrace(null);
     setView({ kind: "ask", question: q });
+    if (window.matchMedia("(max-width: 1279px)").matches) {
+      requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }, []);
+
+  const decide = useCallback((linkId: string) => {
+    setQuery("");
+    setView({ kind: "decide", linkId });
     if (window.matchMedia("(max-width: 1279px)").matches) {
       requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
@@ -507,7 +539,7 @@ export function SecondBrain({
     async (a: string, b: string, origin: "user" | "suggested", reason?: string) => {
       if (!linksAvailable) return toast(m.brain.links.unavailable, "error");
       const [fromId, toId] = canonicalPair(a, b);
-      const temp: BrainLink = { id: tempId(), fromId, toId, reason: reason ?? null, origin, kind: "related", sourceId: null };
+      const temp: BrainLink = { id: tempId(), fromId, toId, reason: reason ?? null, origin, kind: "related", sourceId: null, resolvedBy: null };
       setLinks((p) => [...p, temp]);
       const res = await safe(linkNotes({ a, b, reason, origin }));
       if (res.ok) {
@@ -602,6 +634,35 @@ export function SecondBrain({
     },
     [errorText, locale, m]
   );
+
+  /**
+   * A review answer, applied at once: the note leaves today's queue as soon
+   * as its next date moves. "Rework" opens the note, since that is the point.
+   */
+  const answerReview = useCallback(
+    async (id: string, answer: ReviewAnswer) => {
+      const before = byId.get(id);
+      if (!before) return;
+      const next = schedule(before, answer, today, new Date().toISOString());
+      setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, ...next, done: next.done ?? n.done } : n)));
+      setAnswered((a) => a + 1);
+      if (answer === "rework") setView({ kind: "note", id });
+      const res = await safe(reviewNote(id, answer));
+      if (!res.ok) {
+        setNotes((prev) => prev.map((n) => (n.id === id ? before : n)));
+        setAnswered((a) => Math.max(0, a - 1));
+        toast(errorText(res.code), "error");
+      }
+    },
+    [byId, today, errorText]
+  );
+
+  /** A decision recorded: the note joins the brain, the tension shows as decided, and the decision opens. */
+  const decided = useCallback((d: Decided) => {
+    setNotes((prev) => [d.note, ...prev.map((n) => (d.archived.includes(n.id) ? { ...n, done: true } : n))]);
+    setLinks((prev) => mergeLinks(prev.map((l) => (l.id === d.tension.id ? d.tension : l)), d.links));
+    setView({ kind: "note", id: d.note.id });
+  }, []);
 
   /** The notes a dump added: shown at once, then woven into the rest of the brain. */
   const dumpSaved = useCallback(
@@ -829,6 +890,18 @@ export function SecondBrain({
                   searchRef.current?.focus();
                 }}
               />
+            ) : view.kind === "decide" && decisionView ? (
+              <TensionDecision
+                key={`decide-${view.linkId}`}
+                link={decisionView.link}
+                a={decisionView.a}
+                b={decisionView.b}
+                aiEnabled={aiEnabled}
+                memory={memory}
+                onBack={() => setView({ kind: "overview" })}
+                onOpen={open}
+                onDecided={decided}
+              />
             ) : view.kind === "dump" ? (
               <BrainDump
                 key="dump"
@@ -859,6 +932,7 @@ export function SecondBrain({
                 onDismiss={dismiss}
                 onFindLinks={findLinks}
                 onAdoptSteps={adoptSteps}
+                onDecide={decide}
               />
             ) : openConstellation ? (
               <ConstellationList
@@ -891,6 +965,20 @@ export function SecondBrain({
                 onConstellation={openConstellationView}
                 onReview={review}
                 onWeave={organise}
+                onDecide={decide}
+                review={
+                  memory ? (
+                    <ReviewCard
+                      queue={queue}
+                      byId={byId}
+                      today={today}
+                      answered={answered}
+                      memory={memory}
+                      onAnswer={answerReview}
+                      onOpen={open}
+                    />
+                  ) : undefined
+                }
               />
             )}
           </AnimatePresence>

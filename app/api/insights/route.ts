@@ -5,6 +5,7 @@ import { dictionaries } from "@/lib/i18n/dictionaries";
 import { loadLinks, loadSnapshot } from "@/lib/data/live";
 import { requireUserKey } from "@/lib/auth/require-user";
 import { loadBrainView } from "@/lib/brain/load";
+import { getStore } from "@/lib/db/store";
 import { brainDigest, digestFacts } from "@/lib/brain/digest";
 import { focusReasonText } from "@/lib/brain/labels";
 import {
@@ -31,13 +32,19 @@ export async function POST(req: Request) {
   const locale: Locale = isLocale(body.locale) ? body.locale : "en";
 
   const m = dictionaries[locale];
-  const [snapshot, view, { links: rawLinks }] = await Promise.all([loadSnapshot(), loadBrainView(m), loadLinks()]);
+  const [snapshot, view, { links: rawLinks }, memory] = await Promise.all([
+    loadSnapshot(),
+    loadBrainView(m),
+    loadLinks(),
+    getStore().supportsMemory(),
+  ]);
   // Links as the app reads them, with the creation date the weekly count needs.
   const created = new Map(rawLinks.map((l) => [l.id, l.createdAt]));
   const digest = brainDigest({
     notes: view.notes,
     links: view.links.map((l) => ({ ...l, createdAt: created.get(l.id) })),
     now: new Date(),
+    memory,
   });
   const fallback = computeInsight(kind, snapshot, locale, digest);
 

@@ -161,6 +161,10 @@ class LocalStore implements Store {
     return true;
   }
 
+  async supportsMemory(): Promise<boolean> {
+    return true;
+  }
+
   async clear(userKey: string): Promise<void> {
     // Dropping the record rather than emptying it: the next read then starts
     // the person from scratch exactly as a first visit would.

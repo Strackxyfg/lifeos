@@ -46,6 +46,13 @@ export function toBrainNotes(items: DbBrainItem[], m: Messages): BrainNote[] {
       createdAt: item.createdAt,
       // Stored JSON, so validated on the way out like any other input.
       concepts: sanitizeConcepts(item.concepts),
+      ...(item.reviewDue !== undefined || item.reviewedAt !== undefined
+        ? {
+            reviewDue: typeof item.reviewDue === "string" ? item.reviewDue.slice(0, 10) : null,
+            reviewInterval: typeof item.reviewInterval === "number" ? item.reviewInterval : null,
+            reviewedAt: item.reviewedAt ?? null,
+          }
+        : {}),
     };
   });
 }

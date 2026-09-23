@@ -13,10 +13,11 @@ export const metadata: Metadata = { title: "Second Brain" };
 
 export default async function BrainPage({ searchParams }: { searchParams: Promise<{ note?: string; dump?: string }> }) {
   const m = await getMessages();
-  const [{ notes, links, linksAvailable, dismissed }, userKey, synapses, { note }] = await Promise.all([
+  const [{ notes, links, linksAvailable, dismissed }, userKey, synapses, memory, { note }] = await Promise.all([
     loadBrainView(m),
     getUserKey(),
     getStore().supportsSynapses(),
+    getStore().supportsMemory(),
     searchParams,
   ]);
   const { dump } = await searchParams;
@@ -31,6 +32,7 @@ export default async function BrainPage({ searchParams }: { searchParams: Promis
         initialDismissed={dismissed}
         linksAvailable={linksAvailable}
         synapses={synapses}
+        memory={memory}
         aiEnabled={aiAvailable()}
         // `?note=<id>` opens a note directly: the assistant's sources and the
         // agent's messages link here.

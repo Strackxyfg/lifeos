@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0A0A0B" />
+    <title>LifeOS — hors ligne</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        background: #0a0a0b;
+        color: #e8eef2;
+        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 340px; padding: 24px; text-align: center; }
+      .mark {
+        width: 44px; height: 44px; margin: 0 auto 18px; border-radius: 12px;
+        background: #fafafa; display: grid; place-items: center;
+      }
+      h1 { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+      p { margin: 0 0 4px; color: #9aa4ad; font-size: 13.5px; }
+      .en { margin-top: 14px; }
+      button {
+        margin-top: 20px; padding: 8px 16px; border: 0; border-radius: 10px;
+        background: #fafafa; color: #0a0a0b; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0a0a0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+          <path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" />
+        </svg>
+      </div>
+      <h1>Vous êtes hors ligne</h1>
+      <p>Votre second cerveau vit en ligne, chez vous : il revient dès que la connexion revient.</p>
+      <p class="en" lang="en">You are offline. Your second brain comes back as soon as the connection does.</p>
+      <button type="button" onclick="location.reload()">Réessayer · Retry</button>
+    </main>
+  </body>
+</html>

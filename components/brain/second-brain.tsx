@@ -22,6 +22,8 @@ import { adoptNextSteps, weaveBrain, weaveNotes, type WeaveResult } from "@/app/
 import { ConstellationList, Overview, RegionList, SearchResults, ThemeList, type WeaveState } from "./brain-panels";
 import { NoteDetail, type NotePatch } from "./note-detail";
 import { BrainDump } from "./brain-dump";
+import { DUMP_HANDOFF } from "./share-capture";
+import { hash } from "@/lib/brain/text";
 import { BrainAnswer } from "./brain-answer";
 import { ReviewCard } from "./review-card";
 import { TensionDecision, type Decided } from "./tension-decision";
@@ -179,6 +181,21 @@ export function SecondBrain({
     // `openDump` is stable: it only uses state setters and a ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A long text shared from another app waits in session storage — a URL
+  // could not carry it — and opens here in the dump.
+  useEffect(() => {
+    if (!initialDump) return;
+    try {
+      const shared = sessionStorage.getItem(DUMP_HANDOFF);
+      if (shared) {
+        sessionStorage.removeItem(DUMP_HANDOFF);
+        setView({ kind: "dump", text: shared });
+      }
+    } catch {
+      // Storage unavailable: the dump opens empty.
+    }
+  }, [initialDump]);
 
   // The migration warnings are for whoever operates the workspace, not the
   // user, who sees a plain sentence instead.
@@ -904,7 +921,8 @@ export function SecondBrain({
               />
             ) : view.kind === "dump" ? (
               <BrainDump
-                key="dump"
+                // A new text (a share handed over) starts a new dump.
+                key={`dump-${hash(view.text)}`}
                 initialText={view.text}
                 voiceEnabled={voiceEnabled}
                 onBack={() => setView({ kind: "overview" })}

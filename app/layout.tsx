@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { cn } from "@/lib/utils";
 import { getLocale } from "@/lib/i18n/server";
+import { ServiceWorker } from "@/components/app/service-worker";
 import "./globals.css";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://lifeos.ai";
@@ -54,6 +55,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           }}
         />
         {children}
+        <ServiceWorker />
       </body>
     </html>
   );

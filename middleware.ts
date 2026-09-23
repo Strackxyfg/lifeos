@@ -16,10 +16,12 @@ export async function middleware(req: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+  // A clean login address that says where to come back to, query included:
+  // a shared page or a link to a note survives signing in. The login page
+  // validates it (`safeNext`) before following it.
   const toLogin = () => {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", req.nextUrl.pathname);
+    const url = new URL("/login", req.url);
+    url.searchParams.set("next", req.nextUrl.pathname + req.nextUrl.search);
     return NextResponse.redirect(url);
   };
 
@@ -64,5 +66,7 @@ export const config = {
     // shared demo one.
     "/onboarding/:path*",
     "/generate/:path*",
+    // The share target writes into the brain.
+    "/share/:path*",
   ],
 };

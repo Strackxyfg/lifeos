@@ -25,7 +25,15 @@ const nextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // The microphone is for LifeOS's own voice memos; nothing else
+          // is used, and nothing embedded may ask for it.
+          { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=(self)" },
         ],
+      },
+      {
+        // A new worker must be picked up on the next visit, not a day later.
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, max-age=0" }],
       },
     ];
   },

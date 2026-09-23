@@ -1,4 +1,4 @@
-import { getAI } from "@/lib/ai/client";
+import { ai, aiAvailable } from "@/lib/ai/router";
 import { extractJson } from "@/lib/ai/json";
 import { isLocale, type Locale } from "@/lib/i18n/config";
 import { dictionaries } from "@/lib/i18n/dictionaries";
@@ -41,17 +41,21 @@ export async function POST(req: Request) {
   });
   const fallback = computeInsight(kind, snapshot, locale, digest);
 
-  const ai = getAI();
-  if (!ai) return Response.json(fallback);
+  if (!aiAvailable()) return Response.json(fallback);
 
   try {
-    const completion = await ai.client.chat.completions.create({
-      model: ai.model,
+    const { value } = await ai().complete({
+      task: "insight",
       // Low: the briefing quotes the person's notes, and at 0.5 the model
       // began rewording their titles.
       temperature: 0.2,
-      max_tokens: 400,
-      response_format: { type: "json_object" },
+      maxTokens: 400,
+      json: true,
+      // An answer without a headline and a body is passed to the next model.
+      validate: (text) => {
+        const d = extractJson(text) as Partial<Insight> | null;
+        return !!d?.headline && !!d?.body;
+      },
       messages: [
         { role: "system", content: insightPrompt(kind, locale) },
         {
@@ -63,7 +67,7 @@ export async function POST(req: Request) {
 
     // Parsed defensively: a model that thinks aloud or fences its JSON must
     // not throw the briefing away.
-    const parsed = (extractJson(completion.choices[0]?.message?.content) ?? {}) as Partial<Insight>;
+    const parsed = (extractJson(value) ?? {}) as Partial<Insight>;
 
     // Only trust a well-formed response; otherwise keep the computed one.
     if (!parsed.headline || !parsed.body) return Response.json(fallback);

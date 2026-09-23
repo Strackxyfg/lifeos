@@ -1,4 +1,6 @@
-import { getAI, systemPrompt } from "@/lib/ai/client";
+import { systemPrompt } from "@/lib/ai/client";
+import { ai, aiAvailable } from "@/lib/ai/router";
+import { extractJson } from "@/lib/ai/json";
 import { isLocale, type Locale } from "@/lib/i18n/config";
 import { requireUserKey } from "@/lib/auth/require-user";
 import { CATEGORY_IDS, isCategory } from "@/lib/data/brain";
@@ -25,15 +27,17 @@ export async function POST(req: Request) {
 
   if (!text.trim()) return Response.json({ category: "thoughts", by: "rules" });
 
-  const ai = getAI();
-  if (!ai) return Response.json({ category: heuristicRegion(text), by: "rules" });
+  if (!aiAvailable()) return Response.json({ category: heuristicRegion(text), by: "rules" });
 
   try {
-    const completion = await ai.client.chat.completions.create({
-      model: ai.model,
+    const { value } = await ai().complete({
+      task: "classify",
       temperature: 0,
-      max_tokens: 20,
-      response_format: { type: "json_object" },
+      maxTokens: 20,
+      json: true,
+      // Filing must be quick: a capture waits on it.
+      timeoutMs: 8_000,
+      validate: (t) => isCategory((extractJson(t) as { category?: unknown } | null)?.category),
       messages: [
         {
           role: "system",
@@ -49,8 +53,7 @@ export async function POST(req: Request) {
       ],
     });
 
-    const raw = completion.choices[0]?.message?.content ?? "{}";
-    const picked = (JSON.parse(raw) as { category?: string }).category;
+    const picked = (extractJson(value) as { category?: string } | null)?.category;
     return Response.json(
       isCategory(picked) ? { category: picked, by: "ai" } : { category: heuristicRegion(text), by: "rules" }
     );

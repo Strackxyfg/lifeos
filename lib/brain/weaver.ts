@@ -1,7 +1,7 @@
 import "server-only";
 import { getStore } from "@/lib/db/store";
 import { isMissingTable } from "@/lib/db/errors";
-import { getAI } from "@/lib/ai/client";
+import { aiAvailable } from "@/lib/ai/router";
 import { BrainAIError, extractConcepts, judgePairs } from "@/lib/ai/brain-ai";
 import { contentHash, type Concept } from "./concepts";
 import { canonicalPair, pairKey, toBrainLink, type BrainLink, type BrainNote } from "./graph";
@@ -56,7 +56,7 @@ export async function weave(
   opts: { focusIds?: string[]; locale: Locale; m: Messages }
 ): Promise<WeaveReport> {
   const report: WeaveReport = { ai: true, analysed: 0, concepts: {}, judged: 0, created: [], stopped: null };
-  if (!getAI()) return { ...report, ai: false };
+  if (!aiAvailable()) return { ...report, ai: false };
 
   const store = getStore();
   if (!(await store.supportsSynapses())) return { ...report, stopped: "migration_pending" };

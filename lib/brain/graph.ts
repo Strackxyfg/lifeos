@@ -1,5 +1,5 @@
 import { words } from "./text";
-import { conceptIdf, conceptOverlap, type Concept } from "./concepts";
+import { conceptOverlap, conceptTerms, type Concept } from "./concepts";
 import type { BrainCategoryId, BrainItemKind } from "@/lib/data/brain";
 import { DIRECTED, isLinkOrigin, isRelationKind, type LinkOrigin, type RelationKind } from "./relations";
 
@@ -159,16 +159,116 @@ export interface Match {
   via: "words" | "concepts";
 }
 
+export interface PairMatch {
+  a: string;
+  b: string;
+  score: number;
+  via: "words" | "concepts";
+}
+
 export interface SimilarityIndex {
   /** How related two notes are, or null when neither signal clears its threshold. */
   compare(aId: string, bId: string, floor?: { words: number; concepts: number }): Match | null;
+  /**
+   * Every pair among `ids` (default: all notes) whose score clears the floor,
+   * with exactly the score `compare` gives — found through an inverted index,
+   * so only notes that share a term are ever compared.
+   *
+   * Terms shared by more than `maxDf` notes are too common to *generate*
+   * pairs (a pair still gets their full weight once another term brings it
+   * in). Pairs related only through such terms — the brain's most common
+   * words and concepts — are therefore skipped here; per-note weaving
+   * (`compare` against every note) still finds them.
+   */
+  pairs(opts?: PairsOptions): PairMatch[];
+}
+
+export interface PairsOptions {
+  ids?: string[];
+  floor?: { words: number; concepts: number };
+  maxDf?: number;
+  /**
+   * Keep only the best `top` pairs (score, then pair key, for determinism).
+   * A loose floor lets hundreds of thousands of pairs through in a large
+   * brain; building and sorting all of them cost more than finding them.
+   */
+  top?: number;
+}
+
+/** Strongest first; equal scores in pair-key order, so every run agrees. */
+export function comparePairs(x: PairMatch, y: PairMatch): number {
+  return y.score - x.score || pairKey(x.a, x.b).localeCompare(pairKey(y.a, y.b));
 }
 
 /**
+ * The `k` best items seen, kept in a binary min-heap: the worst kept item is
+ * at the root, so a candidate is compared once and discarded without
+ * allocation when it would not make the cut. `better(x, y)` < 0 when x ranks
+ * above y.
+ */
+export class TopK<T> {
+  private heap: T[] = [];
+  constructor(private readonly k: number, private readonly better: (x: T, y: T) => number) {}
+
+  push(item: T): void {
+    if (this.k <= 0) return;
+    const h = this.heap;
+    if (h.length < this.k) {
+      h.push(item);
+      let i = h.length - 1;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (this.better(h[p], h[i]) >= 0) break; // parent is already the worse one
+        [h[p], h[i]] = [h[i], h[p]];
+        i = p;
+      }
+      return;
+    }
+    if (this.better(item, h[0]) >= 0) return;
+    h[0] = item;
+    let i = 0;
+    for (;;) {
+      const l = 2 * i + 1;
+      const r = l + 1;
+      let worst = i;
+      if (l < h.length && this.better(h[l], h[worst]) > 0) worst = l;
+      if (r < h.length && this.better(h[r], h[worst]) > 0) worst = r;
+      if (worst === i) break;
+      [h[worst], h[i]] = [h[i], h[worst]];
+      i = worst;
+    }
+  }
+
+  /** Best first. */
+  sorted(): T[] {
+    return [...this.heap].sort(this.better);
+  }
+}
+
+interface Indexed {
+  id: string;
+  title: string[];
+  doc: string[];
+  titleSet: Set<string>;
+  docSet: Set<string>;
+  titleW: number;
+  docW: number;
+  cterms: string[];
+  cset: Set<string>;
+  cW: number;
+  concepts: Concept[];
+  surfaces: Map<string, string>;
+}
+
+const DEFAULT_FLOOR = { words: SUGGESTION_THRESHOLD, concepts: CONCEPT_THRESHOLD };
+
+/**
  * Precomputes everything a comparison needs, once per brain: each note's
- * words (title alone, and title plus detail), their rarity across the corpus,
- * and the rarity of each concept. Comparing every pair of a few hundred notes
- * then costs milliseconds.
+ * words (title alone, and title plus detail) as sets, their rarity across the
+ * corpus, each note's total weight, and the same for concepts. A comparison
+ * then allocates nothing, and `pairs` walks an inverted index instead of every
+ * pair: at 4,000 notes the whole-brain scan went from 107 s to well under a
+ * second (measured 2026-09-23).
  *
  * Words use weighted Ochiai similarity, each shared word counting by its
  * rarity (inverse document frequency): two notes that both say "LinkedIn"
@@ -177,68 +277,184 @@ export interface SimilarityIndex {
  * words cannot — synonyms, paraphrase, and the other language.
  */
 export function buildSimilarityIndex(notes: NoteLike[]): SimilarityIndex {
-  const surfaces = new Map<string, Map<string, string>>();
-  const keysOf = (id: string, text: string) => {
-    const ws = words(text);
-    const known = surfaces.get(id) ?? new Map<string, string>();
-    for (const w of ws) if (!known.has(w.key)) known.set(w.key, w.surface);
-    surfaces.set(id, known);
-    return ws.map((w) => w.key);
-  };
-
-  const titles = new Map(notes.map((n) => [n.id, keysOf(n.id, n.title)]));
-  const docs = new Map(notes.map((n) => [n.id, keysOf(n.id, `${n.title} ${n.detail ?? ""}`)]));
-  const concepts = new Map(notes.map((n) => [n.id, n.concepts ?? []]));
-
   const df = new Map<string, number>();
-  for (const ws of docs.values()) for (const w of ws) df.set(w, (df.get(w) ?? 0) + 1);
-  const N = docs.size;
+  const cdf = new Map<string, number>();
+  const raw = notes.map((n) => {
+    const surfaces = new Map<string, string>();
+    const keysOf = (text: string) => {
+      const ws = words(text);
+      for (const w of ws) if (!surfaces.has(w.key)) surfaces.set(w.key, w.surface);
+      return ws.map((w) => w.key);
+    };
+    const title = keysOf(n.title);
+    const doc = keysOf(`${n.title} ${n.detail ?? ""}`);
+    const cterms = conceptTerms(n.concepts);
+    for (const w of doc) df.set(w, (df.get(w) ?? 0) + 1);
+    for (const t of cterms) cdf.set(t, (cdf.get(t) ?? 0) + 1);
+    return { n, title, doc, cterms, surfaces };
+  });
+
+  const N = notes.length;
   const idf = (w: string) => Math.log((N + 1) / ((df.get(w) ?? 0) + 1)) + 1;
-  const weight = (ws: string[]) => ws.reduce((s, w) => s + idf(w), 0);
-  const cidf = conceptIdf(notes);
-
-  const overlap = (a: string[], b: string[]) => {
-    if (a.length === 0 || b.length === 0) return { score: 0, shared: [] as string[] };
-    const set = new Set(a);
-    const shared = b.filter((w) => set.has(w));
-    if (shared.length === 0) return { score: 0, shared };
-    return { score: weight(shared) / Math.sqrt(weight(a) * weight(b)), shared };
+  const cidf = (t: string) => Math.log((N + 1) / ((cdf.get(t) ?? 0) + 1)) + 1;
+  const sum = (xs: string[], f: (x: string) => number) => {
+    let t = 0;
+    for (const x of xs) t += f(x);
+    return t;
   };
 
-  return {
-    compare(aId, bId, floor = { words: SUGGESTION_THRESHOLD, concepts: CONCEPT_THRESHOLD }) {
-      const aDoc = docs.get(aId);
-      const bDoc = docs.get(bId);
-      if (!aDoc || !bDoc || aId === bId) return null;
+  const items: Indexed[] = raw.map(({ n, title, doc, cterms, surfaces }) => ({
+    id: n.id,
+    title,
+    doc,
+    titleSet: new Set(title),
+    docSet: new Set(doc),
+    titleW: sum(title, idf),
+    docW: sum(doc, idf),
+    cterms,
+    cset: new Set(cterms),
+    cW: sum(cterms, cidf),
+    concepts: n.concepts ?? [],
+    surfaces,
+  }));
+  const pos = new Map(items.map((it, i) => [it.id, i]));
 
-      // Related if the titles overlap *or* the full texts do. Scoring the full
-      // text alone meant that the more carefully a note was written up, the
-      // less it connected: a long description dilutes the overlap.
-      const byTitle = overlap(titles.get(aId) ?? [], titles.get(bId) ?? []);
-      const byDoc = overlap(aDoc, bDoc);
-      const lexical = byTitle.score >= byDoc.score ? byTitle : byDoc;
-      const semantic = conceptOverlap(concepts.get(aId), concepts.get(bId), cidf);
+  /** Shared weight of two term lists, iterating the smaller against the other's set. */
+  const sharedWeight = (a: string[], bSet: Set<string>, f: (x: string) => number) => {
+    let t = 0;
+    for (const x of a) if (bSet.has(x)) t += f(x);
+    return t;
+  };
+  const cosine = (shared: number, wa: number, wb: number) => (shared > 0 && wa > 0 && wb > 0 ? shared / Math.sqrt(wa * wb) : 0);
 
-      const wordsOk = lexical.score >= floor.words;
-      const conceptsOk = semantic.score >= floor.concepts;
-      if (!wordsOk && !conceptsOk) return null;
+  /**
+   * The decision `compare` makes, from the three scores: related if the
+   * titles overlap *or* the full texts do (a long description would dilute a
+   * full-text overlap — the more carefully a note was written, the less it
+   * connected), or if the concepts do; concepts win a tie.
+   */
+  const decide = (title: number, doc: number, concept: number, floor: { words: number; concepts: number }) => {
+    const lexical = Math.max(title, doc);
+    const wordsOk = lexical >= floor.words;
+    const conceptsOk = concept >= floor.concepts;
+    if (!wordsOk && !conceptsOk) return null;
+    return conceptsOk && (!wordsOk || concept >= lexical)
+      ? { score: concept, via: "concepts" as const }
+      : { score: lexical, via: "words" as const, byTitle: title >= doc };
+  };
 
-      if (conceptsOk && (!wordsOk || semantic.score >= lexical.score)) {
-        return {
-          score: Math.round(semantic.score * 1000) / 1000,
-          shared: semantic.shared.map((c) => c.l),
-          via: "concepts",
-        };
-      }
-      // Show the first note's own spelling first; it is the one being looked at.
-      const display = (key: string) => surfaces.get(aId)?.get(key) ?? surfaces.get(bId)?.get(key) ?? key;
-      return {
-        score: Math.round(lexical.score * 1000) / 1000,
-        shared: [...lexical.shared].sort((x, y) => idf(y) - idf(x) || x.localeCompare(y)).map(display),
-        via: "words",
+  const round = (x: number) => Math.round(x * 1000) / 1000;
+
+  function compare(aId: string, bId: string, floor = DEFAULT_FLOOR): Match | null {
+    const ia = pos.get(aId);
+    const ib = pos.get(bId);
+    if (ia === undefined || ib === undefined || ia === ib) return null;
+    const A = items[ia];
+    const B = items[ib];
+    if (A.doc.length === 0 || B.doc.length === 0) {
+      // No words on one side: only concepts can relate them.
+      if (!A.cterms.length || !B.cterms.length) return null;
+    }
+    const title = cosine(sharedWeight(A.title, B.titleSet, idf), A.titleW, B.titleW);
+    const doc = cosine(sharedWeight(A.doc, B.docSet, idf), A.docW, B.docW);
+    const concept = cosine(sharedWeight(A.cterms, B.cset, cidf), A.cW, B.cW);
+    const d = decide(title, doc, concept, floor);
+    if (!d) return null;
+
+    if (d.via === "concepts") {
+      // The concepts that carry the shared terms, in the first note's words.
+      const carriers = conceptOverlap(A.concepts, B.concepts, cidf).shared;
+      return { score: round(d.score), shared: carriers.map((c) => c.l), via: "concepts" };
+    }
+    const keys = (d.byTitle ? B.title.filter((w) => A.titleSet.has(w)) : B.doc.filter((w) => A.docSet.has(w)))
+      .sort((x, y) => idf(y) - idf(x) || x.localeCompare(y));
+    // Show the first note's own spelling first; it is the one being looked at.
+    const display = (key: string) => A.surfaces.get(key) ?? B.surfaces.get(key) ?? key;
+    return { score: round(d.score), shared: keys.map(display), via: "words" };
+  }
+
+  function pairs(opts: PairsOptions = {}): PairMatch[] {
+    const floor = opts.floor ?? DEFAULT_FLOOR;
+    const maxDf = opts.maxDf ?? Math.max(40, Math.ceil(4 * Math.sqrt(N)));
+    const scope = (opts.ids ?? items.map((it) => it.id))
+      .map((id) => pos.get(id))
+      .filter((i): i is number => i !== undefined)
+      .sort((a, b) => a - b);
+    const inScope = new Uint8Array(items.length);
+    for (const i of scope) inScope[i] = 1;
+
+    // Postings over the notes in scope, ascending — so each pair is met once, from its smaller end.
+    const post = (field: "title" | "doc" | "cterms") => {
+      const m = new Map<string, number[]>();
+      for (const i of scope) for (const t of items[i][field]) (m.get(t) ?? m.set(t, []).get(t)!).push(i);
+      return m;
+    };
+    const pTitle = post("title");
+    const pDoc = post("doc");
+    const pConcept = post("cterms");
+
+    const accT = new Float64Array(items.length);
+    const accD = new Float64Array(items.length);
+    const accC = new Float64Array(items.length);
+    const touched: number[] = [];
+    const mark = new Uint8Array(items.length);
+    const out: PairMatch[] = [];
+    const best = opts.top !== undefined ? new TopK<PairMatch>(opts.top, comparePairs) : null;
+
+    for (const i of scope) {
+      const A = items[i];
+      const walk = (terms: string[], postings: Map<string, number[]>, acc: Float64Array, weight: (t: string) => number, capped: string[]) => {
+        for (const t of terms) {
+          const list = postings.get(t);
+          if (!list) continue;
+          if (list.length > maxDf) {
+            capped.push(t);
+            continue;
+          }
+          const w = weight(t);
+          for (const j of list) {
+            if (j <= i) continue;
+            acc[j] += w;
+            if (!mark[j]) {
+              mark[j] = 1;
+              touched.push(j);
+            }
+          }
+        }
       };
-    },
-  };
+      const cT: string[] = [];
+      const cD: string[] = [];
+      const cC: string[] = [];
+      walk(A.title, pTitle, accT, idf, cT);
+      walk(A.doc, pDoc, accD, idf, cD);
+      walk(A.cterms, pConcept, accC, cidf, cC);
+
+      for (const j of touched) {
+        const B = items[j];
+        // Common terms did not generate the pair, but they still count in it.
+        let t = accT[j];
+        let dd = accD[j];
+        let c = accC[j];
+        for (const x of cT) if (B.titleSet.has(x)) t += idf(x);
+        for (const x of cD) if (B.docSet.has(x)) dd += idf(x);
+        for (const x of cC) if (B.cset.has(x)) c += cidf(x);
+        const d = decide(cosine(t, A.titleW, B.titleW), cosine(dd, A.docW, B.docW), cosine(c, A.cW, B.cW), floor);
+        if (d) {
+          const pair: PairMatch = { a: A.id, b: B.id, score: round(d.score), via: d.via };
+          if (best) best.push(pair);
+          else out.push(pair);
+        }
+        accT[j] = 0;
+        accD[j] = 0;
+        accC[j] = 0;
+        mark[j] = 0;
+      }
+      touched.length = 0;
+    }
+    return best ? best.sorted() : out;
+  }
+
+  return { compare, pairs };
 }
 
 export interface Suggestion extends Match {
@@ -254,10 +470,12 @@ export function suggestLinks(
   notes: NoteLike[],
   links: LinkLike[],
   limit = 3,
-  dismissed?: ReadonlySet<string>
+  dismissed?: ReadonlySet<string>,
+  /** Built once per brain by the caller, when it compares many notes. Must include `target`. */
+  prebuilt?: SimilarityIndex
 ): Suggestion[] {
   const all = notes.some((n) => n.id === target.id) ? notes : [target, ...notes];
-  const index = buildSimilarityIndex(all);
+  const index = prebuilt ?? buildSimilarityIndex(all);
   const already = neighborsOf(target.id, links);
 
   const out: Suggestion[] = [];

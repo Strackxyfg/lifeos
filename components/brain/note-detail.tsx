@@ -6,7 +6,7 @@ import {
   ArrowLeft, Check, GitMerge, Hash, Link2, Loader2, Plus, RotateCcw, Sparkles, Trash2, Wand2, X,
 } from "lucide-react";
 import { categories, categoryById, type BrainCategoryId } from "@/lib/data/brain";
-import { neighborsOf, suggestLinks, type BrainLink, type BrainNote } from "@/lib/brain/graph";
+import { buildSimilarityIndex, neighborsOf, suggestLinks, type BrainLink, type BrainNote } from "@/lib/brain/graph";
 import { RELATION_KINDS, isUnreviewed, perspective, type RelationKind } from "@/lib/brain/relations";
 import { searchNotes } from "@/lib/brain/search";
 import { proposeNextSteps } from "@/app/actions/weave";
@@ -152,12 +152,13 @@ export function NoteDetail({
         ),
     [links, note.id, byId]
   );
+  // Built once per set of notes, not once per render: opening another note,
+  // or connecting one, reuses it. Notes still being saved are left out.
+  const saved = useMemo(() => notes.filter((n) => !isTemp(n.id)), [notes]);
+  const index = useMemo(() => buildSimilarityIndex(saved), [saved]);
   const suggestions = useMemo(
-    () =>
-      linksAvailable && !isTemp(note.id)
-        ? suggestLinks(note, notes.filter((n) => !isTemp(n.id)), links, 3, dismissed)
-        : [],
-    [linksAvailable, note, notes, links, dismissed]
+    () => (linksAvailable && !isTemp(note.id) ? suggestLinks(note, saved, links, 3, dismissed, index) : []),
+    [linksAvailable, note, saved, links, dismissed, index]
   );
   const candidates = useMemo(() => {
     if (!pick.trim()) return [];

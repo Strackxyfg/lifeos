@@ -126,18 +126,28 @@ function around(ctx: Ctx, id: string, similar: number, goals: number): PairCandi
   return chosen;
 }
 
-/** Every pair above the floor, strongest first, at most six per note. */
+/**
+ * How many of the strongest pairs the whole-brain scan keeps before applying
+ * the per-note cap. A run asks the model about sixteen at most; this leaves
+ * room for hubs whose pairs the cap skips, without holding hundreds of
+ * thousands of weak pairs in memory.
+ */
+const STRONGEST_POOL = 600;
+
+/**
+ * Every pair above the floor, strongest first, at most six per note — from
+ * the inverted index, so only notes that share a term are compared, keeping
+ * only the best few hundred. This was a loop over every pair: 2 s at 500
+ * notes, 107 s at 4,000.
+ */
 function strongest(ctx: Ctx): PairCandidate[] {
-  const all: PairCandidate[] = [];
-  for (let i = 0; i < ctx.alive.length; i++) {
-    for (let j = i + 1; j < ctx.alive.length; j++) {
-      const a = ctx.alive[i];
-      const b = ctx.alive[j];
-      if (ctx.taken.has(pairKey(a.id, b.id))) continue;
-      const m = ctx.index.compare(a.id, b.id, CANDIDATE_FLOOR);
-      if (m) all.push({ a: a.id, b: b.id, score: m.score, via: m.via });
-    }
-  }
+  const alive = ctx.alive.map((n) => n.id);
+  // Pairs already connected or dismissed are excluded before the cut, so
+  // they cannot crowd out the pairs that are actually new.
+  const all: PairCandidate[] = ctx.index
+    .pairs({ ids: alive, floor: CANDIDATE_FLOOR, top: STRONGEST_POOL + ctx.taken.size })
+    .filter((p) => !ctx.taken.has(pairKey(p.a, p.b)))
+    .slice(0, STRONGEST_POOL);
   all.sort((x, y) => y.score - x.score || pairKey(x.a, x.b).localeCompare(pairKey(y.a, y.b)));
   const count = new Map<string, number>();
   return all.filter((p) => {

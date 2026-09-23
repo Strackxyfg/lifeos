@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getAuthenticatedUserKey, getStore } from "@/lib/db/store";
 import { isMissingTable } from "@/lib/db/errors";
-import { getAI } from "@/lib/ai/client";
+import { aiAvailable } from "@/lib/ai/router";
 import { BrainAIError, proposeSteps } from "@/lib/ai/brain-ai";
 import { weave, type WeaveReport } from "@/lib/brain/weaver";
 import { toBrainNotes } from "@/lib/brain/load";
@@ -62,7 +62,7 @@ export async function proposeNextSteps(id: unknown): Promise<BrainResult<string[
   if (!pid.success) return fail("invalid", "Invalid note.");
   const userKey = await getAuthenticatedUserKey();
   if (!userKey) return fail("invalid", "Not signed in.");
-  if (!getAI()) return fail("unavailable", "No AI provider is configured.");
+  if (!aiAvailable()) return fail("unavailable", "No AI provider is configured.");
 
   try {
     const store = getStore();

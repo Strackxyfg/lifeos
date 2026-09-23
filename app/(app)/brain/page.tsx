@@ -4,7 +4,7 @@ import { SecondBrain } from "@/components/brain/second-brain";
 import { ExportMenu } from "@/components/brain/export-menu";
 import { getMessages } from "@/lib/i18n/server";
 import { getStore, getUserKey } from "@/lib/db/store";
-import { getAI } from "@/lib/ai/client";
+import { aiAvailable } from "@/lib/ai/router";
 import { loadBrainView } from "@/lib/brain/load";
 import { hash } from "@/lib/brain/text";
 
@@ -29,7 +29,7 @@ export default async function BrainPage({ searchParams }: { searchParams: Promis
         initialDismissed={dismissed}
         linksAvailable={linksAvailable}
         synapses={synapses}
-        aiEnabled={getAI() !== null}
+        aiEnabled={aiAvailable()}
         // `?note=<id>` opens a note directly: the assistant's sources and the
         // agent's messages link here.
         initialNoteId={typeof note === "string" ? note : null}

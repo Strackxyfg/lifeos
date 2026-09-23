@@ -1,6 +1,5 @@
 import "server-only";
-import type OpenAI from "openai";
-import { getAI } from "./client";
+import { ai, type AITask } from "./router";
 import { extractJson } from "./json";
 import { sanitizeConcepts, type Concept } from "@/lib/brain/concepts";
 import { parseVerdicts, type PairCandidate, type Verdict } from "@/lib/brain/weave";
@@ -13,20 +12,15 @@ import type { Locale } from "@/lib/i18n/config";
  * about, judge whether two notes are really connected, and turn a note into
  * next steps.
  *
- * Every call is bounded — input clipped, output capped, one retry, a timeout —
- * and every answer is parsed defensively. A failure is reported as a typed
- * error, never as an empty success: the caller must be able to say "the model
- * stopped" rather than "there was nothing to find".
+ * Every call is bounded — input clipped, output capped, a timeout — goes
+ * through the router's failover, and every answer is parsed defensively. A
+ * failure is reported as a typed error, never as an empty success: the caller
+ * must be able to say "the model stopped" rather than "there was nothing to
+ * find".
  */
 
-export class BrainAIError extends Error {
-  constructor(
-    public readonly code: "unavailable" | "rate_limit" | "failed",
-    message: string
-  ) {
-    super(message);
-  }
-}
+/** Kept under its old name for callers; the router's error, unchanged. */
+export { AIError as BrainAIError } from "./router";
 
 const REGION: Record<BrainCategoryId, string> = {
   goals: "goal",
@@ -47,51 +41,36 @@ function describe(n: Pick<NoteLike, "category" | "title" | "detail">, detailChar
   return `[${REGION[n.category]}] ${clip(oneLine(n.title), 200)}${detail ? ` — ${clip(detail, detailChars)}` : ""}`;
 }
 
+/**
+ * A JSON completion through the router: the task picks the model tier,
+ * failover and rate-limit rests are handled there. `accept` rejects answers
+ * that parse but are unusable, so the next model is asked instead.
+ */
 async function completeJson(opts: {
+  task: AITask;
   system: string;
   user: string;
   /**
    * Sized to the answer, not generously: providers count the requested
-   * maximum against the per-minute token quota, so an inflated one triggers
-   * rate limits — and the SDK's silent retry turned a 400 ms call into 30 s.
+   * maximum against the per-minute token quota. Reasoning headroom for the
+   * models that need it is added by the router.
    */
   maxTokens: number;
   temperature: number;
+  accept?: (data: unknown) => boolean;
 }): Promise<string> {
-  const ai = getAI();
-  if (!ai) throw new BrainAIError("unavailable", "No AI provider is configured.");
-
-  // Qwen3 models reason aloud unless told not to; that costs tokens and can
-  // cut the JSON off at the output limit.
-  const user = /qwen3/i.test(ai.model) ? `${opts.user}\n\n/no_think` : opts.user;
-  try {
-    const completion = await ai.client.chat.completions.create(
-      {
-        model: ai.model,
-        temperature: opts.temperature,
-        max_tokens: opts.maxTokens,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: opts.system },
-          { role: "user", content: user },
-        ],
-      },
-      // No retry. On a rate limit the SDK would wait out the provider's
-      // retry-after — up to a minute of a spinner — before failing anyway.
-      // Better to say "try again in a minute" at once; nothing is lost.
-      { timeout: 30_000, maxRetries: 0 }
-    );
-    return completion.choices[0]?.message?.content ?? "";
-  } catch (err) {
-    const status = (err as InstanceType<typeof OpenAI.APIError>)?.status;
-    // 413 is how Groq's free tier says "too many tokens for this minute".
-    if (status === 429 || status === 413) {
-      // The provider's own wording ("Limit 8000, Used 6100, Requested 2400")
-      // goes to the logs; the person is told to try again in a minute.
-      throw new BrainAIError("rate_limit", err instanceof Error ? err.message : "The model's rate limit was reached.");
-    }
-    throw new BrainAIError("failed", err instanceof Error ? err.message : "The model call failed.");
-  }
+  const { value } = await ai().complete({
+    task: opts.task,
+    messages: [
+      { role: "system", content: opts.system },
+      { role: "user", content: opts.user },
+    ],
+    maxTokens: opts.maxTokens,
+    temperature: opts.temperature,
+    json: true,
+    validate: opts.accept ? (text) => opts.accept!(extractJson(text)) : (text) => extractJson(text) !== null,
+  });
+  return value;
 }
 
 /* ── 1. What a note is about ──────────────────────────────────────── */
@@ -134,7 +113,9 @@ export async function extractConcepts(
   const known = knownKeys.slice(0, 60);
 
   const raw = await completeJson({
+    task: "concepts",
     system: CONCEPTS_SYSTEM,
+    accept: (d) => Array.isArray((d as { notes?: unknown } | null)?.notes) || Array.isArray(d),
     user: [
       ...(known.length
         ? [`Keys already in use — reuse one exactly when it means the same thing: ${known.join(", ")}`, ""]
@@ -174,7 +155,9 @@ const REGIONS_SYSTEM = [
 export async function classifyTexts(texts: string[]): Promise<(BrainCategoryId | null)[]> {
   if (texts.length === 0) return [];
   const raw = await completeJson({
+    task: "classify",
     system: REGIONS_SYSTEM,
+    accept: (d) => Array.isArray((d as { regions?: unknown } | null)?.regions),
     user: texts.map((t, i) => `${i + 1}. ${clip(oneLine(t), 300)}`).join("\n"),
     maxTokens: 12 * texts.length + 30,
     temperature: 0,
@@ -226,7 +209,9 @@ export async function judgePairs(
   if (lines.length === 0) return [];
 
   const raw = await completeJson({
+    task: "judge",
     system: judgeSystem(locale),
+    accept: (d) => Array.isArray((d as { verdicts?: unknown } | null)?.verdicts) || Array.isArray(d),
     user: lines.join("\n"),
     maxTokens: 60 * pairs.length + 60,
     temperature: 0.1,
@@ -260,7 +245,9 @@ export async function proposeSteps(input: {
     list.length ? [title, ...list.map((n) => `- ${describe(n, chars)}`), ""] : [];
 
   const raw = await completeJson({
+    task: "steps",
     system: stepsSystem(locale),
+    accept: (d) => Array.isArray((d as { steps?: unknown } | null)?.steps) || Array.isArray(d),
     user: [
       "NOTE",
       describe(note, 1200),

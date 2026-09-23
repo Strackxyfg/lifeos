@@ -1,4 +1,5 @@
-import { getAI, systemPrompt } from "@/lib/ai/client";
+import { systemPrompt } from "@/lib/ai/client";
+import { ai, aiAvailable } from "@/lib/ai/router";
 import { isLocale, type Locale } from "@/lib/i18n/config";
 import { dictionaries } from "@/lib/i18n/dictionaries";
 import { requireUserKey } from "@/lib/auth/require-user";
@@ -67,8 +68,7 @@ export async function POST(req: Request) {
   const { notes, links } = await loadBrainView(m);
   const now = new Date();
 
-  const ai = getAI();
-  if (!ai) {
+  if (!aiAvailable()) {
     // No model: tell the truth, then show the part of the brain that answers
     // "what now" without needing one.
     const focus = computeFocus({ notes, links, now, limit: 5 });
@@ -107,11 +107,12 @@ export async function POST(req: Request) {
   ].join("\n");
 
   try {
-    const completion = await ai.client.chat.completions.create({
-      model: ai.model,
-      stream: true,
+    // Failover happens until the first token: if the preferred model is out
+    // of quota, the next one answers and the person never sees the switch.
+    const { tokens, route } = await ai().stream({
+      task: "chat",
       temperature: 0.4,
-      max_tokens: 500,
+      maxTokens: 500,
       messages: [{ role: "system", content: systemPrompt(locale, grounding) }, ...history],
     });
 
@@ -119,10 +120,7 @@ export async function POST(req: Request) {
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          for await (const chunk of completion) {
-            const token = chunk.choices[0]?.delta?.content ?? "";
-            if (token) controller.enqueue(encoder.encode(token));
-          }
+          for await (const token of tokens) controller.enqueue(encoder.encode(token));
         } catch {
           controller.enqueue(encoder.encode(`\n\n${m.assistant.failed}`));
         }
@@ -133,7 +131,7 @@ export async function POST(req: Request) {
     return new Response(stream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
-        "X-AI": ai.provider,
+        "X-AI": route.id,
         "X-Brain-Sources": sourcesHeader(sources, notes),
       },
     });

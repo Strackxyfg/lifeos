@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft, ArrowRight, Brain, Check, Circle, GitMerge, Hash, History, Loader2, Sparkles, Target, X, Zap,
+  ArrowLeft, ArrowRight, Brain, Check, Circle, GitMerge, Hash, History, Loader2, Network, Orbit, Sparkles, Target, Waypoints, X, Zap,
 } from "lucide-react";
 import { categories, categoryById, type BrainCategoryId } from "@/lib/data/brain";
 import type { BrainLink, BrainNote } from "@/lib/brain/graph";
@@ -12,6 +12,8 @@ import { ageInDays } from "@/lib/brain/focus";
 import { focusReasonText } from "@/lib/brain/labels";
 import { isUnreviewed, perspective } from "@/lib/brain/relations";
 import type { Theme } from "@/lib/brain/concepts";
+import type { MindMap } from "@/lib/brain/mindmap";
+import { degreeMap } from "@/lib/brain/graph";
 import { RelationChip, UnreviewedBadge } from "./relation-chip";
 import { fill, plural } from "@/lib/i18n/config";
 import { useLocale, useMessages } from "@/lib/i18n/client";
@@ -87,12 +89,14 @@ export function Overview({
   focus,
   resurfaced,
   themes,
+  mindmap,
   now,
   weave,
   weaveBlocked,
   onOpen,
   onRegion,
   onTheme,
+  onConstellation,
   onReview,
   onWeave,
 }: {
@@ -101,6 +105,7 @@ export function Overview({
   focus: FocusEntry[];
   resurfaced: BrainNote | null;
   themes: Theme[];
+  mindmap: MindMap;
   now: Date;
   weave: WeaveState;
   /** Why automatic connections are off, if they are. */
@@ -108,6 +113,7 @@ export function Overview({
   onOpen: (id: string) => void;
   onRegion: (id: BrainCategoryId) => void;
   onTheme: (key: string) => void;
+  onConstellation: (id: string) => void;
   onReview: (linkId: string, decision: "keep" | "remove") => void;
   onWeave: () => void;
 }) {
@@ -242,6 +248,10 @@ export function Overview({
             />
           </div>
         </section>
+      )}
+
+      {mindmap.constellations.length > 0 && (
+        <MindMapSection map={mindmap} notes={notes} links={links} onOpen={onOpen} onConstellation={onConstellation} />
       )}
 
       {themes.length > 0 && (
@@ -481,6 +491,138 @@ export function ThemeList({
         {list.map((n) => (
           <NoteRow key={n.id} note={n} onOpen={onOpen} hint={m.brain.cat[n.category].label} />
         ))}
+      </div>
+    </motion.div>
+  );
+}
+
+/** Constellations, core ideas and bridges — the shape of the brain. */
+function MindMapSection({
+  map,
+  notes,
+  links,
+  onOpen,
+  onConstellation,
+}: {
+  map: MindMap;
+  notes: BrainNote[];
+  links: BrainLink[];
+  onOpen: (id: string) => void;
+  onConstellation: (id: string) => void;
+}) {
+  const m = useMessages();
+  const locale = useLocale();
+  const t = m.brain.mindmap;
+  const byId = new Map(notes.map((n) => [n.id, n]));
+  const nameOf = new Map(map.constellations.map((c) => [c.id, c.name]));
+  const degree = degreeMap(links);
+  const core = map.core.map((c) => byId.get(c.id)).filter((n): n is BrainNote => !!n).slice(0, 3);
+  const bridges = map.bridges.map((b) => ({ b, n: byId.get(b.id) })).filter((x) => !!x.n).slice(0, 2);
+
+  return (
+    <section aria-labelledby="mindmap-title" className="mt-6">
+      <h2 id="mindmap-title" className="flex items-center gap-2 text-[0.78rem] font-medium text-muted-foreground">
+        <Orbit className="h-3.5 w-3.5" /> {t.title}
+      </h2>
+      <p className="mt-1 text-[0.72rem] leading-snug text-muted-foreground">{t.hint}</p>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {map.constellations.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => onConstellation(c.id)}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-[0.75rem] transition-colors hover:border-border-strong"
+          >
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color }} aria-hidden />
+            <span className="truncate">{c.name}</span>
+            <span className="font-mono text-[0.66rem] text-muted">{c.noteIds.length}</span>
+          </button>
+        ))}
+      </div>
+
+      {core.length > 0 && (
+        <>
+          <p className="mb-1.5 mt-4 flex items-center gap-1.5 text-[0.7rem] uppercase tracking-wider text-muted">
+            <Network className="h-3 w-3" /> {t.core}
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {core.map((n) => (
+              <NoteRow key={n.id} note={n} onOpen={onOpen} hint={plural(locale, degree.get(n.id) ?? 0, t.coreHint)} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {bridges.length > 0 && (
+        <>
+          <p className="mb-1.5 mt-4 flex items-center gap-1.5 text-[0.7rem] uppercase tracking-wider text-muted">
+            <Waypoints className="h-3 w-3" /> {t.bridges}
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {bridges.map(({ b, n }) => (
+              <NoteRow
+                key={b.id}
+                note={n!}
+                onOpen={onOpen}
+                hint={fill(t.bridgeHint, { a: nameOf.get(b.between[0]) ?? "", b: nameOf.get(b.between[1]) ?? "" })}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** One constellation: its notes, most central first. */
+export function ConstellationList({
+  constellation,
+  map,
+  notes,
+  onOpen,
+  onBack,
+}: {
+  constellation: MindMap["constellations"][number];
+  map: MindMap;
+  notes: BrainNote[];
+  onOpen: (id: string) => void;
+  onBack: () => void;
+}) {
+  const m = useMessages();
+  const locale = useLocale();
+  const t = m.brain.mindmap;
+  const byId = new Map(notes.map((n) => [n.id, n]));
+  const core = new Set(map.core.map((c) => c.id));
+  const bridges = new Map(map.bridges.map((b) => [b.id, b]));
+  const nameOf = new Map(map.constellations.map((c) => [c.id, c.name]));
+  const list = constellation.noteIds.map((id) => byId.get(id)).filter((n): n is BrainNote => !!n);
+
+  return (
+    <motion.div {...enter}>
+      <button type="button" onClick={onBack} className="mb-3 flex items-center gap-1.5 text-[0.8rem] text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-3.5 w-3.5" /> {m.brain.overview}
+      </button>
+      <div className="flex items-center gap-2.5">
+        <span className="grid h-9 w-9 place-items-center rounded-lg" style={{ background: `${constellation.color}22`, color: constellation.color }}>
+          <Orbit className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="truncate text-[1.05rem] font-medium tracking-tight">{constellation.name}</h2>
+          <p className="text-[0.75rem] text-muted-foreground">{plural(locale, list.length, t.notes)}</p>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-col gap-1.5">
+        {list.map((n) => {
+          const bridge = bridges.get(n.id);
+          const other = bridge ? bridge.between.find((c) => c !== constellation.id) : undefined;
+          const hint = bridge && other
+            ? fill(t.bridgeHint, { a: constellation.name, b: nameOf.get(other) ?? "" })
+            : core.has(n.id)
+              ? t.core
+              : m.brain.cat[n.category].label;
+          return <NoteRow key={n.id} note={n} onOpen={onOpen} hint={hint} />;
+        })}
       </div>
     </motion.div>
   );

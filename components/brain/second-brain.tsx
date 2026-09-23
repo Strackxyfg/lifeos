@@ -10,6 +10,7 @@ import { computeFocus } from "@/lib/brain/focus";
 import { pickResurface } from "@/lib/brain/resurface";
 import { searchNotes } from "@/lib/brain/search";
 import { themes as findThemes } from "@/lib/brain/concepts";
+import { mindMap } from "@/lib/brain/mindmap";
 import { MAX_RENDERED_NODES, nodePosition } from "@/lib/brain/layout";
 import { RELATION_COLOR, isUnreviewed, perspective, type RelationKind } from "@/lib/brain/relations";
 import { relationText } from "@/lib/brain/labels";
@@ -18,7 +19,7 @@ import {
   type BrainErrorCode, type BrainResult,
 } from "@/app/actions/brain";
 import { adoptNextSteps, weaveBrain, weaveNotes, type WeaveResult } from "@/app/actions/weave";
-import { Overview, RegionList, SearchResults, ThemeList, type WeaveState } from "./brain-panels";
+import { ConstellationList, Overview, RegionList, SearchResults, ThemeList, type WeaveState } from "./brain-panels";
 import { NoteDetail, type NotePatch } from "./note-detail";
 import { useDictation } from "./use-dictation";
 import { CAPTURED_EVENT, LINKED_EVENT, classifyThought } from "./classify-client";
@@ -41,6 +42,7 @@ type View =
   | { kind: "overview" }
   | { kind: "region"; region: BrainCategoryId }
   | { kind: "theme"; key: string }
+  | { kind: "constellation"; id: string }
   | { kind: "note"; id: string };
 
 const tempId = () => `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -108,6 +110,9 @@ export function SecondBrain({
   const [draft, setDraft] = useState("");
   const [capturing, setCapturing] = useState(false);
   const [weaveState, setWeaveState] = useState<WeaveState>({ phase: "idle" });
+  // How the neurons are coloured: by region (what a note is) or by
+  // constellation (what it belongs with).
+  const [colorBy, setColorBy] = useState<"region" | "constellation">("region");
   const searchRef = useRef<HTMLInputElement>(null);
   // A synchronous lock. `capturing` is React state and updates asynchronously,
   // so two quick Enters could both read `false` and save the thought twice.
@@ -153,6 +158,15 @@ export function SecondBrain({
   const resurfaced = useMemo(() => pickResurface({ notes, links, now, seed }), [notes, links, now, seed]);
   const results = useMemo(() => (query.trim() ? searchNotes(notes, query) : []), [notes, query]);
   const themeList = useMemo(() => findThemes(notes), [notes]);
+  // The shape of the brain. Pure and on the device; recomputed only when
+  // notes or connections change.
+  const map = useMemo(() => mindMap({ notes: notes.filter((n) => !n.id.startsWith("temp-")), links }), [notes, links]);
+  const openConstellation =
+    view.kind === "constellation" ? map.constellations.find((c) => c.id === view.id) ?? null : null;
+  const constellationColor = useMemo(
+    () => new Map(map.constellations.flatMap((c) => c.noteIds.map((id) => [id, c.color] as const))),
+    [map]
+  );
 
   const openNote = view.kind === "note" ? byId.get(view.id) ?? null : null;
   const openTheme = useMemo(() => {
@@ -172,18 +186,22 @@ export function SecondBrain({
     () =>
       rendered.map((n) => {
         const cat = categoryById(n.category);
+        const inOpen = openConstellation ? openConstellation.noteIds.includes(n.id) : true;
         return {
           id: n.id,
           title: n.title,
+          // Positions stay by region either way: the brain keeps its shape,
+          // only the colours say which universe a note belongs to.
           position: nodePosition(n.id, cat.anchor),
-          color: cat.color,
+          color: colorBy === "constellation" || openConstellation ? constellationColor.get(n.id) ?? "#64748b" : cat.color,
           done: n.done,
           dim:
             (view.kind === "region" && n.category !== view.region) ||
-            (view.kind === "theme" && !(openTheme?.noteIds.includes(n.id) ?? false)),
+            (view.kind === "theme" && !(openTheme?.noteIds.includes(n.id) ?? false)) ||
+            !inOpen,
         };
       }),
-    [rendered, view, openTheme]
+    [rendered, view, openTheme, openConstellation, colorBy, constellationColor]
   );
   const edges: GraphEdge[] = useMemo(() => {
     const pos = new Map(nodes.map((n) => [n.id, n.position]));
@@ -224,6 +242,11 @@ export function SecondBrain({
   const toggleRegion = useCallback((region: BrainCategoryId) => {
     setQuery("");
     setView((v) => (v.kind === "region" && v.region === region ? { kind: "overview" } : { kind: "region", region }));
+  }, []);
+
+  const openConstellationView = useCallback((id: string) => {
+    setQuery("");
+    setView({ kind: "constellation", id });
   }, []);
 
   const openThemeView = useCallback((key: string) => {
@@ -549,6 +572,29 @@ export function SecondBrain({
           />
         </div>
 
+        {map.constellations.length > 0 && (
+          <div
+            role="group"
+            aria-label={m.brain.mindmap.colorBy}
+            className="absolute right-4 top-4 z-10 flex items-center rounded-lg border border-border bg-surface/80 p-0.5 text-[0.7rem] backdrop-blur"
+          >
+            {(["region", "constellation"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={colorBy === mode}
+                onClick={() => setColorBy(mode)}
+                className={cn(
+                  "rounded-md px-2 py-1 transition-colors",
+                  colorBy === mode ? "bg-surface-2 text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {mode === "region" ? m.brain.mindmap.byRegion : m.brain.mindmap.byConstellation}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* One column, top left: nothing on the stage can overlap it. */}
         <div className="pointer-events-none absolute left-5 top-5 max-w-[70%]">
           <div className="flex items-center gap-2 text-sm font-medium">
@@ -677,6 +723,15 @@ export function SecondBrain({
                 onFindLinks={findLinks}
                 onAdoptSteps={adoptSteps}
               />
+            ) : openConstellation ? (
+              <ConstellationList
+                key={`constellation-${openConstellation.id}`}
+                constellation={openConstellation}
+                map={map}
+                notes={notes}
+                onOpen={open}
+                onBack={back}
+              />
             ) : view.kind === "theme" && openTheme ? (
               <ThemeList key={`theme-${openTheme.key}`} theme={openTheme} notes={notes} onOpen={open} onBack={back} />
             ) : view.kind === "region" ? (
@@ -689,12 +744,14 @@ export function SecondBrain({
                 focus={focus}
                 resurfaced={resurfaced}
                 themes={themeList}
+                mindmap={map}
                 now={now}
                 weave={weaveState}
                 weaveBlocked={weaveBlocked}
                 onOpen={open}
                 onRegion={toggleRegion}
                 onTheme={openThemeView}
+                onConstellation={openConstellationView}
                 onReview={review}
                 onWeave={organise}
               />

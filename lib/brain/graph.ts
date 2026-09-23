@@ -112,6 +112,8 @@ export interface BrainLink extends LinkLike {
   sourceId: string | null;
   /** The decision note that resolved this tension, if it has been decided. */
   resolvedBy: string | null;
+  /** When it was drawn — for the replay. Absent on connections not yet saved. */
+  createdAt?: string;
 }
 
 export function toBrainLink(row: {
@@ -123,6 +125,7 @@ export function toBrainLink(row: {
   kind?: unknown;
   sourceId?: unknown;
   resolvedBy?: unknown;
+  createdAt?: unknown;
 }): BrainLink {
   const kind = isRelationKind(row.kind) ? row.kind : "related";
   const source = typeof row.sourceId === "string" ? row.sourceId.toLowerCase() : null;
@@ -141,6 +144,7 @@ export function toBrainLink(row: {
         : null,
     // Only a tension is decided.
     resolvedBy: kind === "tension" && typeof row.resolvedBy === "string" && row.resolvedBy ? row.resolvedBy : null,
+    ...(typeof row.createdAt === "string" ? { createdAt: row.createdAt } : {}),
   };
 }
 

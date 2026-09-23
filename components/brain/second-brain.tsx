@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { AnimatePresence } from "framer-motion";
-import { ArrowUp, AudioLines, Brain, Mic, Search, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, AudioLines, Brain, History, Mic, Pause, Play, Search, Sparkles, Square, X } from "lucide-react";
 import { categories, categoryById, type BrainCategoryId } from "@/lib/data/brain";
 import { canonicalPair, pairKey, type BrainLink, type BrainNote } from "@/lib/brain/graph";
 import { computeFocus } from "@/lib/brain/focus";
@@ -29,6 +29,7 @@ import { ReviewCard } from "./review-card";
 import { TensionDecision, type Decided } from "./tension-decision";
 import { DAILY_REVIEWS, reviewQueue, schedule, type ReviewAnswer } from "@/lib/brain/review";
 import { dayKey } from "@/lib/brain/resurface";
+import { beatFor, replayEvents, visibleAt } from "@/lib/brain/replay";
 import { reviewNote } from "@/app/actions/memory";
 import type { ThoughtTrace } from "@/lib/brain/context";
 import { useDictation } from "./use-dictation";
@@ -145,6 +146,8 @@ export function SecondBrain({
   const [trace, setTrace] = useState<{ data: ThoughtTrace; run: number } | null>(null);
   // Reviews answered since the page opened: today's batch shrinks with them.
   const [answered, setAnswered] = useState(0);
+  // The brain's growth, replayed: how many events have played, and whether it runs.
+  const [replay, setReplay] = useState<{ count: number; playing: boolean } | null>(null);
   // How the neurons are coloured: by region (what a note is) or by
   // constellation (what it belongs with).
   const [colorBy, setColorBy] = useState<"region" | "constellation">("region");
@@ -263,9 +266,33 @@ export function SecondBrain({
     () => [...notes].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, MAX_RENDERED_NODES),
     [notes]
   );
+  const replaying = replay !== null;
+  const events = useMemo(
+    () => (replaying ? replayEvents(notes.filter((n) => !n.id.startsWith("temp-")), links) : []),
+    [replaying, notes, links]
+  );
+  const visible = useMemo(() => (replay ? visibleAt(events, replay.count) : null), [replay, events]);
+
+  // One event per beat; the replay stops on the whole brain.
+  useEffect(() => {
+    if (!replay?.playing) return;
+    const timer = window.setInterval(() => {
+      setReplay((r) => (!r ? r : r.count >= events.length ? { ...r, playing: false } : { ...r, count: r.count + 1 }));
+    }, beatFor(events.length));
+    return () => window.clearInterval(timer);
+  }, [replay?.playing, events.length]);
+
+  const startReplay = useCallback(() => {
+    setQuery("");
+    setView({ kind: "overview" });
+    // With reduced motion, the replay opens on the whole brain, to scrub by hand.
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setReplay({ count: still ? Number.MAX_SAFE_INTEGER : 0, playing: !still });
+  }, []);
+
   const nodes: GraphNode[] = useMemo(
     () =>
-      rendered.map((n) => {
+      (visible ? rendered.filter((n) => visible.notes.has(n.id)) : rendered).map((n) => {
         const cat = categoryById(n.category);
         const inOpen = openConstellation ? openConstellation.noteIds.includes(n.id) : true;
         return {
@@ -283,7 +310,7 @@ export function SecondBrain({
               !inOpen,
         };
       }),
-    [rendered, view, openTheme, openConstellation, colorBy, constellationColor, traced]
+    [rendered, view, openTheme, openConstellation, colorBy, constellationColor, traced, visible]
   );
   // Where each drawn note sits, for the trace. From `rendered`, not `nodes`:
   // dimming for the trace must not restart it.
@@ -295,7 +322,7 @@ export function SecondBrain({
     const pos = new Map(nodes.map((n) => [n.id, n.position]));
     const sel = openNote?.id;
     return links
-      .filter((l) => pos.has(l.fromId) && pos.has(l.toId))
+      .filter((l) => pos.has(l.fromId) && pos.has(l.toId) && (!visible || visible.links.has(l.id)))
       .map((l) => ({
         from: pos.get(l.fromId)!,
         to: pos.get(l.toId)!,
@@ -304,7 +331,7 @@ export function SecondBrain({
         color: RELATION_COLOR[l.kind],
         pending: isUnreviewed(l.origin),
       }));
-  }, [nodes, links, openNote?.id, traced]);
+  }, [nodes, links, openNote?.id, traced, visible]);
 
   const labels = useMemo(
     () => Object.fromEntries(categories.map((c) => [c.id, m.brain.cat[c.id].label])) as Record<BrainCategoryId, string>,
@@ -736,36 +763,50 @@ export function SecondBrain({
           />
         </div>
 
-        {map.constellations.length > 0 && (
-          <div
-            role="group"
-            aria-label={m.brain.mindmap.colorBy}
-            className="absolute right-4 top-4 z-10 flex items-center rounded-lg border border-border bg-surface/80 p-0.5 text-[0.7rem] backdrop-blur"
-          >
-            {(["region", "constellation"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={colorBy === mode}
-                onClick={() => setColorBy(mode)}
-                className={cn(
-                  "rounded-md px-2 py-1 transition-colors",
-                  colorBy === mode ? "bg-surface-2 text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {mode === "region" ? m.brain.mindmap.byRegion : m.brain.mindmap.byConstellation}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+          {notes.length > 1 && !replay && (
+            <button
+              type="button"
+              onClick={startReplay}
+              title={m.brain.replay.startHint}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface/80 px-2 py-1 text-[0.7rem] text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+            >
+              <History className="h-3.5 w-3.5" /> {m.brain.replay.start}
+            </button>
+          )}
+          {map.constellations.length > 0 && (
+            <div
+              role="group"
+              aria-label={m.brain.mindmap.colorBy}
+              className="flex items-center rounded-lg border border-border bg-surface/80 p-0.5 text-[0.7rem] backdrop-blur"
+            >
+              {(["region", "constellation"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={colorBy === mode}
+                  onClick={() => setColorBy(mode)}
+                  className={cn(
+                    "rounded-md px-2 py-1 transition-colors",
+                    colorBy === mode ? "bg-surface-2 text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {mode === "region" ? m.brain.mindmap.byRegion : m.brain.mindmap.byConstellation}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* One column, top left: nothing on the stage can overlap it. */}
         <div className="pointer-events-none absolute left-5 top-5 max-w-[70%]">
           <div className="flex items-center gap-2 text-sm font-medium">
             <Brain className="h-4 w-4 text-accent" /> {m.nav.brain}
           </div>
-          <p className="mt-1 font-mono text-[0.72rem] text-muted-foreground">
-            {plural(locale, notes.length, m.brain.hudNotes)} · {plural(locale, links.length, m.brain.hudLinks)}
+          <p className="mt-1 font-mono text-[0.72rem] text-muted-foreground" aria-live={visible ? "off" : undefined}>
+            {visible?.at && `${new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(new Date(visible.at))} · `}
+            {plural(locale, visible ? visible.notes.size : notes.length, m.brain.hudNotes)} ·{" "}
+            {plural(locale, visible ? visible.links.size : links.length, m.brain.hudLinks)}
           </p>
           <p className="mt-1 hidden text-[0.68rem] text-muted sm:block">{m.brain.hint}</p>
           {links.length > 0 && (
@@ -782,80 +823,118 @@ export function SecondBrain({
           )}
         </div>
 
-        {/* Capture */}
-        <form
-          className="absolute inset-x-4 bottom-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void capture();
-          }}
-        >
-          <div className="mx-auto flex max-w-xl items-center gap-2 rounded-xl border border-border bg-surface/85 px-3 py-1.5 backdrop-blur focus-within:border-border-strong">
-            <Sparkles className="h-4 w-4 shrink-0 text-accent" />
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onPaste={(e) => {
-                // A single-line field would flatten a pasted page into one
-                // unreadable note. It goes to the dump instead, lines intact.
-                const pasted = e.clipboardData.getData("text");
-                if (!isDump(pasted)) return;
-                e.preventDefault();
-                openDump(draft.trim() ? `${draft.trim()}\n${pasted}` : pasted);
-                setDraft("");
-              }}
-              onKeyDown={(e) => {
-                // Handled here, like every other text field in the app, rather
-                // than left to implicit form submission. Skipped while an input
-                // method is composing: there Enter confirms the accent or the
-                // character, it doesn't mean "send".
-                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  void capture();
-                }
-              }}
-              placeholder={dictation.listening ? m.brain.voiceListening : m.brain.capturePlaceholder}
-              aria-label={m.brain.capturePlaceholder}
-              maxLength={500}
-              className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                openDump(draft);
-                setDraft("");
-              }}
-              aria-label={m.brain.dump.open}
-              title={`${m.brain.dump.open} — ${m.brain.dump.openHint}`}
-              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <AudioLines className="h-4 w-4" />
-            </button>
-            {dictation.supported && (
+        {replay && (
+          <div className="absolute inset-x-4 bottom-4 z-10">
+            <div className="mx-auto flex max-w-xl items-center gap-3 rounded-xl border border-border bg-surface/85 px-3 py-2 backdrop-blur">
               <button
                 type="button"
-                onClick={dictation.listening ? dictation.stop : dictation.start}
-                aria-label={dictation.listening ? m.brain.voiceStop : m.brain.voiceStart}
-                aria-pressed={dictation.listening}
-                title={`${dictation.listening ? m.brain.voiceStop : m.brain.voiceStart} — ${m.brain.voiceDisclosure}`}
-                className={cn(
-                  "grid h-8 w-8 place-items-center rounded-md transition-colors",
-                  dictation.listening ? "bg-danger/15 text-danger" : "text-muted-foreground hover:text-foreground"
-                )}
+                onClick={() =>
+                  setReplay((r) =>
+                    !r ? r : r.count >= events.length ? { count: 0, playing: true } : { ...r, playing: !r.playing }
+                  )
+                }
+                aria-label={replay.playing ? m.brain.replay.pause : m.brain.replay.play}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-foreground text-background"
               >
-                {dictation.listening ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
+                {replay.playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </button>
-            )}
-            <button
-              type="submit"
-              disabled={!draft.trim() || capturing}
-              className="grid h-8 w-8 place-items-center rounded-md bg-foreground text-background transition-opacity disabled:opacity-40"
-              aria-label={m.brain.capture}
-            >
-              <ArrowUp className="h-4 w-4" />
-            </button>
+              <input
+                type="range"
+                min={0}
+                max={events.length}
+                value={Math.min(replay.count, events.length)}
+                onChange={(e) => setReplay({ count: Number(e.target.value), playing: false })}
+                aria-label={m.brain.replay.position}
+                className="min-w-0 flex-1 accent-[#22d3ee]"
+              />
+              <button
+                type="button"
+                onClick={() => setReplay(null)}
+                aria-label={m.brain.replay.close}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-        </form>
+        )}
+
+        {/* Capture */}
+        {!replay && (
+          <form
+            className="absolute inset-x-4 bottom-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void capture();
+            }}
+          >
+            <div className="mx-auto flex max-w-xl items-center gap-2 rounded-xl border border-border bg-surface/85 px-3 py-1.5 backdrop-blur focus-within:border-border-strong">
+              <Sparkles className="h-4 w-4 shrink-0 text-accent" />
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onPaste={(e) => {
+                  // A single-line field would flatten a pasted page into one
+                  // unreadable note. It goes to the dump instead, lines intact.
+                  const pasted = e.clipboardData.getData("text");
+                  if (!isDump(pasted)) return;
+                  e.preventDefault();
+                  openDump(draft.trim() ? `${draft.trim()}\n${pasted}` : pasted);
+                  setDraft("");
+                }}
+                onKeyDown={(e) => {
+                  // Handled here, like every other text field in the app, rather
+                  // than left to implicit form submission. Skipped while an input
+                  // method is composing: there Enter confirms the accent or the
+                  // character, it doesn't mean "send".
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    void capture();
+                  }
+                }}
+                placeholder={dictation.listening ? m.brain.voiceListening : m.brain.capturePlaceholder}
+                aria-label={m.brain.capturePlaceholder}
+                maxLength={500}
+                className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  openDump(draft);
+                  setDraft("");
+                }}
+                aria-label={m.brain.dump.open}
+                title={`${m.brain.dump.open} — ${m.brain.dump.openHint}`}
+                className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <AudioLines className="h-4 w-4" />
+              </button>
+              {dictation.supported && (
+                <button
+                  type="button"
+                  onClick={dictation.listening ? dictation.stop : dictation.start}
+                  aria-label={dictation.listening ? m.brain.voiceStop : m.brain.voiceStart}
+                  aria-pressed={dictation.listening}
+                  title={`${dictation.listening ? m.brain.voiceStop : m.brain.voiceStart} — ${m.brain.voiceDisclosure}`}
+                  className={cn(
+                    "grid h-8 w-8 place-items-center rounded-md transition-colors",
+                    dictation.listening ? "bg-danger/15 text-danger" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {dictation.listening ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={!draft.trim() || capturing}
+                className="grid h-8 w-8 place-items-center rounded-md bg-foreground text-background transition-opacity disabled:opacity-40"
+                aria-label={m.brain.capture}
+              >
+                <ArrowUp className="h-4 w-4" />
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       {/* Side panel */}

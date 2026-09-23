@@ -752,6 +752,14 @@ const en = {
       title: "Tensions",
       hint: "Notes that pull against each other. Worth a decision.",
     },
+    replay: {
+      start: "Replay",
+      startHint: "Watch your brain grow, note by note",
+      play: "Play",
+      pause: "Pause",
+      close: "Close the replay",
+      position: "Position in the replay",
+    },
     mindmap: {
       title: "Mind map",
       hint: "How your notes group together, computed from their connections and subjects.",
@@ -1649,6 +1657,14 @@ const fr: Messages = {
     tensions: {
       title: "Tensions",
       hint: "Des notes qui tirent en sens contraire. À arbitrer.",
+    },
+    replay: {
+      start: "Rejouer",
+      startHint: "Revoir votre cerveau grandir, note après note",
+      play: "Lecture",
+      pause: "Pause",
+      close: "Fermer le replay",
+      position: "Position dans le replay",
     },
     mindmap: {
       title: "Carte mentale",

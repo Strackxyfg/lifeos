@@ -5,12 +5,13 @@ import { ExportMenu } from "@/components/brain/export-menu";
 import { getMessages } from "@/lib/i18n/server";
 import { getStore, getUserKey } from "@/lib/db/store";
 import { aiAvailable } from "@/lib/ai/router";
+import { voiceAvailable } from "@/lib/ai/voice";
 import { loadBrainView } from "@/lib/brain/load";
 import { hash } from "@/lib/brain/text";
 
 export const metadata: Metadata = { title: "Second Brain" };
 
-export default async function BrainPage({ searchParams }: { searchParams: Promise<{ note?: string }> }) {
+export default async function BrainPage({ searchParams }: { searchParams: Promise<{ note?: string; dump?: string }> }) {
   const m = await getMessages();
   const [{ notes, links, linksAvailable, dismissed }, userKey, synapses, { note }] = await Promise.all([
     loadBrainView(m),
@@ -18,6 +19,7 @@ export default async function BrainPage({ searchParams }: { searchParams: Promis
     getStore().supportsSynapses(),
     searchParams,
   ]);
+  const { dump } = await searchParams;
 
   return (
     <>
@@ -33,6 +35,9 @@ export default async function BrainPage({ searchParams }: { searchParams: Promis
         // `?note=<id>` opens a note directly: the assistant's sources and the
         // agent's messages link here.
         initialNoteId={typeof note === "string" ? note : null}
+        // `?dump=1` opens the brain dump: the command menu links here.
+        initialDump={dump === "1"}
+        voiceEnabled={voiceAvailable()}
         nowIso={new Date().toISOString()}
         // A salt for today's resurfaced note: derived from the owner, never the key itself.
         seed={String(hash(`resurface:${userKey}`))}

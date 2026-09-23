@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { AnimatePresence } from "framer-motion";
-import { ArrowUp, Brain, Mic, Search, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, AudioLines, Brain, Mic, Search, Sparkles, Square, X } from "lucide-react";
 import { categories, categoryById, type BrainCategoryId } from "@/lib/data/brain";
 import { canonicalPair, pairKey, type BrainLink, type BrainNote } from "@/lib/brain/graph";
 import { computeFocus } from "@/lib/brain/focus";
@@ -21,8 +21,9 @@ import {
 import { adoptNextSteps, weaveBrain, weaveNotes, type WeaveResult } from "@/app/actions/weave";
 import { ConstellationList, Overview, RegionList, SearchResults, ThemeList, type WeaveState } from "./brain-panels";
 import { NoteDetail, type NotePatch } from "./note-detail";
+import { BrainDump } from "./brain-dump";
 import { useDictation } from "./use-dictation";
-import { CAPTURED_EVENT, LINKED_EVENT, classifyThought } from "./classify-client";
+import { CAPTURED_EVENT, LINKED_EVENT, OPEN_DUMP_EVENT, classifyThought } from "./classify-client";
 import type { GraphEdge, GraphNode } from "./note-graph";
 import { toast } from "@/components/ui/toaster";
 import { fill, plural } from "@/lib/i18n/config";
@@ -43,7 +44,12 @@ type View =
   | { kind: "region"; region: BrainCategoryId }
   | { kind: "theme"; key: string }
   | { kind: "constellation"; id: string }
-  | { kind: "note"; id: string };
+  | { kind: "note"; id: string }
+  /** The brain dump, with the text it opens with. */
+  | { kind: "dump"; text: string };
+
+/** A paste this long, or on several lines, is a dump rather than one thought. */
+const isDump = (text: string) => text.includes("\n") || text.length > 280;
 
 const tempId = () => `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -74,7 +80,9 @@ export function SecondBrain({
   linksAvailable,
   synapses,
   aiEnabled,
+  voiceEnabled,
   initialNoteId,
+  initialDump,
   nowIso,
   seed,
 }: {
@@ -88,8 +96,12 @@ export function SecondBrain({
   synapses: boolean;
   /** An AI provider is configured. */
   aiEnabled: boolean;
+  /** A transcription provider is configured, for voice memos. */
+  voiceEnabled: boolean;
   /** Opened straight away — a link from the assistant or the agent. */
   initialNoteId?: string | null;
+  /** Opens on the brain dump — from the command menu. */
+  initialDump?: boolean;
   /** Server time, so server and client compute the same focus and resurfacing. */
   nowIso: string;
   /** Per-user salt for today's resurfaced note. */
@@ -102,9 +114,11 @@ export function SecondBrain({
   const [links, setLinks] = useState(initialLinks);
   const [dismissed, setDismissed] = useState(() => new Set(initialDismissed));
   const [view, setView] = useState<View>(() =>
-    initialNoteId && initialNotes.some((n) => n.id === initialNoteId)
-      ? { kind: "note", id: initialNoteId }
-      : { kind: "overview" }
+    initialDump
+      ? { kind: "dump", text: "" }
+      : initialNoteId && initialNotes.some((n) => n.id === initialNoteId)
+        ? { kind: "note", id: initialNoteId }
+        : { kind: "overview" }
   );
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
@@ -114,6 +128,7 @@ export function SecondBrain({
   // constellation (what it belongs with).
   const [colorBy, setColorBy] = useState<"region" | "constellation">("region");
   const searchRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   // A synchronous lock. `capturing` is React state and updates asynchronously,
   // so two quick Enters could both read `false` and save the thought twice.
   const captureLock = useRef(false);
@@ -133,12 +148,17 @@ export function SecondBrain({
       const incoming = (e as CustomEvent<BrainLink[]>).detail;
       if (Array.isArray(incoming)) setLinks((prev) => mergeLinks(prev, incoming));
     };
+    const onDump = () => openDump("");
     window.addEventListener(CAPTURED_EVENT, onCaptured);
     window.addEventListener(LINKED_EVENT, onLinked);
+    window.addEventListener(OPEN_DUMP_EVENT, onDump);
     return () => {
       window.removeEventListener(CAPTURED_EVENT, onCaptured);
       window.removeEventListener(LINKED_EVENT, onLinked);
+      window.removeEventListener(OPEN_DUMP_EVENT, onDump);
     };
+    // `openDump` is stable: it only uses state setters and a ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The migration warnings are for whoever operates the workspace, not the
@@ -253,6 +273,15 @@ export function SecondBrain({
     setQuery("");
     setView({ kind: "theme", key });
   }, []);
+
+  function openDump(text: string) {
+    setQuery("");
+    setView({ kind: "dump", text });
+    // Below 1280px the panel sits under the stage: bring it into view.
+    if (window.matchMedia("(max-width: 1279px)").matches) {
+      requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }
 
   // "/" to search, Escape to step back — without stealing keys from inputs.
   useEffect(() => {
@@ -535,6 +564,22 @@ export function SecondBrain({
     [errorText, locale, m]
   );
 
+  /** The notes a dump added: shown at once, then woven into the rest of the brain. */
+  const dumpSaved = useCallback(
+    (added: BrainNote[], created: BrainLink[]) => {
+      setNotes((prev) => [...added, ...prev]);
+      setLinks((prev) => mergeLinks(prev, created));
+      setView({ kind: "overview" });
+      toast(
+        created.length > 0
+          ? `${plural(locale, added.length, m.brain.dump.added)} · ${plural(locale, created.length, m.brain.hudLinks)}`
+          : plural(locale, added.length, m.brain.dump.added)
+      );
+      if (added.length > 0) void weaveAround(added.map((n) => n.id)).then((report) => report && announce(report.created));
+    },
+    [locale, m, weaveAround, announce]
+  );
+
   /* ── Dictation ────────────────────────────────────────────────── */
 
   const dictation = useDictation({
@@ -631,6 +676,15 @@ export function SecondBrain({
             <input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onPaste={(e) => {
+                // A single-line field would flatten a pasted page into one
+                // unreadable note. It goes to the dump instead, lines intact.
+                const pasted = e.clipboardData.getData("text");
+                if (!isDump(pasted)) return;
+                e.preventDefault();
+                openDump(draft.trim() ? `${draft.trim()}\n${pasted}` : pasted);
+                setDraft("");
+              }}
               onKeyDown={(e) => {
                 // Handled here, like every other text field in the app, rather
                 // than left to implicit form submission. Skipped while an input
@@ -646,6 +700,18 @@ export function SecondBrain({
               maxLength={500}
               className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted"
             />
+            <button
+              type="button"
+              onClick={() => {
+                openDump(draft);
+                setDraft("");
+              }}
+              aria-label={m.brain.dump.open}
+              title={`${m.brain.dump.open} — ${m.brain.dump.openHint}`}
+              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <AudioLines className="h-4 w-4" />
+            </button>
             {dictation.supported && (
               <button
                 type="button"
@@ -674,7 +740,7 @@ export function SecondBrain({
       </div>
 
       {/* Side panel */}
-      <aside className="flex min-h-0 flex-col border-t border-border xl:max-h-[74vh] xl:border-l xl:border-t-0">
+      <aside ref={panelRef} className="flex min-h-0 flex-col scroll-mt-4 border-t border-border xl:max-h-[74vh] xl:border-l xl:border-t-0">
         <div className="border-b border-border p-3">
           <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2/40 px-2.5 focus-within:border-border-strong">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted" />
@@ -700,6 +766,14 @@ export function SecondBrain({
           <AnimatePresence mode="wait">
             {query.trim() ? (
               <SearchResults key="search" query={query} results={results} onOpen={open} />
+            ) : view.kind === "dump" ? (
+              <BrainDump
+                key="dump"
+                initialText={view.text}
+                voiceEnabled={voiceEnabled}
+                onBack={() => setView({ kind: "overview" })}
+                onSaved={dumpSaved}
+              />
             ) : openNote ? (
               <NoteDetail
                 key={`note-${openNote.id}`}

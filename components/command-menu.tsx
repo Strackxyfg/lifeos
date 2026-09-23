@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Search, Sparkles, LayoutDashboard, Boxes, Users, Wallet,
-  Settings, CreditCard, ArrowRight, CornerDownLeft, Brain, Bot, Plus,
+  Settings, CreditCard, ArrowRight, CornerDownLeft, Brain, Bot, Plus, AudioLines,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui/kbd";
 import { useMessages } from "@/lib/i18n/client";
-import { OPEN_CAPTURE_EVENT } from "@/components/brain/classify-client";
+import { OPEN_CAPTURE_EVENT, OPEN_DUMP_EVENT } from "@/components/brain/classify-client";
 
 type Command = {
   id: string;
@@ -25,6 +25,7 @@ type Command = {
 /** Fire this anywhere to open the palette: window.dispatchEvent(new Event("lifeos:command")) */
 export function CommandMenu() {
   const router = useRouter();
+  const pathname = usePathname();
   const m = useMessages();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -37,6 +38,11 @@ export function CommandMenu() {
         id: "capture", label: m.command.capture, icon: Plus, group: "actions",
         action: () => window.dispatchEvent(new Event(OPEN_CAPTURE_EVENT)),
       },
+      {
+        id: "dump", label: m.command.dump, icon: AudioLines, group: "actions",
+        // On the brain page the open brain handles it; elsewhere, go there with it open.
+        action: () => (pathname === "/brain" ? window.dispatchEvent(new Event(OPEN_DUMP_EVENT)) : router.push("/brain?dump=1")),
+      },
       { id: "ask", label: m.command.ask, hint: "G A", icon: Sparkles, group: "actions", href: "/assistant" },
       { id: "brain", label: m.nav.brain, hint: "G R", icon: Brain, group: "navigate", href: "/brain" },
       { id: "agent", label: m.nav.agent, hint: "G G", icon: Bot, group: "navigate", href: "/agent" },
@@ -47,7 +53,7 @@ export function CommandMenu() {
       { id: "billing", label: m.nav.billing, hint: "G B", icon: CreditCard, group: "account", href: "/billing" },
       { id: "settings", label: m.nav.settings, hint: "G S", icon: Settings, group: "account", href: "/settings" },
     ],
-    [m]
+    [m, pathname, router]
   );
 
   const run = (c?: Command) => {

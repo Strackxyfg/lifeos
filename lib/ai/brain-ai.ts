@@ -3,6 +3,7 @@ import { ai, type AITask } from "./router";
 import { extractJson } from "./json";
 import { sanitizeConcepts, type Concept } from "@/lib/brain/concepts";
 import { parseVerdicts, type PairCandidate, type Verdict } from "@/lib/brain/weave";
+import { ATOMIZE_LIMITS, dumpLanguage, prepareDump, sanitizeAtoms, type AtomizeResult } from "@/lib/brain/atomize";
 import type { NoteLike } from "@/lib/brain/graph";
 import { isCategory, type BrainCategoryId } from "@/lib/data/brain";
 import type { Locale } from "@/lib/i18n/config";
@@ -217,6 +218,70 @@ export async function judgePairs(
     temperature: 0.1,
   });
   return parseVerdicts(raw, pairs.length);
+}
+
+/* ── 2b. A brain dump, split into atomic notes ─────────────────────── */
+
+const ATOMIZE_SYSTEM = [
+  "You turn one person's brain dump — the transcript of a voice memo, or notes they pasted — into atomic notes",
+  "for their second brain.",
+  "- One idea, fact, intention, worry or question per note. Split compound sentences; merge what is said twice;",
+  "  drop filler (euh, bon, voilà, um, you know) and false starts.",
+  "- Write each note in the dump's own language, as the person would jot it down: a next step starts with its verb",
+  "  (\"Appeler Marc lundi pour le devis\", \"Call Marc on Monday about the quote\"); anything else stays in their",
+  "  first person (\"Je travaille mieux le matin\"). Self-contained, under 140 characters.",
+  "- Faithful above all. Every note comes from something they said: never add an action, advice, conclusion,",
+  "  fact, name, figure or date they did not state — a next step only when they said they must, will or want to",
+  "  do it. Keep their certainty exactly: what they could, should or might do stays \"could\", \"should\", \"maybe\"",
+  "  (\"je pourrais\", \"je devrais\", \"peut-être\"); a possibility is never turned into a decision, and is filed",
+  "  as an idea.",
+  "- Put specifics that do not fit the title in \"detail\" (optional, short, also their words).",
+  "- \"region\" is one of: goals (an outcome they want), next (an action they have decided to take), ideas (a",
+  "  proposal or possibility), thoughts (a feeling or reflection), knowledge (a fact, figure or reference),",
+  "  insights (a realisation about themselves or their work).",
+  "- Do not create a note that only repeats one of their existing goals.",
+  "- \"relations\" link these notes to each other only, and only where the dump itself makes the link — a",
+  "  \"because\", \"so\", \"but\", \"at the same time\", \"that would help\" — never through an assumption of yours",
+  "  (such as one project needing another). Two things they want that compete for the same money, time or",
+  "  attention, joined by a \"but\" or an \"at the same time\", are a tension. Each kind names its ends by role,",
+  "  so the direction is explicit:",
+  "  advances {\"step\", \"goal\"}: the step moves the goal forward.",
+  "  supports {\"evidence\", \"claim\"}: the evidence is a fact or reason that backs the claim",
+  "  (\"Our best clients come from referrals\" is evidence for the claim \"Start a referral programme\").",
+  "  extends {\"development\", \"base\"}: the development builds on the base.",
+  "  tension {\"notes\": [x, y]}: the two pull against each other.",
+  "  Numbers are the notes' order in your list, from 1. \"said\" quotes the dump's exact words that make the link",
+  "  (join two distant fragments with …); no quote, no relation. \"reason\" is one short sentence explaining it.",
+  "- At most 12 notes.",
+  "Answer with JSON only:",
+  "{\"notes\":[{\"title\":\"...\",\"detail\":\"...\",\"region\":\"next\"}],",
+  " \"relations\":[{\"kind\":\"advances\",\"step\":2,\"goal\":1,\"said\":\"...\",\"reason\":\"...\"},",
+  "  {\"kind\":\"supports\",\"evidence\":4,\"claim\":3,\"said\":\"...\",\"reason\":\"...\"},",
+  "  {\"kind\":\"tension\",\"notes\":[5,6],\"said\":\"... … ...\",\"reason\":\"...\"}]}",
+].join("\n");
+
+/** A brain dump, split by the model and validated by `sanitizeAtoms`. */
+export async function atomizeDump(input: { text: string; goals: NoteLike[]; locale: Locale }): Promise<AtomizeResult> {
+  const text = prepareDump(input.text);
+  if (!text) return { atoms: [], relations: [] };
+  const goals = input.goals.slice(0, 8);
+  const language = languageOf(dumpLanguage(text) ?? input.locale);
+
+  const raw = await completeJson({
+    task: "atomize",
+    system: ATOMIZE_SYSTEM,
+    accept: (d) => sanitizeAtoms(d, ATOMIZE_LIMITS.atoms, text).atoms.length > 0,
+    user: [
+      ...(goals.length ? ["THEIR EXISTING GOALS (context — do not repeat them as notes)", ...goals.map((g) => `- ${clip(oneLine(g.title), 160)}`), ""] : []),
+      `LANGUAGE: ${language} — write every note, detail and reason in ${language}.`,
+      "",
+      "BRAIN DUMP",
+      text,
+    ].join("\n"),
+    maxTokens: 1_400,
+    temperature: 0.2,
+  });
+  return sanitizeAtoms(extractJson(raw), ATOMIZE_LIMITS.atoms, text);
 }
 
 /* ── 3. From a note to next steps ─────────────────────────────────── */

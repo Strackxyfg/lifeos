@@ -31,6 +31,8 @@ export const CAPTURED_EVENT = "lifeos:captured";
 export const LINKED_EVENT = "lifeos:linked";
 /** Opens the topbar capture from anywhere — the command menu uses it. */
 export const OPEN_CAPTURE_EVENT = "lifeos:capture";
+/** Opens the brain dump on an open brain page — the command menu uses it. */
+export const OPEN_DUMP_EVENT = "lifeos:dump";
 
 export function announceCaptured(note: BrainNote) {
   window.dispatchEvent(new CustomEvent<BrainNote>(CAPTURED_EVENT, { detail: note }));

@@ -356,7 +356,7 @@ export type Router = ReturnType<typeof createRouter>;
 /* ── The real transport ───────────────────────────────────────────── */
 
 const clients = new Map<string, OpenAI>();
-function clientFor(route: Route): OpenAI {
+export function clientFor(route: Pick<Route, "baseURL" | "apiKey">): OpenAI {
   const key = `${route.baseURL}|${route.apiKey.slice(-6)}`;
   let c = clients.get(key);
   if (!c) {
@@ -368,7 +368,7 @@ function clientFor(route: Route): OpenAI {
   return c;
 }
 
-function toRouteError(e: unknown): RouteError {
+export function toRouteError(e: unknown): RouteError {
   if (e instanceof OpenAI.APIError) {
     const header = (e.headers as Record<string, string> | undefined)?.["retry-after"];
     const fromHeader = header && Number.isFinite(Number(header)) ? Number(header) * 1000 : undefined;

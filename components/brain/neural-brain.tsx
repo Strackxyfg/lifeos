@@ -123,16 +123,34 @@ function useGlowTexture() {
   }, []);
 }
 
-export function NeuralBrain() {
+/** Full and faded opacities of the decoration: points, circuit lines, pulsing neurons. */
+const DECOR = { points: [0.9, 0.3], lines: [0.16, 0.05], neurons: [1, 0.18] } as const;
+
+/**
+ * The brain's decoration. `quiet` fades it — while a thought trace is drawn,
+ * the notes that were read must be what stands out, not the scenery.
+ */
+export function NeuralBrain({ quiet = false }: { quiet?: boolean }) {
   const sprite = useGlowTexture();
   const { positions, lines, neurons } = useMemo(buildBrain, []);
 
   // Instanced pulsing neurons.
   const instRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
+  const pointsMat = useRef<THREE.PointsMaterial>(null);
+  const linesMat = useRef<THREE.LineBasicMaterial>(null);
+  const neuronsMat = useRef<THREE.MeshBasicMaterial>(null);
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
+    // Eased towards the target, so fading in and out takes half a second.
+    const k = quiet ? 1 : 0;
+    const fade = (m: THREE.Material | null, [full, faded]: readonly [number, number]) => {
+      if (m) m.opacity += (full + (faded - full) * k - m.opacity) * 0.08;
+    };
+    fade(pointsMat.current, DECOR.points);
+    fade(linesMat.current, DECOR.lines);
+    fade(neuronsMat.current, DECOR.neurons);
     if (instRef.current) {
       neurons.forEach((n, i) => {
         const s = 0.028 + (Math.sin(t * 2.4 + n.phase) * 0.5 + 0.5) * 0.055;
@@ -153,6 +171,7 @@ export function NeuralBrain() {
           <bufferAttribute attach="attributes-position" args={[positions, 3]} />
         </bufferGeometry>
         <pointsMaterial
+          ref={pointsMat}
           map={sprite}
           size={0.055}
           sizeAttenuation
@@ -171,6 +190,7 @@ export function NeuralBrain() {
           <bufferAttribute attach="attributes-position" args={[lines, 3]} />
         </bufferGeometry>
         <lineBasicMaterial
+          ref={linesMat}
           color="#22d3ee"
           transparent
           opacity={0.16}
@@ -184,6 +204,7 @@ export function NeuralBrain() {
       <instancedMesh ref={instRef} args={[undefined, undefined, neurons.length]} frustumCulled={false}>
         <sphereGeometry args={[1, 10, 10]} />
         <meshBasicMaterial
+          ref={neuronsMat}
           color="#c8fbff"
           transparent
           blending={THREE.AdditiveBlending}

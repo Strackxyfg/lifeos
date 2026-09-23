@@ -220,6 +220,67 @@ export async function judgePairs(
   return parseVerdicts(raw, pairs.length);
 }
 
+/* ── 1b. What a question is about ─────────────────────────────────── */
+
+const SUBJECTS_SYSTEM = [
+  "You map a question to the subjects of one person's second brain.",
+  "From the list of subject keys, pick the ones the question is about, or whose notes would help answer it —",
+  "at most 4, most relevant first. Copy keys exactly from the list; never write a key that is not in it.",
+  "If none fits, return an empty list.",
+  "Answer with JSON only: {\"keys\":[\"...\"]}",
+].join("\n");
+
+/**
+ * A question's subjects, chosen from the keys the brain already uses — so the
+ * question can find notes it shares no word with ("how do I grow revenue?"
+ * meets the notes about client acquisition).
+ *
+ * A choice from a closed list, not an extraction: asked to describe the
+ * question freely, the model named subjects the brain did not have ("revenue
+ * growth") and nothing matched. Keys outside the list are discarded.
+ *
+ * Bounded in time: the answer waits on it, and a slow or failed mapping only
+ * means the question is matched on its words, as before. Never throws.
+ */
+export async function subjectsOfQuestion(
+  question: string,
+  known: { k: string; l: string }[],
+  timeoutMs = 3_000
+): Promise<Concept[]> {
+  const q = question.trim();
+  if (known.length === 0 || q.length < 4) return [];
+  const list = known.slice(0, 150);
+  const byKey = new Map(list.map((c) => [c.k, c]));
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<Concept[]>((resolve) => {
+    timer = setTimeout(() => resolve([]), timeoutMs);
+  });
+  const mapped = completeJson({
+    task: "classify",
+    system: SUBJECTS_SYSTEM,
+    accept: (d) => Array.isArray((d as { keys?: unknown } | null)?.keys),
+    user: [`SUBJECTS: ${list.map((c) => c.k).join(" | ")}`, "", `QUESTION: ${clip(oneLine(q), 400)}`].join("\n"),
+    maxTokens: 80,
+    temperature: 0,
+  })
+    .then((raw) => {
+      const keys = (extractJson(raw) as { keys?: unknown } | null)?.keys;
+      if (!Array.isArray(keys)) return [];
+      const picked = keys
+        .filter((k): k is string => typeof k === "string")
+        .map((k) => byKey.get(k.trim().toLowerCase()) ?? byKey.get(k.trim()))
+        .filter((c): c is Concept => !!c);
+      return [...new Map(picked.map((c) => [c.k, c])).values()].slice(0, 4);
+    })
+    .catch(() => [] as Concept[]);
+  try {
+    return await Promise.race([mapped, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /* ── 2b. A brain dump, split into atomic notes ─────────────────────── */
 
 const ATOMIZE_SYSTEM = [

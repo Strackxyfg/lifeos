@@ -346,6 +346,37 @@ describe("grounding follows connections", () => {
     expect(g.sources.slice(0, 2)).toEqual(["ads", "cpc"]);
   });
 
+  it("traces what it read: the matched notes, then the connections followed", () => {
+    const g = groundAnswer({ notes, links, question: "Faut-il tester LinkedIn Ads ?", now: NOW, labels });
+    expect(g.trace.seeds.map((s) => s.id)).toEqual(["ads"]);
+    expect(g.trace.seeds[0]).toMatchObject({ via: "words" });
+    expect(g.trace.seeds[0].shared.length).toBeGreaterThan(0);
+    expect(g.trace.hops).toEqual([{ from: "ads", to: "cpc", kind: "supports" }]);
+  });
+
+  it("finds a note the question shares no word with, through the question's subjects", () => {
+    const brain = [
+      note("acq", "ideas", "Programme de parrainage", { concepts: [c("client acquisition", "acquisition clients")] }),
+      note("cake", "knowledge", "Recette du gâteau", { concepts: [c("baking", "pâtisserie")] }),
+    ];
+    const q = "Comment développer mon chiffre d'affaires ?";
+    expect(groundAnswer({ notes: brain, links: [], question: q, now: NOW, labels }).trace.seeds).toEqual([]);
+    const g = groundAnswer({ notes: brain, links: [], question: q, now: NOW, labels, questionConcepts: [c("client acquisition", "acquisition clients")] });
+    expect(g.trace.seeds.map((s) => s.id)).toEqual(["acq"]);
+    expect(g.trace.seeds[0].via).toBe("concepts");
+    expect(g.sources[0]).toBe("acq");
+  });
+
+  it("draws only what the model was given: a matched goal fires, notes cut for budget do not", () => {
+    const goal = note("g", "goals", "Tester LinkedIn Ads avant décembre");
+    const full = groundAnswer({ notes: [...notes, goal], links, question: "LinkedIn Ads ?", now: NOW, labels });
+    expect(full.trace.seeds.map((s) => s.id).sort()).toEqual(["ads", "g"]);
+    expect(full.trace.context).toContain("g");
+    const tight = groundAnswer({ notes: [...notes, goal], links, question: "LinkedIn Ads ?", now: NOW, labels, budget: 60 });
+    expect(tight.trace.seeds.map((s) => s.id)).toEqual(["g"]);
+    expect(tight.trace.hops).toEqual([]);
+  });
+
   it("cites the focus list only when nothing matches the question", () => {
     const step = note("s", "next", "Relancer Marc", { createdAt: daysAgo(3) });
     const matched = groundAnswer({ notes: [...notes, step], links, question: "LinkedIn Ads ?", now: NOW, labels });

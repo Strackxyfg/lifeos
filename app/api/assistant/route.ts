@@ -4,7 +4,9 @@ import { isLocale, type Locale } from "@/lib/i18n/config";
 import { dictionaries } from "@/lib/i18n/dictionaries";
 import { requireUserKey } from "@/lib/auth/require-user";
 import { loadBrainView } from "@/lib/brain/load";
-import { groundAnswer } from "@/lib/brain/context";
+import { groundAnswer, type ThoughtTrace } from "@/lib/brain/context";
+import { conceptsByUse } from "@/lib/brain/concepts";
+import { subjectsOfQuestion } from "@/lib/ai/brain-ai";
 import { computeFocus } from "@/lib/brain/focus";
 import { contextLabels, focusReasonText } from "@/lib/brain/labels";
 import { getProfile } from "@/lib/user/profile";
@@ -27,7 +29,15 @@ function sourcesHeader(ids: string[], notes: { id: string; title: string }[]): s
   return encodeURIComponent(JSON.stringify(list));
 }
 
-function streamText(text: string, source: string, sources = ""): Response {
+/**
+ * How the brain was read, for the brain page to draw. Ids and short words
+ * only; encoded like the sources.
+ */
+function traceHeader(trace: ThoughtTrace): string {
+  return encodeURIComponent(JSON.stringify(trace));
+}
+
+function streamText(text: string, source: string, sources = "", trace = ""): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -36,7 +46,7 @@ function streamText(text: string, source: string, sources = ""): Response {
     },
   });
   return new Response(stream, {
-    headers: { "Content-Type": "text/plain; charset=utf-8", "X-AI": source, "X-Brain-Sources": sources },
+    headers: { "Content-Type": "text/plain; charset=utf-8", "X-AI": source, "X-Brain-Sources": sources, "X-Brain-Trace": trace },
   });
 }
 
@@ -67,10 +77,21 @@ export async function POST(req: Request) {
 
   const { notes, links } = await loadBrainView(m);
   const now = new Date();
+  const labels = contextLabels(m, locale);
 
   if (!aiAvailable()) {
-    // No model: tell the truth, then show the part of the brain that answers
-    // "what now" without needing one.
+    // No model: tell the truth, then show what the brain itself holds on the
+    // question — relevance needs no model — or, failing that, the part of it
+    // that answers "what now".
+    const { trace } = groundAnswer({ notes, links, question, now, labels });
+    const byTitle = new Map(notes.map((n) => [n.id, n.title]));
+    const found = [...trace.seeds.map((s) => s.id), ...trace.hops.map((h) => h.to)].filter(
+      (id, i, all) => all.indexOf(id) === i && byTitle.has(id)
+    );
+    if (found.length > 0) {
+      const text = `${m.assistant.noAi}\n\n${m.assistant.noAiRelevant}\n${found.map((id) => `• ${byTitle.get(id)}`).join("\n")}`;
+      return streamText(text, "none", sourcesHeader(found.slice(0, 6), notes), traceHeader(trace));
+    }
     const focus = computeFocus({ notes, links, now, limit: 5 });
     const byId = new Map(notes.map((n) => [n.id, n]));
     const lines = focus
@@ -85,14 +106,16 @@ export async function POST(req: Request) {
     return streamText(text, "none", sourcesHeader(focus.map((f) => f.id), notes));
   }
 
-  // Who is asking: the answers they gave at onboarding, kept on the profile.
-  const profile = await getProfile();
+  // Who is asking — the answers they gave at onboarding — and what the
+  // question is about in the brain's own subjects. Fetched together: the
+  // mapping is a model call, and the profile a read.
+  const [profile, questionConcepts] = await Promise.all([getProfile(), subjectsOfQuestion(question, conceptsByUse(notes))]);
   const person = {
     name: profile.name === "there" ? undefined : profile.name,
     profession: profile.profession,
     areas: profile.areas.map((a) => m.onboarding.areas[a]),
   };
-  const { text: context, sources } = groundAnswer({ notes, links, question, now, labels: contextLabels(m, locale), person });
+  const { text: context, sources, trace } = groundAnswer({ notes, links, question, now, labels, person, questionConcepts });
   const grounding = [
     "You are the user's second brain — an extension of their own thinking, not a generic assistant.",
     "Below is what they have written in it. Ground every answer in these notes and refer to a note by its title in quotes when you rely on it.",
@@ -133,6 +156,7 @@ export async function POST(req: Request) {
         "Content-Type": "text/plain; charset=utf-8",
         "X-AI": route.id,
         "X-Brain-Sources": sourcesHeader(sources, notes),
+        "X-Brain-Trace": traceHeader(trace),
       },
     });
   } catch {

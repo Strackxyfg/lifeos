@@ -434,15 +434,29 @@ export function SearchResults({
   query,
   results,
   onOpen,
+  onAsk,
 }: {
   query: string;
   results: BrainNote[];
   onOpen: (id: string) => void;
+  /** Asks the query as a question — also on Enter in the search field. */
+  onAsk: (question: string) => void;
 }) {
   const m = useMessages();
   const locale = useLocale();
   return (
     <motion.div {...enter}>
+      <button
+        type="button"
+        onClick={() => onAsk(query.trim())}
+        className="mb-3 flex w-full items-center gap-2 rounded-lg border border-accent/25 bg-accent/5 px-3 py-2 text-left text-[0.8rem] transition-colors hover:border-accent/50 hover:bg-accent/10"
+      >
+        <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+        <span className="min-w-0 flex-1 truncate">
+          {m.brain.ask.cta} <span className="text-muted-foreground">— {query.trim()}</span>
+        </span>
+        <kbd className="rounded border border-border px-1 font-mono text-[0.62rem] text-muted">↵</kbd>
+      </button>
       <p className="mb-2 text-[0.72rem] text-muted-foreground" aria-live="polite">
         {results.length === 0 ? fill(m.brain.noResults, { q: query }) : plural(locale, results.length, m.brain.resultCount)}
       </p>

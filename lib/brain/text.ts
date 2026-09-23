@@ -27,6 +27,9 @@ const STOP = new Set(
     "avant apres pendant depuis chaque plusieurs beaucoup trop peu surtout " +
     "vraiment toujours jamais souvent rien quelque quelques veut veulent " +
     "vouloir dois doit devoir pouvoir peux vais vont chose choses besoin " +
+    // Conditionals: "je devrais", "ça pourrait" say how sure, not what about.
+    "devrais devrait devraient devrions pourrais pourrait pourraient pourrions " +
+    "voudrais voudrait faudrait serais serait seraient aurais aurait " +
     // Question words: a question asked of the brain is compared against notes,
     // and "comment" would otherwise match every note that happens to use it.
     "comment pourquoi quel quelle quels quelles combien ou quoi est-ce " +

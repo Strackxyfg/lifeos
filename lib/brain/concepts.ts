@@ -91,6 +91,22 @@ export interface WithConcepts {
   concepts?: Concept[];
 }
 
+/**
+ * The subjects a brain holds, most used first, each with the label it was
+ * first given — the vocabulary a question is mapped onto.
+ */
+export function conceptsByUse(notes: WithConcepts[]): Concept[] {
+  const freq = new Map<string, { c: Concept; n: number }>();
+  for (const note of notes) {
+    for (const c of note.concepts ?? []) {
+      const f = freq.get(c.k);
+      if (f) f.n += 1;
+      else freq.set(c.k, { c, n: 1 });
+    }
+  }
+  return [...freq.values()].sort((a, b) => b.n - a.n || a.c.k.localeCompare(b.c.k)).map((f) => f.c);
+}
+
 const KEY_STOP = new Set(["of", "and", "the", "for", "with", "per", "to", "in", "on", "a", "an", "by", "at", "or"]);
 
 /**

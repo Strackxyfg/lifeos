@@ -22,6 +22,8 @@ import { adoptNextSteps, weaveBrain, weaveNotes, type WeaveResult } from "@/app/
 import { ConstellationList, Overview, RegionList, SearchResults, ThemeList, type WeaveState } from "./brain-panels";
 import { NoteDetail, type NotePatch } from "./note-detail";
 import { BrainDump } from "./brain-dump";
+import { BrainAnswer } from "./brain-answer";
+import type { ThoughtTrace } from "@/lib/brain/context";
 import { useDictation } from "./use-dictation";
 import { CAPTURED_EVENT, LINKED_EVENT, OPEN_DUMP_EVENT, classifyThought } from "./classify-client";
 import type { GraphEdge, GraphNode } from "./note-graph";
@@ -46,7 +48,9 @@ type View =
   | { kind: "constellation"; id: string }
   | { kind: "note"; id: string }
   /** The brain dump, with the text it opens with. */
-  | { kind: "dump"; text: string };
+  | { kind: "dump"; text: string }
+  /** A question asked of the brain. */
+  | { kind: "ask"; question: string };
 
 /** A paste this long, or on several lines, is a dump rather than one thought. */
 const isDump = (text: string) => text.includes("\n") || text.length > 280;
@@ -124,6 +128,9 @@ export function SecondBrain({
   const [draft, setDraft] = useState("");
   const [capturing, setCapturing] = useState(false);
   const [weaveState, setWeaveState] = useState<WeaveState>({ phase: "idle" });
+  // How the brain read the question being answered, drawn in 3D. `run`
+  // restarts the drawing when the person replays it.
+  const [trace, setTrace] = useState<{ data: ThoughtTrace; run: number } | null>(null);
   // How the neurons are coloured: by region (what a note is) or by
   // constellation (what it belongs with).
   const [colorBy, setColorBy] = useState<"region" | "constellation">("region");
@@ -189,6 +196,19 @@ export function SecondBrain({
   );
 
   const openNote = view.kind === "note" ? byId.get(view.id) ?? null : null;
+
+  // A trace belongs to its answer: leaving the answer puts the brain back.
+  useEffect(() => {
+    if (view.kind !== "ask") setTrace(null);
+  }, [view.kind]);
+  const traced = useMemo(() => {
+    if (!trace) return null;
+    const d = trace.data;
+    return {
+      ids: new Set([...d.seeds.map((s) => s.id), ...d.hops.map((h) => h.to), ...d.context]),
+      pairs: new Set(d.hops.map((h) => pairKey(h.from, h.to))),
+    };
+  }, [trace]);
   const openTheme = useMemo(() => {
     if (view.kind !== "theme") return null;
     // A theme opened from a note's subjects may be shared by that note alone.
@@ -215,13 +235,20 @@ export function SecondBrain({
           position: nodePosition(n.id, cat.anchor),
           color: colorBy === "constellation" || openConstellation ? constellationColor.get(n.id) ?? "#64748b" : cat.color,
           done: n.done,
-          dim:
-            (view.kind === "region" && n.category !== view.region) ||
-            (view.kind === "theme" && !(openTheme?.noteIds.includes(n.id) ?? false)) ||
-            !inOpen,
+          dim: traced
+            ? !traced.ids.has(n.id)
+            : (view.kind === "region" && n.category !== view.region) ||
+              (view.kind === "theme" && !(openTheme?.noteIds.includes(n.id) ?? false)) ||
+              !inOpen,
         };
       }),
-    [rendered, view, openTheme, openConstellation, colorBy, constellationColor]
+    [rendered, view, openTheme, openConstellation, colorBy, constellationColor, traced]
+  );
+  // Where each drawn note sits, for the trace. From `rendered`, not `nodes`:
+  // dimming for the trace must not restart it.
+  const positions = useMemo(
+    () => new Map(rendered.map((n) => [n.id, nodePosition(n.id, categoryById(n.category).anchor)] as const)),
+    [rendered]
   );
   const edges: GraphEdge[] = useMemo(() => {
     const pos = new Map(nodes.map((n) => [n.id, n.position]));
@@ -231,11 +258,12 @@ export function SecondBrain({
       .map((l) => ({
         from: pos.get(l.fromId)!,
         to: pos.get(l.toId)!,
-        active: l.fromId === sel || l.toId === sel,
+        // With a trace drawn, the connections it followed are the lit ones.
+        active: traced ? traced.pairs.has(pairKey(l.fromId, l.toId)) : l.fromId === sel || l.toId === sel,
         color: RELATION_COLOR[l.kind],
         pending: isUnreviewed(l.origin),
       }));
-  }, [nodes, links, openNote?.id]);
+  }, [nodes, links, openNote?.id, traced]);
 
   const labels = useMemo(
     () => Object.fromEntries(categories.map((c) => [c.id, m.brain.cat[c.id].label])) as Record<BrainCategoryId, string>,
@@ -272,6 +300,17 @@ export function SecondBrain({
   const openThemeView = useCallback((key: string) => {
     setQuery("");
     setView({ kind: "theme", key });
+  }, []);
+
+  const ask = useCallback((question: string) => {
+    const q = question.trim();
+    if (q.length < 2) return;
+    setQuery("");
+    setTrace(null);
+    setView({ kind: "ask", question: q });
+    if (window.matchMedia("(max-width: 1279px)").matches) {
+      requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
   }, []);
 
   function openDump(text: string) {
@@ -614,6 +653,8 @@ export function SecondBrain({
             edges={edges}
             selectedNoteId={openNote?.id ?? null}
             onSelectNote={open}
+            trace={trace}
+            positions={positions}
           />
         </div>
 
@@ -748,6 +789,14 @@ export function SecondBrain({
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter asks: typing searches as you go, pressing Enter turns
+                // what you typed into a question to the brain.
+                if (e.key === "Enter" && !e.nativeEvent.isComposing && query.trim()) {
+                  e.preventDefault();
+                  ask(query);
+                }
+              }}
               placeholder={m.brain.searchPlaceholder}
               aria-label={m.brain.searchPlaceholder}
               className="h-8 flex-1 bg-transparent text-[0.82rem] outline-none placeholder:text-muted"
@@ -765,7 +814,21 @@ export function SecondBrain({
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <AnimatePresence mode="wait">
             {query.trim() ? (
-              <SearchResults key="search" query={query} results={results} onOpen={open} />
+              <SearchResults key="search" query={query} results={results} onOpen={open} onAsk={ask} />
+            ) : view.kind === "ask" ? (
+              <BrainAnswer
+                key={`ask-${view.question}`}
+                question={view.question}
+                notes={notes}
+                onTrace={(data) => setTrace(data ? { data, run: Date.now() } : null)}
+                onOpen={open}
+                onBack={() => setView({ kind: "overview" })}
+                onReplay={() => setTrace((t) => (t ? { ...t, run: t.run + 1 } : t))}
+                onAgain={() => {
+                  setView({ kind: "overview" });
+                  searchRef.current?.focus();
+                }}
+              />
             ) : view.kind === "dump" ? (
               <BrainDump
                 key="dump"

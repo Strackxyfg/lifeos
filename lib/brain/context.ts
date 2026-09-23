@@ -1,6 +1,7 @@
 import { suggestLinks, type LinkLike, type NoteLike } from "./graph";
+import type { Concept } from "./concepts";
 import { computeFocus, type FocusReason } from "./focus";
-import { perspective, type Perspective, type RelationKind } from "./relations";
+import { isRelationKind, perspective, type Perspective, type RelationKind } from "./relations";
 
 /**
  * What the assistant knows about you when it answers: built from your second
@@ -62,6 +63,61 @@ export function aboutSection(
   return lines.length ? `## ${labels.about}\n${lines.join("\n")}` : null;
 }
 
+/** A note the question matched, and on what. */
+export interface TraceSeed {
+  id: string;
+  /** 0–1, rounded to two decimals. */
+  score: number;
+  via: "words" | "concepts";
+  /** The shared words or subjects, as shown to the person. At most three. */
+  shared: string[];
+}
+
+/** A connection followed from a matched note to one it is connected to. */
+export interface TraceHop {
+  from: string;
+  to: string;
+  kind: RelationKind;
+}
+
+/**
+ * How the brain was read for one question: what the model was actually given,
+ * in the order it was found. The brain page draws it — the matched notes fire,
+ * then the connections followed — so the person sees where an answer comes
+ * from, not only what it says.
+ */
+export interface ThoughtTrace {
+  seeds: TraceSeed[];
+  hops: TraceHop[];
+  /** Goals and focus: always in the context, whatever the question. */
+  context: string[];
+}
+
+/** A trace as received over the network: shape-checked, capped, never trusted. */
+export function parseTrace(raw: unknown): ThoughtTrace | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const isId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 64;
+  const list = (v: unknown, max: number) => (Array.isArray(v) ? v.slice(0, max) : []);
+  const seeds = list(o.seeds, 12).flatMap((x): TraceSeed[] => {
+    const s = (x ?? {}) as Record<string, unknown>;
+    if (!isId(s.id)) return [];
+    return [
+      {
+        id: s.id,
+        score: typeof s.score === "number" && Number.isFinite(s.score) ? s.score : 0,
+        via: s.via === "concepts" ? "concepts" : "words",
+        shared: list(s.shared, 3).filter((w): w is string => typeof w === "string").map((w) => w.slice(0, 60)),
+      },
+    ];
+  });
+  const hops = list(o.hops, 40).flatMap((x): TraceHop[] => {
+    const h = (x ?? {}) as Record<string, unknown>;
+    return isId(h.from) && isId(h.to) && isRelationKind(h.kind) ? [{ from: h.from, to: h.to, kind: h.kind }] : [];
+  });
+  return { seeds, hops, context: list(o.context, 40).filter(isId) };
+}
+
 /** What the assistant receives, and which notes it was built from. */
 export interface Grounding {
   text: string;
@@ -71,6 +127,7 @@ export interface Grounding {
    * shown to the person as the answer's sources. Ids, most relevant first.
    */
   sources: string[];
+  trace: ThoughtTrace;
 }
 
 /** Connections worth following first when expanding context. */
@@ -84,11 +141,18 @@ export function groundAnswer(input: {
   labels: ContextLabels;
   /** Who they are. First in the context, and never dropped for budget. */
   person?: PersonFacts;
+  /**
+   * The question's subjects, in the brain's own concept keys (mapped by the
+   * model). They let a question find notes it shares no word with: "grow my
+   * revenue" meets notes about client acquisition.
+   */
+  questionConcepts?: Concept[];
   budget?: number;
 }): Grounding {
-  const { notes, links, question, now, labels, person, budget = DEFAULT_CONTEXT_BUDGET } = input;
+  const { notes, links, question, now, labels, person, questionConcepts, budget = DEFAULT_CONTEXT_BUDGET } = input;
   const about = aboutSection(person, labels);
-  if (notes.length === 0) return { text: clip(about ? `${about}\n\n${labels.empty}` : labels.empty, budget), sources: [] };
+  const none: ThoughtTrace = { seeds: [], hops: [], context: [] };
+  if (notes.length === 0) return { text: clip(about ? `${about}\n\n${labels.empty}` : labels.empty, budget), sources: [], trace: none };
 
   const byId = new Map(notes.map((n) => [n.id, n]));
   const sections: string[] = about ? [about] : [];
@@ -99,8 +163,16 @@ export function groundAnswer(input: {
 
   // The question, ranked against the notes as if it were one of them. The id
   // cannot collide with a note: notes use uuids or "prefix_n" demo ids.
-  const probe: NoteLike = { id: "#question", category: "thoughts", title: question, done: false, createdAt: now.toISOString() };
-  const relevantIds = suggestLinks(probe, notes, [], 6).map((s) => s.id);
+  const probe: NoteLike = {
+    id: "#question",
+    category: "thoughts",
+    title: question,
+    done: false,
+    createdAt: now.toISOString(),
+    concepts: questionConcepts,
+  };
+  const matches = suggestLinks(probe, notes, [], 6);
+  const relevantIds = matches.map((s) => s.id);
 
   // One hop along the connections of each relevant note: what a note is
   // connected to is often exactly what answers the question about it — the
@@ -177,11 +249,27 @@ export function groundAnswer(input: {
 
   // Sections are in priority order; drop from the end until it fits, then
   // hard-clip as a last resort. Goals and focus survive the longest.
+  const relevantSection = relevant.length ? sections.length - (recent.length ? 2 : 1) : -1;
   let text = sections.join("\n\n");
   while (text.length > budget && sections.length > 1) {
     sections.pop();
     text = sections.join("\n\n");
   }
+  // The trace shows what the model was given: if the budget dropped the
+  // related notes, they were not read, and are not drawn as if they were.
+  const readRelevant = relevantSection >= 0 && relevantSection < sections.length;
+  const always = [...goals.map((g) => g.id), ...focus.map((f) => f.id).filter((id) => !goals.some((g) => g.id === id))];
+  const read = new Set([...always, ...(readRelevant ? relevant.map((n) => n.id) : [])]);
+  const trace: ThoughtTrace = {
+    // A matched goal is read under Goals rather than Related, but it matched: it fires.
+    seeds: matches
+      .filter((s) => read.has(s.id))
+      .map((s) => ({ id: s.id, score: Math.round(s.score * 100) / 100, via: s.via, shared: s.shared.slice(0, 3) })),
+    hops: readRelevant
+      ? relevant.flatMap((n) => (hops.get(n.id) ?? []).map((h) => ({ from: n.id, to: h.id, kind: h.kind })))
+      : [],
+    context: always,
+  };
 
   const sources: string[] = [];
   const add = (id: string) => {
@@ -195,7 +283,7 @@ export function groundAnswer(input: {
   // next to real matches, unrelated steps read as if they had informed the answer.
   if (sources.length === 0) focus.forEach((f) => add(f.id));
 
-  return { text: clip(text, budget), sources: sources.slice(0, 6) };
+  return { text: clip(text, budget), sources: sources.slice(0, 6), trace };
 }
 
 /** The context text alone. */

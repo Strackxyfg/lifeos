@@ -3,6 +3,10 @@ import { createRlsClient } from "@/lib/supabase/rls";
 import type { Collection, Dataset, DbProfile, ProfilePatch, Store } from "./types";
 import { seedDataset, shouldSeed } from "./seed";
 import { isMissingTable } from "./errors";
+import { assertAudioFile, baseMime, fileInFolder } from "./audio-files";
+
+/** Private Storage bucket for recordings (migration 010); each person's files under "<user_key>/". */
+const AUDIO_BUCKET = "lifeos-audio";
 
 /**
  * All user data goes through the request-scoped RLS client, so Postgres
@@ -24,6 +28,7 @@ const TABLE: Record<Collection, string> = {
   brain: "lifeos_brain_items",
   links: "lifeos_brain_links",
   dismissals: "lifeos_brain_dismissals",
+  audio: "lifeos_brain_audio",
 };
 
 /** One row per person, keyed by `user_key` (migration 007). */
@@ -38,6 +43,7 @@ const ERASE_ORDER: string[] = [
   TABLE.dismissals,
   TABLE.links,
   TABLE.brain,
+  TABLE.audio,
   TABLE.tasks,
   TABLE.transactions,
   TABLE.deals,
@@ -83,6 +89,7 @@ class SupabaseStore implements Store {
    */
   private synapses: { value: boolean; until: number } | null = null;
   private memory: { value: boolean; until: number } | null = null;
+  private voice: { value: boolean; until: number } | null = null;
 
   async supportsSynapses(): Promise<boolean> {
     if (this.synapses && Date.now() < this.synapses.until) return this.synapses.value;
@@ -108,6 +115,52 @@ class SupabaseStore implements Store {
     const value = probes.every((p) => !p.error);
     this.memory = { value, until: value ? Number.POSITIVE_INFINITY : Date.now() + 60_000 };
     return value;
+  }
+
+  /** Whether migration 010 is applied — the table, the note columns and the bucket. */
+  async supportsVoice(): Promise<boolean> {
+    if (this.voice && Date.now() < this.voice.until) return this.voice.value;
+    const db = await client();
+    const probes = await Promise.all([
+      db.from(TABLE.audio).select("id").limit(1),
+      db.from(TABLE.brain).select("audio_id, audio_start_ms, audio_end_ms").limit(1),
+      db.storage.from(AUDIO_BUCKET).list(undefined, { limit: 1 }),
+    ]);
+    const value = probes.every((p) => !p.error);
+    this.voice = { value, until: value ? Number.POSITIVE_INFINITY : Date.now() + 60_000 };
+    return value;
+  }
+
+  async get<C extends Collection>(userKey: string, collection: C, id: string): Promise<Dataset[C][number] | null> {
+    const db = await client();
+    const { data, error } = await db.from(TABLE[collection]).select("*").eq("id", id).eq("user_key", userKey).maybeSingle();
+    if (error) throw new Error(`[supabase] get ${collection}: ${error.message}`);
+    return data ? (fromRow(data) as Dataset[C][number]) : null;
+  }
+
+  async putAudio(userKey: string, file: string, bytes: Uint8Array, mime: string): Promise<string> {
+    assertAudioFile(file);
+    const path = `${userKey}/${file}`;
+    const db = await client();
+    const { error } = await db.storage.from(AUDIO_BUCKET).upload(path, bytes, { contentType: baseMime(mime), upsert: false });
+    if (error) throw new Error(`[supabase] store recording: ${error.message}`);
+    return path;
+  }
+
+  async getAudio(userKey: string, path: string): Promise<Uint8Array | null> {
+    if (!fileInFolder(userKey, path)) return null;
+    const db = await client();
+    const { data, error } = await db.storage.from(AUDIO_BUCKET).download(path);
+    if (error || !data) return null;
+    return new Uint8Array(await data.arrayBuffer());
+  }
+
+  async removeAudio(userKey: string, paths: string[]): Promise<void> {
+    const own = paths.filter((p) => fileInFolder(userKey, p));
+    if (own.length === 0) return;
+    const db = await client();
+    const { error } = await db.storage.from(AUDIO_BUCKET).remove(own);
+    if (error) throw new Error(`[supabase] remove recordings: ${error.message}`);
   }
 
   /**
@@ -246,6 +299,15 @@ class SupabaseStore implements Store {
       if (error && !isMissingTable(`${error.code ?? ""} ${error.message}`)) {
         throw new Error(`[supabase] clear ${table}: ${error.message}`);
       }
+    }
+    // The recordings themselves, page by page. No bucket yet (migration 010
+    // pending) means there is nothing to erase.
+    for (;;) {
+      const { data, error } = await db.storage.from(AUDIO_BUCKET).list(userKey, { limit: 100 });
+      if (error || !data || data.length === 0) break;
+      const { error: removeError } = await db.storage.from(AUDIO_BUCKET).remove(data.map((f) => `${userKey}/${f.name}`));
+      if (removeError) throw new Error(`[supabase] clear recordings: ${removeError.message}`);
+      if (data.length < 100) break;
     }
   }
 }

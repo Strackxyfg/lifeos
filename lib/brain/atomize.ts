@@ -17,6 +17,8 @@ export interface Atom {
   title: string;
   detail: string | null;
   region: BrainCategoryId;
+  /** The words of the dump this note comes from: finds its passage in a recording. */
+  said?: string;
 }
 
 export interface AtomRelation {
@@ -171,10 +173,12 @@ export function sanitizeAtoms(raw: unknown, cap: number = ATOMIZE_LIMITS.atoms, 
     if (atoms.length === cap) return;
     const detailRaw = typeof o.detail === "string" ? o.detail.trim() : "";
     const regionRaw = typeof o.region === "string" ? o.region.toLowerCase().trim() : "";
+    const saidRaw = typeof o.said === "string" ? oneLine(o.said) : "";
     atoms.push({
       title,
       detail: detailRaw ? clip(detailRaw, ATOMIZE_LIMITS.detail) : null,
       region: isCategory(regionRaw) ? regionRaw : "thoughts",
+      ...(saidRaw ? { said: clip(saidRaw, 400) } : {}),
     });
     seen.set(key, atoms.length - 1);
     remap.set(i, atoms.length - 1);

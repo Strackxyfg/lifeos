@@ -54,3 +54,27 @@ export function stripHallucinations(text: string): string {
   if (start === 0 && end === parts.length) return text.trim();
   return parts.slice(start, end).join(" ");
 }
+
+/**
+ * The same, on timed words (Whisper's `words`): an invented sentence at
+ * either end goes, and its words with it, so a player never highlights
+ * credits nobody said. Sentences end at a word that ends with . ! ? or ...
+ */
+export function stripWordHallucinations<W extends { w: string }>(words: W[]): W[] {
+  const sentences: W[][] = [];
+  let current: W[] = [];
+  for (const word of words) {
+    current.push(word);
+    if (/[.!?\u2026]$/.test(word.w)) {
+      sentences.push(current);
+      current = [];
+    }
+  }
+  if (current.length) sentences.push(current);
+  const said = (s: W[]) => s.map((x) => x.w).join(" ");
+  let start = 0;
+  let end = sentences.length;
+  while (start < end && invented(said(sentences[start]))) start++;
+  while (end > start && invented(said(sentences[end - 1]))) end--;
+  return sentences.slice(start, end).flat();
+}

@@ -8,6 +8,7 @@ import { CATEGORY_IDS, kindForCategory, type BrainCategoryId } from "@/lib/data/
 import { canonicalPair, pairKey, sameLink, toBrainLink, type BrainLink } from "@/lib/brain/graph";
 import { RELATION_KINDS, isUnreviewed, sourceOf } from "@/lib/brain/relations";
 import type { DbBrainItem } from "@/lib/db/types";
+import { releaseRecording } from "@/lib/brain/recordings";
 
 /**
  * Every mutation of the second brain.
@@ -120,7 +121,13 @@ export async function deleteNote(id: unknown): Promise<BrainResult> {
   const pid = idSchema.safeParse(id);
   if (!pid.success) return fail("invalid", "Invalid note.");
   try {
-    await getStore().remove(await getUserKey(), "brain", pid.data);
+    const store = getStore();
+    const userKey = await getUserKey();
+    const note = await store.get(userKey, "brain", pid.data);
+    await store.remove(userKey, "brain", pid.data);
+    // The last note said in a recording takes the recording with it: a voice
+    // the person deleted is not kept somewhere they cannot see.
+    if (note?.audioId) await releaseRecording(store, userKey, note.audioId).catch((e) => console.error("[voice] release failed", e));
     refresh();
     return done(null);
   } catch (e) {

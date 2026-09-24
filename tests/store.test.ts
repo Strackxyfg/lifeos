@@ -46,12 +46,17 @@ describe("seeding", () => {
   const userKey = "seed@test.dev";
   const data = seedDataset(userKey);
 
-  it("populates every collection except links and dismissals", () => {
+  it("populates every collection except links, dismissals and recordings", () => {
     for (const key of Object.keys(EMPTY_DATASET) as (keyof typeof EMPTY_DATASET)[]) {
-      // Both reference notes by id, which Supabase only assigns on insert.
-      if (key === "links" || key === "dismissals") continue;
+      // Links and dismissals reference notes by id, which Supabase only assigns
+      // on insert; a recording is a file in the person's own storage, never sample data.
+      if (key === "links" || key === "dismissals" || key === "audio") continue;
       expect(data[key].length, `${key} should be seeded`).toBeGreaterThan(0);
     }
+  });
+
+  it("seeds no recording", () => {
+    expect(data.audio).toEqual([]);
   });
 
   it("does not seed links, which could not survive Supabase's fresh ids", () => {

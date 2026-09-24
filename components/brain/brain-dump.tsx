@@ -14,7 +14,7 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { MAX_RECORDING_MS, useRecorder, type RecorderError } from "./use-recorder";
-import { transcribeAudio } from "@/components/voice/transcribe-client";
+import { audioFile, transcribeAudio, type Timed } from "@/components/voice/transcribe-client";
 
 const clock = (ms: number) => {
   const s = Math.floor(ms / 1000);
@@ -51,6 +51,9 @@ export function BrainDump({
   const [keep, setKeep] = useState<boolean[]>([]);
   // A pure voice memo — nothing typed before it — goes straight to the split.
   const autoSplit = useRef(false);
+  // The recording behind the dump, when it is one recording and nothing else.
+  const [memo, setMemo] = useState<(Timed & { audio: Blob }) | null>(null);
+  const [keepAudio, setKeepAudio] = useState(true);
 
   const runSplit = useCallback(
     async (source: string) => {
@@ -73,12 +76,17 @@ export function BrainDump({
   const transcribe = useCallback(
     async (audio: Blob) => {
       setPhase("transcribing");
-      const r = await transcribeAudio(audio, locale);
+      const r = await transcribeAudio(audio, locale, { detail: true });
       if ("error" in r) {
         setPhase("compose");
         return void toast(t.errors[r.error], "error");
       }
       const transcript = r.text;
+      // A dump that is one recording, and nothing else, can keep it: each
+      // note will play its passage. Mixed with typed text or a second
+      // recording, notes could point to audio they were never said in — so
+      // the recording is not kept.
+      setMemo(!text.trim() && r.words && r.words.length > 0 ? { audio, words: r.words, durationMs: r.durationMs ?? 0, language: r.language ?? null } : null);
       const next = text.trim() ? `${text.trim()}\n\n${transcript}` : transcript;
       setText(next);
       if (autoSplit.current) void runSplit(next);
@@ -107,6 +115,24 @@ export function BrainDump({
       atoms: kept.atoms.map((a) => ({ ...a, title: a.title.trim() })),
       relations: kept.relations,
     };
+    if (memo && keepAudio) {
+      // With its recording: stored in the person's space, each note pointing to its passage.
+      const form = new FormData();
+      form.append("audio", audioFile(memo.audio));
+      form.append("locale", locale);
+      form.append(
+        "payload",
+        JSON.stringify({ mode: "atoms", notes: payload, words: memo.words, durationMs: memo.durationMs, language: memo.language })
+      );
+      const res = await fetch("/api/brain/voice-note", { method: "POST", body: form }).catch(() => null);
+      const data = (await res?.json().catch(() => null)) as { notes?: BrainNote[]; links?: BrainLink[]; kept?: boolean } | null;
+      if (!res?.ok || !data?.notes) {
+        setPhase("preview");
+        return void toast(m.brain.errors.failed, "error");
+      }
+      if (!data.kept) toast(m.voiceNote.notKept);
+      return onSaved(data.notes, data.links ?? []);
+    }
     const res = await saveBrainDump(payload).catch(() => null);
     if (!res || !res.ok) {
       setPhase("preview");
@@ -179,7 +205,11 @@ export function BrainDump({
           <textarea
             id="dump-text"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              // Emptied, the dump no longer comes from the recording.
+              if (!e.target.value.trim()) setMemo(null);
+            }}
             placeholder={t.placeholder}
             rows={9}
             maxLength={20_000}
@@ -219,6 +249,20 @@ export function BrainDump({
         <p className="text-[0.82rem] font-medium">{plural(locale, atoms.length, t.found)}</p>
         <p className="mt-0.5 text-[0.72rem] leading-snug text-muted-foreground">{t.previewHint}</p>
         {notice && <p className="mt-2 rounded-lg border border-border bg-surface-2/40 px-2.5 py-1.5 text-[0.7rem] text-muted-foreground">{notice}</p>}
+        {memo && (
+          <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-accent/25 bg-accent/5 px-2.5 py-2">
+            <input
+              type="checkbox"
+              checked={keepAudio}
+              onChange={(e) => setKeepAudio(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[#22d3ee]"
+            />
+            <span className="min-w-0">
+              <span className="block text-[0.76rem] font-medium">{m.voiceNote.keep}</span>
+              <span className="block text-[0.68rem] leading-snug text-muted-foreground">{m.voiceNote.keepHint}</span>
+            </span>
+          </label>
+        )}
 
         <ul className="mt-3 flex flex-col gap-2">
           {atoms.map((atom, i) => {
@@ -306,7 +350,7 @@ export function BrainDump({
 }
 
 /** Five bars that rise with the voice: proof the microphone hears you. */
-function Meter({ level }: { level: number }) {
+export function Meter({ level }: { level: number }) {
   return (
     <span className="ml-auto flex h-4 items-end gap-0.5" aria-hidden>
       {[0.2, 0.45, 0.7, 0.45, 0.2].map((w, i) => (

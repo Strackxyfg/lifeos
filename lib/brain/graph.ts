@@ -32,6 +32,8 @@ export interface BrainNote extends NoteLike {
   reviewDue?: string | null;
   reviewInterval?: number | null;
   reviewedAt?: string | null;
+  /** The recording it was said in, and the passage it plays (ms); null bounds play the whole recording. */
+  audio?: { id: string; start: number | null; end: number | null };
 }
 
 export interface LinkLike {

@@ -88,6 +88,7 @@ export function seedDataset(userKey: string): Dataset {
     // insert, which a separate seed pass for links has no way to know.
     links: [],
     dismissals: [],
+    audio: [],
   };
 }
 
@@ -106,4 +107,5 @@ export const EMPTY_DATASET: Dataset = {
   brain: [],
   links: [],
   dismissals: [],
+  audio: [],
 };

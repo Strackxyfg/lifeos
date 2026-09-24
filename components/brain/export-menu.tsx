@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, FileJson, FileText } from "lucide-react";
+import { Download, FileJson, FileArchive, FileText } from "lucide-react";
 import { useMessages } from "@/lib/i18n/client";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -45,6 +45,7 @@ export function ExportMenu() {
           {[
             { href: "/api/brain/export?format=md", icon: FileText, label: m.brain.exportMarkdown },
             { href: "/api/brain/export?format=json", icon: FileJson, label: m.brain.exportJson },
+            { href: "/api/brain/export?format=zip", icon: FileArchive, label: m.brain.exportZip },
           ].map((o) => (
             <a
               key={o.href}

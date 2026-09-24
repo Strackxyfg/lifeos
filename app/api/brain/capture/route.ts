@@ -1,10 +1,6 @@
-import { systemPrompt } from "@/lib/ai/client";
-import { ai, aiAvailable } from "@/lib/ai/router";
-import { extractJson } from "@/lib/ai/json";
+import { classifyNote } from "@/lib/ai/classify";
 import { isLocale, type Locale } from "@/lib/i18n/config";
 import { requireUserKey } from "@/lib/auth/require-user";
-import { CATEGORY_IDS, isCategory } from "@/lib/data/brain";
-import { heuristicRegion } from "@/lib/brain/classify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,43 +18,6 @@ export async function POST(req: Request) {
   if ("response" in auth) return auth.response;
 
   const body = (await req.json().catch(() => ({}))) as { text?: string; locale?: string };
-  const text = (body.text ?? "").slice(0, 500);
   const locale: Locale = isLocale(body.locale) ? body.locale : "en";
-
-  if (!text.trim()) return Response.json({ category: "thoughts", by: "rules" });
-
-  if (!aiAvailable()) return Response.json({ category: heuristicRegion(text), by: "rules" });
-
-  try {
-    const { value } = await ai().complete({
-      task: "classify",
-      temperature: 0,
-      maxTokens: 20,
-      json: true,
-      // Filing must be quick: a capture waits on it.
-      timeoutMs: 8_000,
-      validate: (t) => isCategory((extractJson(t) as { category?: unknown } | null)?.category),
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt(
-            locale,
-            `Classify the note into exactly one region of a second brain: ` +
-              `goals (an outcome to reach), next (a concrete action to do), ideas, ` +
-              `thoughts (reflection), knowledge (a fact or reference), insights (a realisation). ` +
-              `Return ONLY JSON: {"category": one of ${CATEGORY_IDS.join(", ")}}.`
-          ),
-        },
-        { role: "user", content: text },
-      ],
-    });
-
-    const picked = (extractJson(value) as { category?: string } | null)?.category;
-    return Response.json(
-      isCategory(picked) ? { category: picked, by: "ai" } : { category: heuristicRegion(text), by: "rules" }
-    );
-  } catch {
-    // A model failure must not lose the note — fall back and keep going.
-    return Response.json({ category: heuristicRegion(text), by: "rules" });
-  }
+  return Response.json(await classifyNote(body.text ?? "", locale));
 }

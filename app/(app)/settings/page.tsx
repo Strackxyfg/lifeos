@@ -59,14 +59,14 @@ export default async function SettingsPage() {
                 <p className="mt-1 text-[0.75rem] text-muted-foreground">{t.exportHint}</p>
               </div>
               <div className="flex gap-2">
-                {(["md", "json"] as const).map((f) => (
+                {(["md", "json", "zip"] as const).map((f) => (
                   <a
                     key={f}
                     href={`/api/brain/export?format=${f}`}
                     download
                     className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "gap-1.5")}
                   >
-                    <Download className="h-3.5 w-3.5" /> {f === "md" ? t.exportMd : t.exportJson}
+                    <Download className="h-3.5 w-3.5" /> {f === "md" ? t.exportMd : f === "json" ? t.exportJson : t.exportZip}
                   </a>
                 ))}
               </div>

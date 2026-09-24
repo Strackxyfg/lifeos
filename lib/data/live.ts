@@ -61,11 +61,13 @@ export const loadWorkspace = cache(async function loadWorkspace(): Promise<Datas
     loadLinks(),
     loadDismissals(),
   ]);
-  return { projects, deals, transactions, tasks, brain, links, dismissals };
+  // Recordings are not part of a page's workspace: each carries its whole
+  // transcript, and one is read by id when a note is played.
+  return { projects, deals, transactions, tasks, brain, links, dismissals, audio: [] };
 });
 
 /** Single collection. Served from the cached full read to avoid a second query. */
-export async function loadCollection<C extends keyof Dataset>(collection: C): Promise<Dataset[C]> {
+export async function loadCollection<C extends Exclude<keyof Dataset, "audio">>(collection: C): Promise<Dataset[C]> {
   const data = await loadWorkspace();
   return data[collection];
 }

@@ -53,6 +53,9 @@ export function toBrainNotes(items: DbBrainItem[], m: Messages): BrainNote[] {
             reviewedAt: item.reviewedAt ?? null,
           }
         : {}),
+      ...(item.audioId
+        ? { audio: { id: item.audioId, start: item.audioStartMs ?? null, end: item.audioEndMs ?? null } }
+        : {}),
     };
   });
 }

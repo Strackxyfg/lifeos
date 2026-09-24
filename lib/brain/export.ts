@@ -19,8 +19,20 @@ export interface ExportLink extends LinkLike {
   createdAt?: string;
 }
 
+/**
+ * Where a note's recording is, inside an archive that holds the recordings —
+ * given to `toMarkdown` by the ZIP export, so each voice note links to its
+ * audio. Omitted, notes are exported as text only.
+ */
+export type RecordingPath = (recordingId: string) => string | null;
+
 export const EXPORT_FORMAT = "lifeos.brain";
 export const EXPORT_VERSION = 1;
+
+const clock = (ms: number) => {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
 
 /** Region order, then oldest first, then id: stable across exports. */
 function ordered<N extends ExportNote>(notes: N[]): N[] {
@@ -77,13 +89,16 @@ export interface MarkdownLabels {
    * "supported by"). Plain "related" connections are listed without it.
    */
   relation?: (kind: RelationKind, side: Perspective) => string;
+  /** The label of a link to a note's recording ("Recording", "Enregistrement"). */
+  recording?: string;
 }
 
 export function toMarkdown(
   notes: ExportNote[],
   links: ExportLink[],
   labels: MarkdownLabels,
-  exportedAt: Date
+  exportedAt: Date,
+  recordingPath?: RecordingPath
 ): string {
   const titles = uniqueTitles(notes);
   const lines: string[] = [];
@@ -117,6 +132,12 @@ export function toMarkdown(
 
       const detail = (n.detail ?? "").trim();
       if (detail) lines.push(detail, "");
+
+      const audio = n.audio && recordingPath ? recordingPath(n.audio.id) : null;
+      if (audio && n.audio) {
+        const at = n.audio.start !== null ? ` (${clock(n.audio.start)}${n.audio.end !== null ? `–${clock(n.audio.end)}` : ""})` : "";
+        lines.push(`[${labels.recording ?? "Recording"}${at}](${audio})`, "");
+      }
 
       const linked = links
         .filter((l) => l.fromId === n.id || l.toId === n.id)
@@ -159,6 +180,10 @@ export interface JsonExport {
     createdAt: string;
     /** Added in the same format version: readers of version 1 ignore it. */
     concepts: Concept[];
+    /** The recording the note was said in, and its passage in milliseconds (null: all of it). */
+    audio?: { recording: string; startMs: number | null; endMs: number | null };
+    /** Spaced review: when the note is next due, and its interval in days. */
+    review?: { due: string | null; interval: number | null; reviewedAt: string | null };
   }[];
   links: {
     fromId: string;
@@ -169,6 +194,8 @@ export interface JsonExport {
     kind: RelationKind;
     /** The note a directed relation starts from, or null. */
     sourceId: string | null;
+    /** For a tension: the note that decided it. */
+    resolvedBy?: string | null;
   }[];
 }
 
@@ -187,6 +214,10 @@ export function toJson(notes: ExportNote[], links: ExportLink[], exportedAt: Dat
       ai: n.ai,
       createdAt: n.createdAt,
       concepts: n.concepts ?? [],
+      ...(n.audio ? { audio: { recording: n.audio.id, startMs: n.audio.start, endMs: n.audio.end } } : {}),
+      ...(n.reviewedAt || n.reviewDue
+        ? { review: { due: n.reviewDue ?? null, interval: n.reviewInterval ?? null, reviewedAt: n.reviewedAt ?? null } }
+        : {}),
     })),
     links: [...links]
       .map((l) => {
@@ -199,6 +230,7 @@ export function toJson(notes: ExportNote[], links: ExportLink[], exportedAt: Dat
           createdAt: l.createdAt ?? null,
           kind: l.kind ?? "related",
           sourceId: l.sourceId ?? null,
+          ...(l.resolvedBy ? { resolvedBy: l.resolvedBy } : {}),
         };
       })
       .sort((a, b) => a.fromId.localeCompare(b.fromId) || a.toId.localeCompare(b.toId)),

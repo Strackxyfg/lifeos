@@ -1,15 +1,31 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { assertAudioFile, fileInFolder } from "./audio-files";
 import type { Collection, Dataset, DbProfile, ProfilePatch, Store } from "./types";
 import { seedDataset, shouldSeed, EMPTY_DATASET } from "./seed";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const DATA_FILE = path.join(DATA_DIR, "lifeos.json");
+const AUDIO_DIR = path.join(DATA_DIR, "audio");
+
+/** A person's recordings folder: named by a hash, so an email never becomes a path. */
+const audioFolder = (userKey: string) => createHash("sha256").update(userKey).digest("hex").slice(0, 32);
 
 /** Per person: their collections, plus the profile that is not a collection. */
 type UserRecord = Dataset & { profile?: DbProfile };
 type FileShape = Record<string, UserRecord>;
+
+/**
+ * One queue for the whole process. Next.js builds route handlers, pages and
+ * server actions into separate bundles, and each bundle has its own copy of
+ * this module — so a queue held by the instance serialised only that copy's
+ * writes. A route and a server action could then read and write the file at
+ * the same time, and one would overwrite what the other had just written.
+ * Kept on `globalThis`, every copy shares it.
+ */
+const QUEUE = Symbol.for("lifeos.localStore.queue");
+type Global = typeof globalThis & { [QUEUE]?: Promise<unknown> };
 
 /**
  * File-backed store used when Supabase env vars are absent.
@@ -17,32 +33,57 @@ type FileShape = Record<string, UserRecord>;
  * service — the same contract the Supabase adapter implements, so swapping
  * backends needs no component changes.
  *
- * Writes are serialized through a promise chain to avoid interleaved
- * read-modify-write races between concurrent server actions.
+ * Three rules keep the file whole:
+ * - every read-modify-write goes through one queue for the process (above);
+ * - a write goes to a temporary file that then replaces the data file, so
+ *   the file is never seen half-written;
+ * - a file that exists but cannot be read stops the write instead of being
+ *   taken for an empty store. It used to be: a read that met a half-written
+ *   file returned "nothing", and the next write replaced every person's data
+ *   with that nothing.
  */
 class LocalStore implements Store {
   readonly backend = "local" as const;
-  private queue: Promise<unknown> = Promise.resolve();
+
+  private get queue(): Promise<unknown> {
+    return (globalThis as Global)[QUEUE] ?? Promise.resolve();
+  }
+
+  private set queue(next: Promise<unknown>) {
+    (globalThis as Global)[QUEUE] = next;
+  }
 
   private async readFile(): Promise<FileShape> {
+    let raw: string;
     try {
-      const raw = await fs.readFile(DATA_FILE, "utf8");
-      return JSON.parse(raw) as FileShape;
+      raw = await fs.readFile(DATA_FILE, "utf8");
+    } catch (err) {
+      // No file yet: an empty store, legitimately.
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+      throw err;
+    }
+    try {
+      const data = JSON.parse(raw) as unknown;
+      if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("not an object");
+      return data as FileShape;
     } catch {
-      return {};
+      throw new Error(`[local store] ${DATA_FILE} cannot be read; nothing was written. Restore it or move it aside.`);
     }
   }
 
   private async writeFile(data: FileShape): Promise<void> {
     await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
+    const temp = `${DATA_FILE}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(temp, JSON.stringify(data, null, 2), "utf8");
+      await fs.rename(temp, DATA_FILE);
+    } catch (err) {
+      await fs.rm(temp, { force: true }).catch(() => {});
+      throw err;
+    }
   }
 
-  /**
-   * A read that waits for pending writes. Reading the file directly could see
-   * it half-written by a concurrent mutation, fail to parse, and report an
-   * empty store.
-   */
+  /** A read that waits for pending writes, so it never sees one halfway. */
   private read<T>(fn: (data: FileShape) => T): Promise<T> {
     const next = this.queue.then(async () => fn(await this.readFile()));
     this.queue = next.catch(() => undefined);
@@ -77,6 +118,11 @@ class LocalStore implements Store {
       if (!Array.isArray(set[key])) set[key] = [];
     }
     return data[userKey];
+  }
+
+  async get<C extends Collection>(userKey: string, collection: C, id: string): Promise<Dataset[C][number] | null> {
+    const rows = await this.list(userKey, collection);
+    return (rows as Dataset[C][number][]).find((r) => r.id === id) ?? null;
   }
 
   async list<C extends Collection>(userKey: string, collection: C): Promise<Dataset[C]> {
@@ -130,6 +176,17 @@ class LocalStore implements Store {
           set[dependent] = rows.filter((l) => l.fromId !== id && l.toId !== id) as unknown as { id: string }[];
         }
       }
+      // And its ON DELETE SET NULL: a note outlives its recording, as text.
+      if (collection === "audio") {
+        const notes = set.brain as unknown as { audioId?: string | null; audioStartMs?: number | null; audioEndMs?: number | null }[];
+        for (const n of notes) {
+          if (n.audioId === id) {
+            n.audioId = null;
+            n.audioStartMs = null;
+            n.audioEndMs = null;
+          }
+        }
+      }
     });
   }
 
@@ -165,12 +222,45 @@ class LocalStore implements Store {
     return true;
   }
 
+  async supportsVoice(): Promise<boolean> {
+    return true;
+  }
+
+  async putAudio(userKey: string, file: string, bytes: Uint8Array, _mime: string): Promise<string> {
+    assertAudioFile(file);
+    const folder = audioFolder(userKey);
+    await fs.mkdir(path.join(AUDIO_DIR, folder), { recursive: true });
+    await fs.writeFile(path.join(AUDIO_DIR, folder, file), bytes);
+    return `${folder}/${file}`;
+  }
+
+  async getAudio(userKey: string, stored: string): Promise<Uint8Array | null> {
+    const folder = audioFolder(userKey);
+    const file = fileInFolder(folder, stored);
+    if (!file) return null;
+    try {
+      return new Uint8Array(await fs.readFile(path.join(AUDIO_DIR, folder, file)));
+    } catch {
+      return null;
+    }
+  }
+
+  async removeAudio(userKey: string, paths: string[]): Promise<void> {
+    const folder = audioFolder(userKey);
+    for (const stored of paths) {
+      const file = fileInFolder(folder, stored);
+      if (file) await fs.rm(path.join(AUDIO_DIR, folder, file), { force: true });
+    }
+  }
+
   async clear(userKey: string): Promise<void> {
     // Dropping the record rather than emptying it: the next read then starts
     // the person from scratch exactly as a first visit would.
     await this.mutate((data) => {
       delete data[userKey];
     });
+    // Recordings are files beside the data: they go too.
+    await fs.rm(path.join(AUDIO_DIR, audioFolder(userKey)), { recursive: true, force: true });
   }
 }
 

@@ -2,6 +2,7 @@ import type { ProjectStatus, DealStage, TxnType } from "@/lib/data/workspace";
 import type { BrainCategoryId, BrainItemKind } from "@/lib/data/brain";
 import type { Concept } from "@/lib/brain/concepts";
 import type { LinkOrigin, RelationKind } from "@/lib/brain/relations";
+import type { AudioWord } from "@/lib/voice/align";
 
 /**
  * Persisted entities. `userKey` scopes every row to its owner — it holds the
@@ -63,6 +64,22 @@ export interface DbBrainItem extends Owned {
   reviewDue?: string | null;
   reviewInterval?: number | null;
   reviewedAt?: string | null;
+  /** Migration 010: the recording this note was said in, and the passage (ms) it plays. */
+  audioId?: string | null;
+  audioStartMs?: number | null;
+  audioEndMs?: number | null;
+}
+
+/** A recording kept with the notes said in it (migration 010). */
+export interface DbBrainAudio extends Owned {
+  /** Where the file is stored, inside the owner's folder: "<folder>/<file>". */
+  path: string;
+  mime: string;
+  bytes: number;
+  durationMs: number;
+  language: string | null;
+  /** Word by word, with times in milliseconds. */
+  transcript: AudioWord[];
 }
 
 /**
@@ -97,6 +114,7 @@ export interface Dataset {
   brain: DbBrainItem[];
   links: DbBrainLink[];
   dismissals: DbBrainDismissal[];
+  audio: DbBrainAudio[];
 }
 
 export type Collection = keyof Dataset;
@@ -142,6 +160,16 @@ export interface Store {
    * tensions resolved by a decision.
    */
   supportsMemory(): Promise<boolean>;
+  /** Whether migration 010 has been applied: recordings kept, with their storage. */
+  supportsVoice(): Promise<boolean>;
+  /** One row by id, if it belongs to the caller. */
+  get<C extends Collection>(userKey: string, collection: C, id: string): Promise<Dataset[C][number] | null>;
+  /** Stores a recording in the person's own folder; returns the path to keep. `file` is "<id>.<ext>". */
+  putAudio(userKey: string, file: string, bytes: Uint8Array, mime: string): Promise<string>;
+  /** A recording's bytes — only from the person's own folder. */
+  getAudio(userKey: string, path: string): Promise<Uint8Array | null>;
+  /** Deletes recordings — only from the person's own folder. */
+  removeAudio(userKey: string, paths: string[]): Promise<void>;
   list<C extends Collection>(userKey: string, collection: C): Promise<Dataset[C]>;
   insert<C extends Collection>(
     userKey: string,

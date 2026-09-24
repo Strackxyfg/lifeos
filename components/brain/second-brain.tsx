@@ -21,7 +21,9 @@ import {
 import { adoptNextSteps, weaveBrain, weaveNotes, type WeaveResult } from "@/app/actions/weave";
 import { ConstellationList, Overview, RegionList, SearchResults, ThemeList, type WeaveState } from "./brain-panels";
 import { NoteDetail, type NotePatch } from "./note-detail";
-import { BrainDump } from "./brain-dump";
+import { BrainDump, Meter } from "./brain-dump";
+import { MAX_RECORDING_MS } from "./use-recorder";
+import { audioFile } from "@/components/voice/transcribe-client";
 import { DUMP_HANDOFF } from "./share-capture";
 import { hash } from "@/lib/brain/text";
 import { BrainAnswer } from "./brain-answer";
@@ -35,6 +37,11 @@ import type { ThoughtTrace } from "@/lib/brain/context";
 import { useDictation } from "./use-dictation";
 import { useRecorder } from "./use-recorder";
 import { transcribeAudio } from "@/components/voice/transcribe-client";
+
+const clock = (ms: number) => {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
 import { useSpeech } from "@/components/voice/use-speech";
 import { getVoicePrefs, speechSupported, stopSpeaking, unlockSpeech } from "@/lib/voice/speaker";
 import { CONVERSATION_VAD } from "@/lib/voice/vad";
@@ -417,6 +424,7 @@ export function SecondBrain({
   const [talk, setTalk] = useState<null | { phase: "listening" | "transcribing" | "thinking"; heard?: string }>(null);
   const talkRef = useRef(talk);
   talkRef.current = talk;
+  const noteRecordingRef = useRef(false);
   const speech = useSpeech();
   const talkRecorder = useRecorder({
     autoStop: CONVERSATION_VAD,
@@ -453,6 +461,8 @@ export function SecondBrain({
   }
 
   const startTalk = useCallback(() => {
+    // One microphone at a time: not while a voice note is being recorded.
+    if (noteRecordingRef.current) return;
     // Called from the click: unlock the voice now, it will speak later.
     unlockSpeech();
     stopSpeaking();
@@ -831,6 +841,45 @@ export function SecondBrain({
     onError: (e) => toast(e === "denied" ? m.brain.voiceDenied : m.brain.voiceError, "error"),
   });
 
+  /* ── Voice notes ──────────────────────────────────────────────── */
+
+  // The capture bar's microphone records a voice note: transcribed word by
+  // word and kept, so the note plays back with each word lit as it is said.
+  // Where recordings cannot be transcribed, the browser's dictation stands in.
+  const [voiceSaving, setVoiceSaving] = useState(false);
+  const noteRecorder = useRecorder({
+    onRecorded: (audio) => void saveVoiceNote(audio),
+    onError: (e) => toast(m.brain.dump.errors[e], "error"),
+  });
+  noteRecordingRef.current = noteRecorder.recording;
+  const voiceNotes = voiceEnabled && noteRecorder.supported;
+
+  async function saveVoiceNote(audio: Blob) {
+    setVoiceSaving(true);
+    const form = new FormData();
+    form.append("audio", audioFile(audio));
+    form.append("locale", locale);
+    let ok = false;
+    let data: { note?: BrainNote; kept?: boolean; error?: string } = {};
+    try {
+      const res = await fetch("/api/brain/voice-note", { method: "POST", body: form });
+      ok = res.ok;
+      data = await res.json().catch(() => ({}));
+    } catch {
+      ok = false;
+    }
+    setVoiceSaving(false);
+    const note = data.note;
+    if (!ok || !note) {
+      const errors = m.brain.dump.errors as Record<string, string>;
+      return void toast((data.error && errors[data.error]) || m.brain.errors.failed, "error");
+    }
+    setNotes((prev) => [note, ...prev]);
+    setView({ kind: "note", id: note.id });
+    toast(data.kept ? fill(m.voiceNote.savedIn, { region: m.brain.cat[note.category].label }) : m.voiceNote.notKept);
+    void weaveAround([note.id]).then((report) => report && announce(report.created, note.id));
+  }
+
   /* ── Render ───────────────────────────────────────────────────── */
 
   return (
@@ -999,7 +1048,42 @@ export function SecondBrain({
           </div>
         )}
 
-        {!replay && !talk && (
+        {(noteRecorder.recording || voiceSaving) && (
+          <div className="absolute inset-x-4 bottom-4 z-10" role="status" aria-live="polite">
+            <div className="mx-auto flex max-w-xl items-center gap-3 rounded-xl border border-danger/30 bg-surface/90 px-3 py-2 backdrop-blur">
+              {voiceSaving ? (
+                <p className="flex flex-1 items-center gap-2 text-[0.8rem] text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin text-accent" /> {m.voiceNote.saving}
+                </p>
+              ) : (
+                <>
+                  <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-danger" />
+                  <span className="shrink-0 font-mono text-[0.78rem] tabular-nums">
+                    {clock(noteRecorder.elapsed)} <span className="text-muted">/ {clock(MAX_RECORDING_MS)}</span>
+                  </span>
+                  <Meter level={noteRecorder.level} />
+                  <span className="hidden min-w-0 flex-1 truncate text-[0.66rem] text-muted sm:block">{m.voiceNote.disclosure}</span>
+                  <button
+                    type="button"
+                    onClick={noteRecorder.cancel}
+                    className="shrink-0 rounded-md px-2 py-1 text-[0.74rem] text-muted-foreground hover:text-foreground"
+                  >
+                    {m.voiceNote.cancel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={noteRecorder.stop}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-foreground px-2.5 py-1 text-[0.74rem] font-medium text-background"
+                  >
+                    <Square className="h-3 w-3" /> {m.voiceNote.stop}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!replay && !talk && !noteRecorder.recording && !voiceSaving && (
           <form
             className="absolute inset-x-4 bottom-4"
             onSubmit={(e) => {
@@ -1048,7 +1132,17 @@ export function SecondBrain({
               >
                 <AudioLines className="h-4 w-4" />
               </button>
-              {dictation.supported && (
+              {voiceNotes ? (
+                <button
+                  type="button"
+                  onClick={() => void noteRecorder.start()}
+                  aria-label={m.voiceNote.record}
+                  title={`${m.voiceNote.record} — ${m.voiceNote.disclosure}`}
+                  className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+              ) : dictation.supported && (
                 <button
                   type="button"
                   onClick={dictation.listening ? dictation.stop : dictation.start}

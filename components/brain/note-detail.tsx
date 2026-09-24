@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 import { RelationChip, UnreviewedBadge } from "./relation-chip";
 import { SpeakButton } from "@/components/voice/speak-button";
+import { AudioNote } from "@/components/voice/audio-note";
 
 export interface NotePatch {
   title?: string;
@@ -81,6 +82,10 @@ export function NoteDetail({
   // Local drafts, re-synced when a different note is opened.
   const [title, setTitle] = useState(note.title);
   const [detail, setDetail] = useState(note.detail ?? "");
+  // A whole voice note whose text is still what was said shows its transcript,
+  // lit as it plays, instead of an editor holding the same words.
+  const [spoken, setSpoken] = useState<string | null>(null);
+  const [editText, setEditText] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [pick, setPick] = useState("");
   const [picking, setPicking] = useState(false);
@@ -106,6 +111,8 @@ export function NoteDetail({
   useEffect(() => {
     setTitle(note.title);
     setDetail(note.detail ?? "");
+    setSpoken(null);
+    setEditText(false);
     setConfirming(false);
     setPick("");
     setPicking(false);
@@ -257,16 +264,36 @@ export function NoteDetail({
         )}
       />
 
-      <label className="sr-only" htmlFor="note-detail">{m.brain.note.detailPlaceholder}</label>
-      <textarea
-        id="note-detail"
-        value={detail}
-        onChange={(e) => setDetail(e.target.value)}
-        onBlur={saveDetail}
-        maxLength={20_000}
-        placeholder={m.brain.note.detailPlaceholder}
-        className="mt-2 min-h-[88px] w-full resize-y rounded-lg border border-border bg-surface-2/30 p-2.5 text-[0.84rem] leading-relaxed outline-none placeholder:text-muted focus:border-border-strong"
-      />
+      {note.audio && (
+        <AudioNote
+          key={`${note.audio.id}:${note.audio.start ?? ""}`}
+          audio={note.audio}
+          onTranscript={note.audio.start === null ? setSpoken : undefined}
+        />
+      )}
+
+      {note.audio && note.audio.start === null && spoken !== null && spoken.trim() === detail.trim() && !editText ? (
+        <button
+          type="button"
+          onClick={() => setEditText(true)}
+          className="mt-1.5 text-[0.72rem] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          {m.voiceNote.edit}
+        </button>
+      ) : (
+        <>
+          <label className="sr-only" htmlFor="note-detail">{m.brain.note.detailPlaceholder}</label>
+          <textarea
+            id="note-detail"
+            value={detail}
+            onChange={(e) => setDetail(e.target.value)}
+            onBlur={saveDetail}
+            maxLength={20_000}
+            placeholder={m.brain.note.detailPlaceholder}
+            className="mt-2 min-h-[88px] w-full resize-y rounded-lg border border-border bg-surface-2/30 p-2.5 text-[0.84rem] leading-relaxed outline-none placeholder:text-muted focus:border-border-strong"
+          />
+        </>
+      )}
 
       {note.concepts.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">

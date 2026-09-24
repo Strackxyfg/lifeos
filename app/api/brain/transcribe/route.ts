@@ -1,7 +1,7 @@
 import { requireUserKey } from "@/lib/auth/require-user";
 import { AIError } from "@/lib/ai/router";
 import { quota } from "@/lib/ai/quota";
-import { MAX_AUDIO_BYTES, acceptsAudio, transcribe, voiceAvailable } from "@/lib/ai/voice";
+import { MAX_AUDIO_BYTES, acceptsAudio, transcribe, transcribeDetailed, voiceAvailable } from "@/lib/ai/voice";
 import { isLocale } from "@/lib/i18n/config";
 
 export const runtime = "nodejs";
@@ -46,6 +46,12 @@ export async function POST(req: Request) {
   const language = typeof localeRaw === "string" && isLocale(localeRaw) ? localeRaw : undefined;
 
   try {
+    // `detail`: every word with its time, for a recording that will be kept.
+    if (form?.get("detail") === "1") {
+      const t = await transcribeDetailed(audio, language);
+      if (!t.text) return Response.json({ error: "empty" }, { status: 422 });
+      return Response.json({ text: t.text, words: t.words, durationMs: t.durationMs, language: t.language });
+    }
     const text = await transcribe(audio, language);
     if (!text) return Response.json({ error: "empty" }, { status: 422 });
     return Response.json({ text });

@@ -1,10 +1,11 @@
 # LifeOS — description produit
 
-> État au 23 septembre 2026, **établi depuis le code**. Le produit a pivoté :
+> État au 24 septembre 2026, **établi depuis le code**. Le produit a pivoté :
 > ce n'est plus un générateur d'espaces Notion, c'est un second cerveau
 > souverain avec un agent IA. Notion devient un export facultatif. Depuis, le
 > cerveau se relie lui-même (section 2), se laisse vider à la voix (section 1),
-> montre comment il pense (section 5) et se souvient (section 3).
+> montre comment il pense (section 5), se souvient (section 3), et se parle
+> (section 6).
 
 **Légende** — ✅ fonctionnel · 🟡 partiel · ⛔ pas construit
 
@@ -167,7 +168,36 @@ lus. Ce qui est dessiné est **exactement** ce que le modèle a reçu — pas un
 reconstitution. Chaque note lue est listée avec la raison (mots ou sujets
 partagés, connexion suivie) ; les titres cités dans la réponse s'ouvrent.
 
-## 6. L'agent autonome ✅
+## 6. La voix ✅
+
+**Notes vocales.** Le micro de la barre de capture enregistre une note :
+Whisper la transcrit mot à mot, **l'enregistrement est gardé** dans l'espace
+de la personne, et la note se réécoute avec chaque mot éclairé au moment où il
+est dit — un clic sur un mot y amène, vitesse ×1 à ×2. Un mémo passé dans
+« Vider ma tête » peut garder son enregistrement : **chaque note découpée
+rejoue le passage exact d'où elle vient** (alignement de la citation du modèle
+sur les mots datés ; mesuré sur un vrai mémo de 28 s : 7 notes, 7 passages
+exacts). Transcription et passage voyagent dans l'export ZIP.
+
+**Réponses parlées.** Chaque réponse du cerveau, de l'assistant, le briefing
+et chaque note ont un bouton « Écouter » ; les réponses peuvent aussi être lues
+au fil de leur écriture (Réglages → Voix). Voix de l'appareil, **locales par
+défaut** : les voix « en ligne » (Google dans Chrome, Microsoft dans Edge)
+reçoivent le texte lu, elles sont désactivées tant qu'on ne les choisit pas.
+
+**Conversation.** Le micro à côté de la recherche ouvre une conversation mains
+libres : le cerveau entend la fin de la question (détection de parole qui
+apprend le bruit de la pièce), la transcrit, répond brièvement à voix haute
+pendant que la trace 3D s'allume au rythme de la voix, puis réécoute — relances
+comprises (« et pour le semi ? »), jusqu'à ce qu'on arrête ou qu'on se taise.
+Il n'écoute jamais pendant qu'il parle. Mesuré : 0,4 s de transcription,
+premiers mots 0,8 s plus tard.
+
+**Telegram.** Un mémo vocal envoyé au bot est transcrit, confirmé (« 🎤 … »),
+puis suit exactement le chemin d'un message tapé : file d'attente, politique,
+journal d'audit.
+
+## 7. L'agent autonome ✅
 
 Un agent IA qui travaille sur vos données, **sur un serveur séparé — jamais
 sur votre ordinateur** — et qui ne peut rien faire de dangereux sans vous.
@@ -189,7 +219,7 @@ sur votre ordinateur** — et qui ne peut rien faire de dangereux sans vous.
 | ✅ | lire et chercher dans le second cerveau · voir à quoi une note est reliée et pourquoi · relier deux notes avec un sens et une raison (marqué « agent, à valider ») · lancer le moteur de connexions · créer des notes (reliées automatiquement) · créer tâches, projets, opportunités · rédiger e-mails, campagnes, propositions · envoyer un e-mail validé *(si un fournisseur d'envoi est configuré)* |
 | ⛔ | agenda · recherche web · Slack · publicité · services externes · exécution de code — ces actions répondent « non implémenté » au lieu de prétendre avoir réussi |
 
-## 7. Le reste de l'activité ✅
+## 8. Le reste de l'activité ✅
 
 Tableau de bord, projets, clients (CRM) et finances, avec de vraies données
 persistées. Le **résumé du jour** et le **bilan de la semaine** partent
@@ -198,7 +228,7 @@ prochaine action, les tensions à arbitrer, ce qui a été capturé et relié ce
 semaine, les notes à revoir — puis situent les projets et les finances. Sans
 IA, le même texte est calculé depuis les mêmes faits.
 
-## 8. Notion — export facultatif ✅
+## 9. Notion — export facultatif ✅
 
 Depuis les Paramètres, une fois Notion connecté : LifeOS montre les bases qu'il
 va créer (un socle, plus un module par domaine de vie choisi), attend votre
@@ -206,25 +236,27 @@ clic, puis les crée dans la page partagée avec une page d'accueil. L'écran de
 progression n'affiche que les étapes réellement exécutées. Sans connexion, il
 refuse au lieu de simuler.
 
-## 9. Vos données ✅
+## 10. Vos données ✅
 
-- Export Markdown / JSON à tout moment.
+- Export Markdown / JSON à tout moment, ou **ZIP complet** : les deux, plus
+  chaque enregistrement et sa transcription mot à mot (le Markdown relie chaque
+  note vocale à son audio et à son passage).
 - **Suppression complète** depuis les Paramètres (mot à taper, vérifié côté
   serveur) : notes, connexions, projets, opportunités, transactions, tâches,
-  profil. Le compte et le contenu Notion restent.
+  enregistrements, profil. Le compte et le contenu Notion restent.
 
-## 10. Tarifs — accès anticipé
+## 11. Tarifs — accès anticipé
 
 Gratuit, sans carte. Prix affichés pour après l'accès anticipé :
 **Essentiel 19 $**, **Pro 49 $**, **Souverain 99 $** par mois. Chaque promesse
 de la grille correspond à une fonction qui existe. Rien n'est facturé : le
 paiement n'est pas branché.
 
-## 11. Technique
+## 12. Technique
 
 Next.js 15 · React 19 · TypeScript strict · Supabase (authentification,
 Postgres, sécurité ligne par ligne) · API Notion · agent sur VPS · PWA
-(installable, cible de partage) · interface intégralement bilingue · 400 tests
+(installable, cible de partage) · interface intégralement bilingue · 466 tests
 automatisés, dont des gardes contre les fausses allégations, les routes non
 protégées et les caractères de contrôle dans le code.
 
@@ -237,20 +269,28 @@ rejouées ailleurs, streaming qui bascule avant le premier mot. Mode souverain :
 `AI_PROVIDER=mistral` + `AI_FALLBACK=0`. Transcription : Whisper
 large-v3-turbo, repli large-v3. Quotas par personne sur les appels coûteux.
 
+**Voix.** Whisper (Groq) avec mots datés ; alignement citation → audio par
+alignement local ; enregistrements servis par plages d'octets, jamais mis en
+cache, chargés une fois en mémoire pour des passages qui démarrent en ~0,1 s ;
+export ZIP écrit en flux. Synthèse : voix de l'appareil, lues phrase par phrase
+avec une file maison (les défauts de Chrome contournés : coupure à 15 s,
+événement de fin perdu).
+
 **Échelle.** Similarité par index inversé (tous les couples d'un cerveau de
 4 000 notes en ~1,3 s au lieu de 107 s), carte mentale de 3 000 notes en moins
 de 5 s, testées.
 
 ---
 
-## 12. Avant de lancer
+## 13. Avant de lancer
 
-1. **Appliquer les migrations 007, 008 puis 009** dans Supabase (idempotentes,
-   validées sur Postgres). Sans 007 : pas de connexions, profil limité au
-   navigateur. Sans 008 : les connexions restent simples (sans sens ni
-   direction) et le moteur de connexions reste éteint. Sans 009 : la révision
-   retombe sur une note du jour, et une tension décidée reste listée. L'app le
-   dit, elle ne fait pas semblant.
+1. **Appliquer les migrations 007, 008, 009 puis 010** dans Supabase
+   (idempotentes, validées sur Postgres, politiques de stockage comprises).
+   Sans 007 : pas de connexions, profil limité au navigateur. Sans 008 : les
+   connexions restent simples et le moteur de connexions reste éteint. Sans
+   009 : la révision retombe sur une note du jour, et une tension décidée reste
+   listée. Sans 010 : les notes vocales sont enregistrées en texte, sans leur
+   audio. L'app le dit, elle ne fait pas semblant.
 2. **Paiement** : Stripe n'est pas branché. Aucun revenu possible.
 3. **Pages légales** : mentions légales, CGU et politique de confidentialité
    sont obligatoires pour un site commercial en France (LCEN, RGPD). Elles
@@ -263,9 +303,14 @@ de 5 s, testées.
    en région UE, et Mistral comme fournisseur (déjà branché : `MISTRAL_API_KEY`,
    `AI_PROVIDER=mistral`, `AI_FALLBACK=0`) — la transcription resterait chez
    Groq, à remplacer par un Whisper européen ou auto-hébergé.
-5. **Clés IA** : `CEREBRAS_MODEL=llama-3.3-70b` n'existe plus chez Cerebras et
-   la clé Cerebras répond « paiement requis » (402) — le routeur l'écarte
-   automatiquement, mais autant la retirer.
+5. **Clés** : `CEREBRAS_MODEL=llama-3.3-70b` n'existe plus chez Cerebras et
+   la clé Cerebras répond « paiement requis » (402) — le routeur l'écarte, mais
+   autant la retirer. La clé `OPENAI_API_KEY` est refusée (401) et l'URL Upstash
+   est vide : ni l'une ni l'autre n'est utilisée. La voix anglaise d'Orpheus
+   (Groq) demande que l'administrateur accepte ses conditions dans la console
+   Groq — non utilisée, les voix de l'appareil suffisent.
+6. **Telegram** : les mémos vocaux au bot sont codés et testés, pas éprouvés
+   sur l'API réelle (aucun jeton de bot configuré ici).
 
 ## Ce qui a été retiré parce que c'était faux
 
@@ -290,6 +335,8 @@ le total des revenus.
   notes qu'elle a lues ; chaque lien tiré d'un mémo cite la phrase qui le dit.
 - **Un cerveau qui se souvient** : ce qui compte revient au bon moment, et les
   contradictions se tranchent au lieu de s'accumuler.
+- **Un cerveau qui garde votre voix** : chaque note issue d'un mémo rejoue la
+  phrase exacte où vous l'avez dite ; et on peut lui parler, il répond.
 - **Un agent qu'on peut réellement laisser travailler** : rédiger librement,
   envoyer sous contrôle, garde-fous non contournables, exécution hors de la
   machine de l'utilisateur, le même agent dans l'app et sur Telegram.

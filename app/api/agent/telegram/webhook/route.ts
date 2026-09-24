@@ -7,6 +7,7 @@ import {
   redeemLinkCode,
   isTelegramConfigured,
 } from "@/lib/agent/telegram";
+import { VOICE_REPLIES, telegramVoiceDeps, voiceToText } from "@/lib/agent/telegram-voice";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,15 +32,17 @@ export async function POST(req: Request) {
   const update = (await req.json().catch(() => null)) as TelegramUpdate | null;
   const message = update?.message;
   const chatId = message?.chat?.id;
-  const text = message?.text?.trim();
+  let text = message?.text?.trim();
+  // A voice message, or an audio file: transcribed below, once the chat is known.
+  const voice = message?.voice ?? message?.audio;
 
-  if (!chatId || !text) return NextResponse.json({ ok: true });
+  if (!chatId || (!text && !voice?.file_id)) return NextResponse.json({ ok: true });
   const chat = String(chatId);
 
   // ── Pairing ────────────────────────────────────────────────────────
   // `/start ABC123` is how a chat is claimed. Handled before the ownership
   // lookup, because by definition the chat isn't linked yet.
-  const start = text.match(/^\/start(?:\s+(\S+))?$/i);
+  const start = text?.match(/^\/start(?:\s+(\S+))?$/i);
   if (start) {
     const code = start[1];
     if (!code) {
@@ -78,6 +81,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // ── A voice message becomes text ───────────────────────────────────
+  // Only now, for a chat that belongs to someone: transcription costs, and
+  // an unlinked chat gets instructions, never a transcription.
+  if (!text && voice?.file_id) {
+    const heard = await voiceToText(voice, telegramVoiceDeps(userKey));
+    if (!heard.ok) {
+      await sendTelegram(chat, VOICE_REPLIES[heard.reason]);
+      return NextResponse.json({ ok: true });
+    }
+    text = heard.text;
+    // What was heard, so a mistranscription is caught before the agent acts on it.
+    await sendTelegram(chat, `🎤 « ${text.length > 500 ? `${text.slice(0, 499)}…` : text} »`);
+  }
+  if (!text) return NextResponse.json({ ok: true });
+
   // ── Queue it for the runner ────────────────────────────────────────
   const db = createAdminClient();
   const { error } = await db.from("agent_messages").insert({
@@ -101,5 +119,7 @@ interface TelegramUpdate {
   message?: {
     text?: string;
     chat?: { id?: number };
+    voice?: { file_id: string; duration?: number; mime_type?: string; file_size?: number };
+    audio?: { file_id: string; duration?: number; mime_type?: string; file_size?: number };
   };
 }

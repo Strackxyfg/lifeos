@@ -4,7 +4,7 @@ import { isLocale, type Locale } from "@/lib/i18n/config";
 import { dictionaries } from "@/lib/i18n/dictionaries";
 import { requireUserKey } from "@/lib/auth/require-user";
 import { loadBrainView } from "@/lib/brain/load";
-import { groundAnswer, type ThoughtTrace } from "@/lib/brain/context";
+import { groundAnswer, retrievalQuery, type ThoughtTrace } from "@/lib/brain/context";
 import { conceptsByUse } from "@/lib/brain/concepts";
 import { subjectsOfQuestion } from "@/lib/ai/brain-ai";
 import { computeFocus } from "@/lib/brain/focus";
@@ -66,14 +66,17 @@ export async function POST(req: Request) {
   const auth = await requireUserKey();
   if ("response" in auth) return auth.response;
 
-  const body = (await req.json().catch(() => ({}))) as { messages?: ChatMessage[]; locale?: string };
+  const body = (await req.json().catch(() => ({}))) as { messages?: ChatMessage[]; locale?: string; voice?: boolean };
+  // A spoken conversation: the answer is heard, not read.
+  const spoken = body.voice === true;
   const locale: Locale = isLocale(body.locale) ? body.locale : "en";
   const m = dictionaries[locale];
   const history = (body.messages ?? [])
     .filter((x) => (x.role === "user" || x.role === "assistant") && typeof x.content === "string")
     .slice(-10)
     .map((x) => ({ role: x.role, content: x.content.slice(0, 4_000) }));
-  const question = [...history].reverse().find((x) => x.role === "user")?.content ?? "";
+  // What the brain is searched with: the question, or a short follow-up with the question before it.
+  const question = retrievalQuery(history);
 
   const { notes, links } = await loadBrainView(m);
   const now = new Date();
@@ -123,6 +126,12 @@ export async function POST(req: Request) {
     "A line starting with ↳ is a connection between two notes — use it: it says how they relate and why.",
     "If the notes do not cover the question, say so plainly, then answer from general knowledge and make the switch obvious.",
     "Never invent facts about the user: no figures, deadlines or events they did not write down.",
+    ...(spoken
+      ? [
+          "This answer will be read aloud in a spoken conversation: two to four short sentences, the way a person",
+          "talks. No lists, no headings, no bold, no symbols. Name a note by its title only when it matters.",
+        ]
+      : []),
     "",
     "=== THE USER'S SECOND BRAIN ===",
     context,
@@ -135,7 +144,7 @@ export async function POST(req: Request) {
     const { tokens, route } = await ai().stream({
       task: "chat",
       temperature: 0.4,
-      maxTokens: 500,
+      maxTokens: spoken ? 220 : 500,
       messages: [{ role: "system", content: systemPrompt(locale, grounding) }, ...history],
     });
 

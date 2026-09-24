@@ -7,6 +7,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { NotionConnect } from "@/components/app/notion-connect";
 import { SettingsProfileForm } from "@/components/app/settings-profile-form";
 import { DeleteData } from "@/components/app/delete-data";
+import { VoiceSettings } from "@/components/voice/voice-settings";
 import { getNotionStatus } from "@/lib/notion/connection";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,11 @@ export default async function SettingsPage() {
             profession={profile.profession ?? ""}
             areas={profile.areas}
           />
+        </Card>
+
+        <Card id="voice">
+          <CardHeader title={m.voice.settingsTitle} />
+          <VoiceSettings />
         </Card>
 
         <Card id="data">

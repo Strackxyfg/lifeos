@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Sparkles, ArrowUp, Mic, Square, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SpeakButton } from "@/components/voice/speak-button";
 import { ease } from "@/lib/motion";
 import { useMessages, useLocale } from "@/lib/i18n/client";
 import { fill } from "@/lib/i18n/config";
@@ -129,6 +130,9 @@ export function AssistantChat({ firstName = "there" }: { firstName?: string }) {
               >
                 {msg.content}
               </div>
+              {msg.role === "assistant" && !(thinking && i === messages.length - 1) && (
+                <SpeakButton text={msg.content} compact className="mt-1.5 h-6 w-6 justify-center" />
+              )}
               {msg.sources && msg.sources.length > 0 && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <span className="text-[0.7rem] text-muted">{m.assistant.sources}</span>

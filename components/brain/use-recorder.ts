@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { initialVad, vadStep, type VadConfig, type VadPhase } from "@/lib/voice/vad";
 
 /**
  * Records a voice memo in the browser, for transcription on the server.
@@ -32,15 +33,26 @@ export function extensionFor(type: string): string {
 export function useRecorder({
   onRecorded,
   onError,
+  autoStop,
+  onSilence,
 }: {
   onRecorded: (audio: Blob) => void;
   onError: (e: RecorderError) => void;
+  /**
+   * Hands-free: stop by itself once the person has finished speaking
+   * (`lib/voice/vad.ts`). Without it, recording runs until `stop`.
+   */
+  autoStop?: VadConfig;
+  /** Hands-free only: nobody spoke. The recording is dropped. */
+  onSilence?: () => void;
 }) {
   const [supported, setSupported] = useState(false);
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   /** Loudness, 0 to 1, for the meter. */
   const [level, setLevel] = useState(0);
+  /** Hands-free: whether speech has been heard yet. */
+  const [heard, setHeard] = useState<VadPhase>("waiting");
 
   const rec = useRef<{
     recorder: MediaRecorder;
@@ -52,8 +64,8 @@ export function useRecorder({
   } | null>(null);
   // The latest callbacks, so a recording started before a re-render reports
   // to the current ones.
-  const cb = useRef({ onRecorded, onError });
-  cb.current = { onRecorded, onError };
+  const cb = useRef({ onRecorded, onError, onSilence, autoStop });
+  cb.current = { onRecorded, onError, onSilence, autoStop };
 
   useEffect(() => {
     setSupported(typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia);
@@ -112,9 +124,13 @@ export function useRecorder({
       else cb.current.onError("failed");
     };
 
-    // The meter. Optional: a browser without Web Audio still records.
+    // The meter, and the ear of hands-free mode. Optional for a plain
+    // recording: a browser without Web Audio still records.
     let audio: AudioContext | null = null;
     let frame = 0;
+    const vadConfig = cb.current.autoStop;
+    let vad = initialVad();
+    setHeard("waiting");
     try {
       audio = new AudioContext();
       const analyser = audio.createAnalyser();
@@ -124,12 +140,25 @@ export function useRecorder({
       let last = 0;
       const tick = (t: number) => {
         if (t - last > 80) {
+          const dt = last === 0 ? 80 : Math.min(250, t - last);
           last = t;
           analyser.getByteTimeDomainData(buf);
           let sum = 0;
           for (const v of buf) sum += ((v - 128) / 128) ** 2;
           // Speech sits around 0.05–0.2 RMS; scale it into the meter's range.
-          setLevel(Math.min(1, Math.sqrt(sum / buf.length) * 4));
+          const lvl = Math.min(1, Math.sqrt(sum / buf.length) * 4);
+          setLevel(lvl);
+          if (vadConfig && rec.current) {
+            const before = vad.phase;
+            vad = vadStep(vad, lvl, dt, vadConfig);
+            if (vad.phase !== before) setHeard(vad.phase);
+            if (vad.phase === "done") stop();
+            if (vad.phase === "timeout") {
+              rec.current.discard = true;
+              stop();
+              cb.current.onSilence?.();
+            }
+          }
         }
         if (rec.current) rec.current.frame = requestAnimationFrame(tick);
       };
@@ -164,5 +193,14 @@ export function useRecorder({
     [release]
   );
 
-  return { supported, recording, elapsed, level, start, stop };
+  /** Stops and drops the recording: nothing is reported. */
+  const cancel = useCallback(() => {
+    const r = rec.current;
+    if (!r) return;
+    r.discard = true;
+    if (r.recorder.state !== "inactive") r.recorder.stop();
+    else release();
+  }, [release]);
+
+  return { supported, recording, elapsed, level, heard, start, stop, cancel };
 }

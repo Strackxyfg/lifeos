@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { AnimatePresence } from "framer-motion";
-import { ArrowUp, AudioLines, Brain, History, Mic, Pause, Play, Search, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, AudioLines, Brain, History, Loader2, Mic, Pause, Play, Search, Sparkles, Square, X } from "lucide-react";
 import { categories, categoryById, type BrainCategoryId } from "@/lib/data/brain";
 import { canonicalPair, pairKey, type BrainLink, type BrainNote } from "@/lib/brain/graph";
 import { computeFocus } from "@/lib/brain/focus";
@@ -33,6 +33,11 @@ import { beatFor, replayEvents, visibleAt } from "@/lib/brain/replay";
 import { reviewNote } from "@/app/actions/memory";
 import type { ThoughtTrace } from "@/lib/brain/context";
 import { useDictation } from "./use-dictation";
+import { useRecorder } from "./use-recorder";
+import { transcribeAudio } from "@/components/voice/transcribe-client";
+import { useSpeech } from "@/components/voice/use-speech";
+import { getVoicePrefs, speechSupported, stopSpeaking, unlockSpeech } from "@/lib/voice/speaker";
+import { CONVERSATION_VAD } from "@/lib/voice/vad";
 import { CAPTURED_EVENT, LINKED_EVENT, OPEN_DUMP_EVENT, classifyThought } from "./classify-client";
 import type { GraphEdge, GraphNode } from "./note-graph";
 import { toast } from "@/components/ui/toaster";
@@ -58,7 +63,8 @@ type View =
   /** The brain dump, with the text it opens with. */
   | { kind: "dump"; text: string }
   /** A question asked of the brain. */
-  | { kind: "ask"; question: string }
+  /** A question asked of the brain; `seq` makes asking the same question twice a new answer. */
+  | { kind: "ask"; question: string; seq: number; voice: boolean }
   /** Deciding a tension. */
   | { kind: "decide"; linkId: string };
 
@@ -146,6 +152,12 @@ export function SecondBrain({
   const [trace, setTrace] = useState<{ data: ThoughtTrace; run: number } | null>(null);
   // Reviews answered since the page opened: today's batch shrinks with them.
   const [answered, setAnswered] = useState(0);
+  // The conversation in the ask view: earlier questions and answers, the
+  // answer just written (it joins them when the next question is asked), and
+  // a counter so asking the same question twice fetches a new answer.
+  const [turns, setTurns] = useState<{ q: string; a: string }[]>([]);
+  const lastAnswer = useRef<{ q: string; a: string } | null>(null);
+  const askSeq = useRef(0);
   // The brain's growth, replayed: how many events have played, and whether it runs.
   const [replay, setReplay] = useState<{ count: number; playing: boolean } | null>(null);
   // How the neurons are coloured: by region (what a note is) or by
@@ -232,6 +244,8 @@ export function SecondBrain({
     [map]
   );
 
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const openNote = view.kind === "note" ? byId.get(view.id) ?? null : null;
   const decisionView = useMemo(() => {
     if (view.kind !== "decide") return null;
@@ -370,15 +384,95 @@ export function SecondBrain({
     setView({ kind: "theme", key });
   }, []);
 
-  const ask = useCallback((question: string) => {
+  const ask = useCallback((question: string, voice = false) => {
     const q = question.trim();
     if (q.length < 2) return;
+    // A question asked while an answer is open continues that conversation;
+    // asked from anywhere else, it starts a new one.
+    const answered = lastAnswer.current;
+    lastAnswer.current = null;
+    if (viewRef.current.kind === "ask") {
+      if (answered) setTurns((t) => [...t, answered].slice(-6));
+    } else {
+      setTurns([]);
+    }
+    // Safari speaks only after a gesture: this call comes from one.
+    if (!voice && getVoicePrefs().autoRead) unlockSpeech();
+    askSeq.current += 1;
     setQuery("");
     setTrace(null);
-    setView({ kind: "ask", question: q });
+    setView({ kind: "ask", question: q, seq: askSeq.current, voice });
     if (window.matchMedia("(max-width: 1279px)").matches) {
       requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
+  }, []);
+
+  /* ── Talking to the brain ─────────────────────────────────────── */
+
+  // Hands-free: listen until the question is over, transcribe it, ask it,
+  // read the answer aloud while the brain shows how it read it — then listen
+  // again, until the person stops or says nothing. Never listens while the
+  // answer is being read: the device's voice is not always removed by the
+  // browser's echo cancellation, and the brain would hear itself.
+  const [talk, setTalk] = useState<null | { phase: "listening" | "transcribing" | "thinking"; heard?: string }>(null);
+  const talkRef = useRef(talk);
+  talkRef.current = talk;
+  const speech = useSpeech();
+  const talkRecorder = useRecorder({
+    autoStop: CONVERSATION_VAD,
+    onRecorded: (audio) => void heardQuestion(audio),
+    onSilence: () => {
+      setTalk(null);
+      toast(m.brain.talk.ended);
+    },
+    onError: (e) => {
+      setTalk(null);
+      toast(m.brain.dump.errors[e], "error");
+    },
+  });
+  const talkRec = useRef(talkRecorder);
+  talkRec.current = talkRecorder;
+
+  const listen = useCallback(() => {
+    setTalk({ phase: "listening" });
+    void talkRec.current.start();
+  }, []);
+
+  async function heardQuestion(audio: Blob) {
+    if (!talkRef.current) return;
+    setTalk({ phase: "transcribing" });
+    const r = await transcribeAudio(audio, locale);
+    if (!talkRef.current) return; // ended while transcribing
+    if ("error" in r) {
+      if (r.error === "empty") return listen();
+      setTalk(null);
+      return void toast(m.brain.dump.errors[r.error], "error");
+    }
+    setTalk({ phase: "thinking", heard: r.text });
+    ask(r.text, true);
+  }
+
+  const startTalk = useCallback(() => {
+    // Called from the click: unlock the voice now, it will speak later.
+    unlockSpeech();
+    stopSpeaking();
+    listen();
+  }, [listen]);
+
+  /** The answer has been read: the brain listens for what comes next. */
+  const answerSpoken = useCallback(() => {
+    if (talkRef.current) listen();
+  }, [listen]);
+
+  const interruptTalk = useCallback(() => {
+    stopSpeaking();
+    if (talkRef.current) listen();
+  }, [listen]);
+
+  const endTalk = useCallback(() => {
+    talkRec.current.cancel();
+    stopSpeaking();
+    setTalk(null);
   }, []);
 
   const decide = useCallback((linkId: string) => {
@@ -405,6 +499,8 @@ export function SecondBrain({
       if (e.key === "/" && !typing) {
         e.preventDefault();
         searchRef.current?.focus();
+      } else if (e.key === "Escape" && talkRef.current) {
+        endTalk();
       } else if (e.key === "Escape" && !typing) {
         if (query) setQuery("");
         else back();
@@ -860,7 +956,50 @@ export function SecondBrain({
         )}
 
         {/* Capture */}
-        {!replay && (
+        {talk && (
+          <div className="absolute inset-x-4 bottom-4 z-10" role="status" aria-live="polite">
+            <div className="mx-auto flex max-w-xl items-center gap-3 rounded-xl border border-accent/30 bg-surface/90 px-3 py-2 backdrop-blur">
+              <TalkOrb
+                phase={talk.phase === "thinking" && speech.speaking ? "speaking" : talk.phase}
+                level={talkRecorder.level}
+                heard={talkRecorder.heard === "speaking"}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.8rem] font-medium">
+                  {talk.phase === "listening"
+                    ? m.brain.talk.listening
+                    : talk.phase === "transcribing"
+                      ? m.brain.talk.transcribing
+                      : speech.speaking
+                        ? m.brain.talk.speaking
+                        : m.brain.talk.thinking}
+                </p>
+                <p className="truncate text-[0.68rem] text-muted-foreground">
+                  {talk.heard ? `« ${talk.heard} »` : speechSupported() ? m.brain.talk.disclosure : m.brain.talk.noVoice}
+                </p>
+              </div>
+              {talk.phase === "thinking" && speech.speaking && (
+                <button
+                  type="button"
+                  onClick={interruptTalk}
+                  className="shrink-0 rounded-md border border-border px-2 py-1 text-[0.72rem] hover:border-border-strong"
+                >
+                  {m.brain.talk.interrupt}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={endTalk}
+                aria-label={m.brain.talk.end}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!replay && !talk && (
           <form
             className="absolute inset-x-4 bottom-4"
             onSubmit={(e) => {
@@ -965,6 +1104,21 @@ export function SecondBrain({
             ) : (
               <kbd className="rounded border border-border px-1 font-mono text-[0.62rem] text-muted">/</kbd>
             )}
+            {voiceEnabled && talkRecorder.supported && (
+              <button
+                type="button"
+                onClick={talk ? endTalk : startTalk}
+                aria-pressed={!!talk}
+                aria-label={talk ? m.brain.talk.end : m.brain.talk.start}
+                title={`${talk ? m.brain.talk.end : m.brain.talk.start} — ${m.brain.talk.disclosure}`}
+                className={cn(
+                  "grid h-6 w-6 place-items-center rounded-md transition-colors",
+                  talk ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Mic className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -974,9 +1128,25 @@ export function SecondBrain({
               <SearchResults key="search" query={query} results={results} onOpen={open} onAsk={ask} />
             ) : view.kind === "ask" ? (
               <BrainAnswer
-                key={`ask-${view.question}`}
+                key={`ask-${view.seq}`}
                 question={view.question}
                 notes={notes}
+                speak={view.voice}
+                onSpoken={view.voice ? answerSpoken : undefined}
+                history={turns.slice(-4).flatMap((t) => [
+                  { role: "user" as const, content: t.q },
+                  { role: "assistant" as const, content: t.a },
+                ])}
+                onAnswered={(a) => {
+                  lastAnswer.current = { q: view.question, a };
+                }}
+                turns={turns}
+                onNewThread={() => {
+                  setTurns([]);
+                  lastAnswer.current = null;
+                  setView({ kind: "overview" });
+                  searchRef.current?.focus();
+                }}
                 onTrace={(data) => setTrace(data ? { data, run: Date.now() } : null)}
                 onOpen={open}
                 onBack={() => setView({ kind: "overview" })}
@@ -1082,5 +1252,30 @@ export function SecondBrain({
         </div>
       </aside>
     </div>
+  );
+}
+
+/** The state of a conversation, as a shape: it swells with the voice, spins while thinking, beats while answering. */
+function TalkOrb({ phase, level, heard }: { phase: "listening" | "transcribing" | "thinking" | "speaking"; level: number; heard: boolean }) {
+  if (phase === "transcribing" || phase === "thinking") {
+    return (
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent/10 text-accent">
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </span>
+    );
+  }
+  const scale = phase === "listening" ? 1 + Math.min(0.45, level * 0.9) : 1;
+  return (
+    <span className="relative grid h-9 w-9 shrink-0 place-items-center">
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-0 rounded-full transition-transform duration-75",
+          phase === "speaking" ? "animate-pulse bg-accent/30" : heard ? "bg-accent/35" : "bg-accent/15"
+        )}
+        style={{ transform: `scale(${scale})` }}
+      />
+      <Mic className="relative h-4 w-4 text-accent" />
+    </span>
   );
 }

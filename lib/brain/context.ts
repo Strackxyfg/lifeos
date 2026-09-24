@@ -118,6 +118,20 @@ export function parseTrace(raw: unknown): ThoughtTrace | null {
   return { seeds, hops, context: list(o.context, 40).filter(isId) };
 }
 
+/**
+ * What to search the brain with, in a conversation. A follow-up ("and for the
+ * half-marathon?") says too little on its own to find the right notes: when
+ * the last question is short, the one before it is searched with it. A full
+ * question stands alone, so a change of subject is not dragged back.
+ */
+export function retrievalQuery(history: { role: string; content: string }[]): string {
+  const asked = history.filter((m) => m.role === "user").map((m) => m.content.trim()).filter(Boolean);
+  const last = asked.at(-1) ?? "";
+  if (asked.length < 2) return last;
+  const words = last.split(/\s+/).filter(Boolean).length;
+  return words < 8 ? `${asked.at(-2)} ${last}` : last;
+}
+
 /** What the assistant receives, and which notes it was built from. */
 export interface Grounding {
   text: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Loader2, RotateCcw, Search, Sparkles } from "lucide-react";
 import { categoryById } from "@/lib/data/brain";
@@ -11,6 +11,8 @@ import type { BrainNote } from "@/lib/brain/graph";
 import { fill, plural } from "@/lib/i18n/config";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { ease } from "@/lib/motion";
+import { getSpeechState, getVoicePrefs, stopSpeaking, streamSpeech } from "@/lib/voice/speaker";
+import { SpeakButton } from "@/components/voice/speak-button";
 
 /**
  * A question asked of the brain, from the brain page: the answer streams in
@@ -28,6 +30,12 @@ export function BrainAnswer({
   onBack,
   onReplay,
   onAgain,
+  speak = false,
+  onSpoken,
+  history = [],
+  onAnswered,
+  turns = [],
+  onNewThread,
 }: {
   question: string;
   notes: BrainNote[];
@@ -37,6 +45,17 @@ export function BrainAnswer({
   onBack: () => void;
   onReplay: () => void;
   onAgain: () => void;
+  /** Read the answer aloud as it streams (the conversation mode). */
+  speak?: boolean;
+  /** The answer has been read to the end. */
+  onSpoken?: () => void;
+  /** The conversation so far, for a follow-up to be understood. */
+  history?: { role: "user" | "assistant"; content: string }[];
+  /** The full answer, once written. */
+  onAnswered?: (answer: string) => void;
+  /** Earlier questions of this conversation, shown above. */
+  turns?: { q: string; a: string }[];
+  onNewThread?: () => void;
 }) {
   const m = useMessages();
   const locale = useLocale();
@@ -44,21 +63,31 @@ export function BrainAnswer({
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<"reading" | "answering" | "done" | "failed">("reading");
   const [trace, setTrace] = useState<ThoughtTrace | null>(null);
-  // The latest callback, without restarting the request when it changes.
+  // Read aloud as it is written: always in a conversation, otherwise when the person chose it.
+  const [reading] = useState(() => speak || getVoicePrefs().autoRead);
+  const voiceId = useId();
+  // The latest callbacks, without restarting the request when they change.
   const traced = useRef(onTrace);
   traced.current = onTrace;
+  const spoken = useRef(onSpoken);
+  spoken.current = onSpoken;
+  const answered = useRef(onAnswered);
+  answered.current = onAnswered;
+  // Fixed at the start: the history this question was asked with.
+  const [asked] = useState(() => history);
 
   useEffect(() => {
     const abort = new AbortController();
     setText("");
     setTrace(null);
     setPhase("reading");
+    let speech: ReturnType<typeof streamSpeech> | null = null;
     (async () => {
       try {
         const res = await fetch("/api/assistant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: question }], locale }),
+          body: JSON.stringify({ messages: [...asked, { role: "user", content: question }], locale, voice: speak }),
           signal: abort.signal,
         });
         if (!res.ok || !res.body) throw new Error(`status ${res.status}`);
@@ -73,22 +102,37 @@ export function BrainAnswer({
         traced.current(parsed);
         setPhase("answering");
 
+        if (reading) speech = streamSpeech(voiceId, locale, () => spoken.current?.());
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let acc = "";
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          acc += decoder.decode(value, { stream: true });
+          const chunk = decoder.decode(value, { stream: true });
+          acc += chunk;
           setText(acc);
+          speech?.push(chunk);
         }
+        speech?.end();
         setPhase("done");
+        if (acc.trim()) answered.current?.(acc);
       } catch {
         // Leaving the view aborts the request: that is not a failure to show.
         if (!abort.signal.aborted) setPhase("failed");
+        // A conversation waits for the answer to be read: one that never
+        // started reading must still say it is over, or the loop would hang.
+        if (speech) speech.end();
+        else if (reading && !abort.signal.aborted) spoken.current?.();
       }
     })();
-    return () => abort.abort();
+    return () => {
+      abort.abort();
+      // Leaving the answer silences it.
+      if (getSpeechState().owner === voiceId) stopSpeaking();
+    };
+    // `reading` and `voiceId` are fixed for the life of this answer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [question, locale]);
 
   const byId = useMemo(() => new Map(notes.map((n) => [n.id, n])), [notes]);
@@ -112,6 +156,8 @@ export function BrainAnswer({
       <button type="button" onClick={onBack} className="mb-3 flex items-center gap-1.5 text-[0.8rem] text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-3.5 w-3.5" /> {m.brain.overview}
       </button>
+
+      {onNewThread && <ConversationTurns turns={turns} onNew={onNewThread} />}
 
       <p className="flex items-start gap-2 text-[0.95rem] font-medium leading-snug tracking-tight">
         <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent" /> {question}
@@ -177,6 +223,7 @@ export function BrainAnswer({
 
       {(phase === "done" || phase === "failed") && (
         <div className="mt-5 flex flex-wrap items-center gap-3">
+          {text && <SpeakButton text={text} />}
           {trace && (
             <button type="button" onClick={onReplay} className="inline-flex items-center gap-1.5 text-[0.76rem] text-muted-foreground hover:text-foreground">
               <RotateCcw className="h-3.5 w-3.5" /> {t.replay}
@@ -293,6 +340,27 @@ function Answer({ text, notes, onOpen }: { text: string; notes: BrainNote[]; onO
           </p>
         );
       })}
+    </div>
+  );
+}
+
+/** The questions already asked in this conversation, above the one being answered. */
+export function ConversationTurns({ turns, onNew }: { turns: { q: string; a: string }[]; onNew: () => void }) {
+  const m = useMessages();
+  if (turns.length === 0) return null;
+  return (
+    <div className="mb-4 border-b border-border pb-3">
+      <ol className="flex flex-col gap-2.5">
+        {turns.map((t, i) => (
+          <li key={i} className="text-[0.76rem] leading-snug">
+            <p className="font-medium text-muted-foreground">{t.q}</p>
+            <p className="mt-0.5 line-clamp-3 text-muted">{t.a}</p>
+          </li>
+        ))}
+      </ol>
+      <button type="button" onClick={onNew} className="mt-2 text-[0.7rem] text-muted-foreground underline-offset-2 hover:underline">
+        {m.brain.talk.newThread}
+      </button>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { pairKey, suggestLinks, toBrainLink, type LinkLike, type NoteLike } from
 import { perspective, sourceOf } from "@/lib/brain/relations";
 import { AUTO_LINK, parseVerdicts, planLinks, rankPairs, type PairCandidate, type Verdict } from "@/lib/brain/weave";
 import { computeFocus } from "@/lib/brain/focus";
-import { groundAnswer, type ContextLabels } from "@/lib/brain/context";
+import { groundAnswer, retrievalQuery, type ContextLabels } from "@/lib/brain/context";
 import { searchNotes } from "@/lib/brain/search";
 import { brainRelated, brainSearch } from "@/lib/brain/agent-views";
 import { toMarkdown, type MarkdownLabels } from "@/lib/brain/export";
@@ -438,5 +438,26 @@ describe("export of typed connections", () => {
     );
     expect(md).toContain("Connections: [[Other]] · [[Step]] (advances:in)");
     expect(md).toContain("Connections: [[Goal]] (advances:out)");
+  });
+});
+
+describe("searching the brain in a conversation", () => {
+  const u = (content: string) => ({ role: "user", content });
+  const a = (content: string) => ({ role: "assistant", content });
+
+  it("searches a short follow-up with the question before it", () => {
+    expect(retrievalQuery([u("Comment organiser mes matinées de travail ?"), a("…"), u("Et pour le semi ?")])).toBe(
+      "Comment organiser mes matinées de travail ? Et pour le semi ?"
+    );
+  });
+
+  it("lets a full question stand alone, so a change of subject is not dragged back", () => {
+    const next = "Quelles sont les prochaines étapes pour signer dix nouveaux clients ?";
+    expect(retrievalQuery([u("Comment organiser mes matinées ?"), a("…"), u(next)])).toBe(next);
+  });
+
+  it("uses the only question there is, and nothing when there is none", () => {
+    expect(retrievalQuery([u("Bonjour")])).toBe("Bonjour");
+    expect(retrievalQuery([a("Bonjour !")])).toBe("");
   });
 });

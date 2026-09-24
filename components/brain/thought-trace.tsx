@@ -6,6 +6,7 @@ import { useFrame } from "@react-three/fiber";
 import type { Vec3 } from "@/lib/brain/layout";
 import { RELATION_COLOR } from "@/lib/brain/relations";
 import type { ThoughtTrace } from "@/lib/brain/context";
+import { voicePulse } from "@/lib/voice/speaker";
 
 /**
  * How the brain read a question, drawn in the brain itself.
@@ -153,6 +154,11 @@ export function ThoughtTraceLayer({ trace, positions }: { trace: ThoughtTrace; p
     const hm = halos.current;
     if (hm) {
       const now = reduced ? 0 : clock.elapsedTime;
+      // While the answer is read aloud, the notes it came from beat with the words.
+      const beat =
+        voicePulse.speaking && !reduced
+          ? Math.max(Math.exp(-(performance.now() - voicePulse.at) / 170), 0.12 + 0.12 * Math.sin(clock.elapsedTime * 7))
+          : 0;
       glows.forEach((g, i) => {
         const k = t - g.start;
         let s = 0;
@@ -160,7 +166,7 @@ export function ThoughtTraceLayer({ trace, positions }: { trace: ThoughtTrace; p
           const grow = Math.min(1, k / 0.1);
           // A flash when the impulse arrives, then a slow breath.
           const flash = !g.quiet && k < 0.4 ? 1 + 1.4 * (1 - k / 0.4) : 1 + 0.1 * Math.sin(now * 2.2 + i);
-          s = g.size * grow * flash;
+          s = g.size * grow * flash * (g.quiet ? 1 : 1 + 0.35 * beat);
         }
         tmp.position.set(...g.at);
         tmp.scale.setScalar(s);

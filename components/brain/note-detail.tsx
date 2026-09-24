@@ -16,6 +16,7 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 import { RelationChip, UnreviewedBadge } from "./relation-chip";
+import { SpeakButton } from "@/components/voice/speak-button";
 
 export interface NotePatch {
   title?: string;
@@ -315,6 +316,7 @@ export function NoteDetail({
           <Trash2 className="h-3.5 w-3.5" />
           {confirming ? m.brain.note.deleteConfirm : m.brain.note.delete}
         </button>
+        <SpeakButton text={[note.title, note.detail ?? ""].join("\n")} className="px-1" />
         <span className="ml-auto text-[0.7rem] text-muted">{fill(m.brain.note.created, { date: created })}</span>
       </div>
 

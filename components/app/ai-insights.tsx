@@ -8,6 +8,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { useMessages, useLocale } from "@/lib/i18n/client";
 import type { Insight, InsightKind } from "@/lib/ai/insights";
 import { cn } from "@/lib/utils";
+import { SpeakButton } from "@/components/voice/speak-button";
 import { ease } from "@/lib/motion";
 
 /**
@@ -101,6 +102,11 @@ export function AiInsights() {
                 <h4 className="text-[0.95rem] font-medium leading-snug tracking-tight">
                   {insight.headline}
                 </h4>
+                <SpeakButton
+                  text={[insight.headline, insight.body, ...insight.actions].join("\n")}
+                  compact
+                  className="ml-auto h-6 w-6 shrink-0 justify-center"
+                />
                 <span
                   className={cn(
                     "shrink-0 rounded-full border px-1.5 py-0.5 text-[0.6rem] font-medium",

@@ -13,9 +13,8 @@ import { plural } from "@/lib/i18n/config";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { MAX_RECORDING_MS, extensionFor, useRecorder, type RecorderError } from "./use-recorder";
-
-type TranscribeError = "denied" | "unsupported" | "too_large" | "empty" | "rate_limit" | "unavailable" | "failed";
+import { MAX_RECORDING_MS, useRecorder, type RecorderError } from "./use-recorder";
+import { transcribeAudio } from "@/components/voice/transcribe-client";
 
 const clock = (ms: number) => {
   const s = Math.floor(ms / 1000);
@@ -74,23 +73,12 @@ export function BrainDump({
   const transcribe = useCallback(
     async (audio: Blob) => {
       setPhase("transcribing");
-      const form = new FormData();
-      form.append("audio", new File([audio], `memo.${extensionFor(audio.type)}`, { type: audio.type }));
-      form.append("locale", locale);
-      let error: TranscribeError | null = null;
-      let transcript = "";
-      try {
-        const res = await fetch("/api/brain/transcribe", { method: "POST", body: form });
-        const data = (await res.json().catch(() => ({}))) as { text?: string; error?: TranscribeError };
-        if (res.ok && data.text) transcript = data.text;
-        else error = data.error && data.error in t.errors ? data.error : "failed";
-      } catch {
-        error = "failed";
-      }
-      if (error) {
+      const r = await transcribeAudio(audio, locale);
+      if ("error" in r) {
         setPhase("compose");
-        return void toast(t.errors[error], "error");
+        return void toast(t.errors[r.error], "error");
       }
+      const transcript = r.text;
       const next = text.trim() ? `${text.trim()}\n\n${transcript}` : transcript;
       setText(next);
       if (autoSplit.current) void runSplit(next);

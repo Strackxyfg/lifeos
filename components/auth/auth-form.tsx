@@ -33,8 +33,8 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
 
   useEffect(() => {
     if (state.ok) {
-      // The second brain is home now; a new account sets it up first.
-      router.push(safeNext(next, mode === "signup" ? "/onboarding" : "/brain"));
+      // The hub is home; a new account sets its brain up first.
+      router.push(safeNext(next, mode === "signup" ? "/onboarding" : "/hub"));
       router.refresh();
     }
   }, [state.ok, mode, next, router]);

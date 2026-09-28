@@ -1,0 +1,393 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import { LayoutGrid } from "lucide-react";
+import { useLocale, useMessages } from "@/lib/i18n/client";
+import { plural } from "@/lib/i18n/config";
+import { DISTRICTS, districtById, isDistrictId, neighbour, type DistrictId } from "@/lib/hub/districts";
+import { currentPlace, type Place } from "@/lib/hub/place";
+import { deviceHints, initialTier, lowerTier, webglAvailable, type Tier } from "@/lib/hub/perf";
+import { sunPosition, sunTimes, moonPosition } from "@/lib/hub/solar";
+import { skyState, toHex } from "@/lib/hub/sky";
+import { hubBadges, type HubFacts } from "@/lib/hub/summary";
+import type { Alert } from "@/lib/data/alerts";
+import type { Profile } from "@/lib/user/profile";
+import type { CameraGoal } from "./scene/camera-rig";
+import type { PinLabel } from "./scene/pins";
+import { FocusPanel, HubCards, HubFallback, HubTopBar, SkyChip } from "./hub-hud";
+
+const HubScene = dynamic(() => import("./hub-scene"), { ssr: false });
+
+/** Where "enter" leaves a note for the way back, and "where you were" reads. */
+const RETURN_KEY = "lifeos:hub:return";
+const RESUME_KEY = "lifeos:hub:resume";
+/** Coming back later than this is a new visit, not a return. */
+const RETURN_WINDOW_MS = 30 * 60_000;
+
+function readSession<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSession(key: string, value: unknown) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Private mode or storage full: the way back is a nicety, not a need.
+  }
+}
+
+function greetingFor(hour: number): "night" | "morning" | "afternoon" | "evening" {
+  if (hour < 5) return "night";
+  if (hour < 12) return "morning";
+  if (hour < 18) return "afternoon";
+  return "evening";
+}
+
+function isTyping(el: EventTarget | null): boolean {
+  const n = el as HTMLElement | null;
+  return !!n && (n.tagName === "INPUT" || n.tagName === "TEXTAREA" || n.tagName === "SELECT" || n.isContentEditable);
+}
+
+/**
+ * The hub: LifeOS's home, an island where each building is a part of the
+ * product. Hover a building, click it: the camera flies to it and its panel
+ * opens — real figures from the person's data, and a door. "Enter" pushes the
+ * camera to that door and opens the page; coming back, the camera starts in
+ * front of the building left, then pulls out over the island.
+ *
+ * The sky is the person's: the sun and moon at their real positions for the
+ * time zone's city, so the island goes through dawn, noon, golden hour, dusk
+ * and a lamp-lit night with them.
+ */
+export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Profile; alerts: Alert[] }) {
+  const m = useMessages();
+  const locale = useLocale();
+  const router = useRouter();
+
+  // Everything that depends on the device is decided after mount: the server
+  // cannot know the time zone, the GPU or the motion preference.
+  const [mounted, setMounted] = useState(false);
+  const [place, setPlace] = useState<Place | null>(null);
+  const [tier, setTier] = useState<Tier>("medium");
+  const [webgl, setWebgl] = useState(true);
+  const [lost, setLost] = useState(false);
+  const [sceneKey, setSceneKey] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [coarse, setCoarse] = useState(false);
+  const [returnFrom, setReturnFrom] = useState<DistrictId | null>(null);
+  const [resume, setResume] = useState<DistrictId | null>(null);
+
+  const [now, setNow] = useState(() => new Date());
+  const [previewMinutes, setPreviewMinutes] = useState<number | null>(null);
+  const [goal, setGoal] = useState<CameraGoal>({ kind: "overview" });
+  const [hovered, setHovered] = useState<DistrictId | null>(null);
+  const [fading, setFading] = useState(false);
+
+  useEffect(() => {
+    setPlace(currentPlace());
+    setTier(initialTier(deviceHints()));
+    setWebgl(webglAvailable());
+    const motionQuery = matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(motionQuery.matches);
+    const onMotion = () => setReducedMotion(motionQuery.matches);
+    motionQuery.addEventListener("change", onMotion);
+    setCoarse(matchMedia("(pointer: coarse)").matches);
+
+    const back = readSession<{ id: string; at: number }>(RETURN_KEY);
+    if (back && isDistrictId(back.id) && Date.now() - back.at < RETURN_WINDOW_MS) setReturnFrom(back.id);
+    try {
+      sessionStorage.removeItem(RETURN_KEY);
+    } catch {
+      // ignore
+    }
+    const last = readSession<{ id: string }>(RESUME_KEY);
+    if (last && isDistrictId(last.id)) setResume(last.id);
+    // `?at=21:30` opens the island at that hour — to show someone the night at noon.
+    const at = new URLSearchParams(window.location.search).get("at")?.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+    if (at) setPreviewMinutes(Number(at[1]) * 60 + Number(at[2]));
+    setMounted(true);
+    return () => motionQuery.removeEventListener("change", onMotion);
+  }, []);
+
+  // The real clock, twice a minute: the sun moves a quarter of a degree a minute.
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const time = useMemo(() => {
+    if (previewMinutes === null) return now;
+    const d = new Date(now);
+    d.setHours(Math.floor(previewMinutes / 60), previewMinutes % 60, 0, 0);
+    return d;
+  }, [now, previewMinutes]);
+
+  const sky = useMemo(() => {
+    if (!place) return null;
+    const sun = sunPosition(time, place.lat, place.lon);
+    return { sun, state: skyState(sun, moonPosition(time, place.lat, place.lon)), times: sunTimes(time, place.lat, place.lon) };
+  }, [time, place]);
+
+  const focused = goal.kind === "overview" ? null : goal.id;
+  const entering = goal.kind === "enter";
+
+  /* ── Moving around ─────────────────────────────────────────────── */
+
+  const focus = useCallback(
+    (id: DistrictId) => {
+      if (entering) return;
+      setGoal({ kind: "focus", id });
+      setHovered(null);
+      router.prefetch(districtById(id).href);
+    },
+    [entering, router]
+  );
+
+  const backToIsland = useCallback(() => {
+    if (entering) return;
+    setGoal({ kind: "overview" });
+  }, [entering]);
+
+  const step = useCallback(
+    (dir: 1 | -1) => {
+      const from = focused ?? resume ?? DISTRICTS[DISTRICTS.length - 1].id;
+      focus(focused ? neighbour(from, dir) : dir === 1 ? DISTRICTS[0].id : from);
+    },
+    [focused, resume, focus]
+  );
+
+  const enter = useCallback(
+    (id: DistrictId) => {
+      if (entering) return;
+      const href = districtById(id).href;
+      writeSession(RETURN_KEY, { id, at: Date.now() });
+      writeSession(RESUME_KEY, { id });
+      if (reducedMotion || !webgl || lost) {
+        router.push(href);
+        return;
+      }
+      setGoal({ kind: "enter", id });
+      // The page fades to the app's background as the camera reaches the door.
+      setTimeout(() => setFading(true), 380);
+    },
+    [entering, reducedMotion, webgl, lost, router]
+  );
+
+  const onArrive = useCallback(
+    (g: CameraGoal) => {
+      if (g.kind === "enter") router.push(districtById(g.id).href);
+    },
+    [router]
+  );
+
+  // Safety net: if the flight never reports arriving (a hidden tab pauses
+  // frames), still go through the door.
+  useEffect(() => {
+    if (goal.kind !== "enter") return;
+    const href = districtById(goal.id).href;
+    const t = setTimeout(() => router.push(href), 2200);
+    return () => clearTimeout(t);
+  }, [goal, router]);
+
+  // Keyboard: arrows walk, Enter goes in, Escape steps back.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"], [role="dialog"][aria-label]:not(#hub-panel)')) return;
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        step(1);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        step(-1);
+      } else if (e.key === "Escape" && focused && !entering) {
+        e.preventDefault();
+        backToIsland();
+      } else if (e.key === "Enter" && goal.kind === "focus") {
+        // A focused button handles its own Enter.
+        if ((e.target as HTMLElement | null)?.tagName === "BUTTON") return;
+        e.preventDefault();
+        enter(goal.id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, focused, entering, backToIsland, goal, enter]);
+
+  // A pointer on a building shows it can be opened.
+  useEffect(() => {
+    document.body.style.cursor = hovered && !entering ? "pointer" : "";
+    return () => {
+      document.body.style.cursor = "";
+    };
+  }, [hovered, entering]);
+
+  // A click on the sea or the plaza — not the end of a drag — closes a building.
+  const down = useRef<{ x: number; y: number } | null>(null);
+  const onBackground = useCallback(() => {
+    if (goal.kind === "focus") backToIsland();
+  }, [goal.kind, backToIsland]);
+
+  /* ── What the scene shows ──────────────────────────────────────── */
+
+  const signs = useMemo(
+    () => Object.fromEntries(DISTRICTS.map((d) => [d.id, m.hub.districts[d.id].sign])) as Record<DistrictId, string>,
+    [m]
+  );
+  const badges = useMemo(() => hubBadges(facts), [facts]);
+  const pinLabels = useMemo(
+    () =>
+      Object.fromEntries(
+        DISTRICTS.map((d) => {
+          const name = m.hub.districts[d.id].name;
+          const n = badges[d.id] ?? 0;
+          return [d.id, { name, aria: n > 0 ? `${name} — ${plural(locale, n, m.hub.waiting)}` : name }];
+        })
+      ) as Record<DistrictId, PinLabel>,
+    [m, badges, locale]
+  );
+
+  const onTierDown = useCallback(() => setTier((t) => lowerTier(t)), []);
+  const onContextLost = useCallback(() => setLost(true), []);
+  const onReady = useCallback(() => setReady(true), []);
+
+  const skyGradient = sky
+    ? `linear-gradient(to bottom, ${toHex(sky.state.zenith)} 0%, ${toHex(sky.state.horizon)} 62%, ${toHex(sky.state.waterDeep)} 100%)`
+    : "hsl(var(--background))";
+  const greeting = m.hub.greeting[greetingFor(now.getHours())];
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const show3d = mounted && webgl && !lost && !!place;
+
+  return (
+    <div className="relative h-dvh w-full overflow-hidden" style={{ background: skyGradient }}>
+      {show3d && (
+        <div
+          key={sceneKey}
+          className="absolute inset-0"
+          aria-hidden
+          onPointerDown={(e) => (down.current = { x: e.clientX, y: e.clientY })}
+          onPointerUpCapture={(e) => {
+            const d = down.current;
+            // Remember whether this was a click, for the background handler.
+            if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) down.current = null;
+          }}
+        >
+          <HubScene
+            time={time}
+            place={place}
+            goal={goal}
+            returnFrom={returnFrom}
+            hovered={hovered}
+            onHover={setHovered}
+            onSelect={focus}
+            onBackground={() => {
+              if (down.current) onBackground();
+            }}
+            onArrive={onArrive}
+            signs={signs}
+            pinLabels={pinLabels}
+            badges={badges}
+            tier={tier}
+            reducedMotion={reducedMotion}
+            onReady={onReady}
+            onTierDown={onTierDown}
+            onContextLost={onContextLost}
+          />
+        </div>
+      )}
+
+      {mounted && (!webgl || lost) && (
+        <HubFallback
+          facts={facts}
+          reason={lost ? "lost" : "unsupported"}
+          onRetry={
+            lost
+              ? () => {
+                  setLost(false);
+                  setReady(false);
+                  setSceneKey((k) => k + 1);
+                }
+              : undefined
+          }
+        />
+      )}
+
+      <HubTopBar profile={profile} alerts={alerts} greeting={greeting} />
+
+      {sky && place && show3d && (
+        <div className="pointer-events-none absolute left-3 top-[4.25rem] z-40 sm:left-4 sm:top-[5.25rem]">
+          <SkyChip
+            phase={sky.state.phase}
+            times={sky.times}
+            city={place.city}
+            previewMinutes={previewMinutes}
+            nowMinutes={nowMinutes}
+            onPreview={setPreviewMinutes}
+          />
+        </div>
+      )}
+
+      {show3d && (
+        <>
+          <HubCards facts={facts} resume={resume} onVisit={focus} hidden={goal.kind !== "overview"} />
+          <FocusPanel
+            id={focused}
+            facts={facts}
+            onEnter={() => focused && enter(focused)}
+            onBack={backToIsland}
+            onStep={step}
+            entering={entering}
+          />
+          {goal.kind === "overview" && ready && (
+            <p className="pointer-events-none absolute inset-x-0 bottom-[8.25rem] z-20 hidden text-center text-[0.75rem] text-white/80 [text-shadow:0_1px_8px_rgba(0,0,0,0.45)] sm:block">
+              {coarse ? m.hub.hintTouch : m.hub.hint}
+            </p>
+          )}
+        </>
+      )}
+
+      {/* Until the first frames are drawn: this moment's sky and the mark, never a blank screen. */}
+      <AnimatePresence>
+        {(!mounted || (show3d && !ready)) && (
+          <motion.div
+            key="loading"
+            className="absolute inset-0 z-50 grid place-items-center"
+            style={{ background: skyGradient }}
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="flex flex-col items-center gap-3 text-white [text-shadow:0_1px_12px_rgba(0,0,0,0.35)]">
+              <LayoutGrid className="h-6 w-6 animate-pulse" aria-hidden />
+              <p className="text-sm font-medium">{m.hub.loading}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Through the door: the app's own background, so the page behind appears on it.
+          If the page takes its time (a slow network), a quiet sign that it is coming. */}
+      <div
+        className="pointer-events-none absolute inset-0 z-[60] grid place-items-center bg-background transition-opacity duration-500"
+        style={{ opacity: fading ? 1 : 0 }}
+        aria-hidden
+      >
+        <span
+          className="h-5 w-5 rounded-full border-2 border-muted border-t-accent transition-opacity duration-300 motion-safe:animate-spin"
+          style={{ opacity: fading ? 1 : 0, transitionDelay: fading ? "900ms" : "0ms" }}
+        />
+      </div>
+
+      <h1 className="sr-only">{m.hub.title}</h1>
+    </div>
+  );
+}

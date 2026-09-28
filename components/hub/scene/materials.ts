@@ -1,0 +1,317 @@
+import * as THREE from "three";
+import { GLYPHS } from "@/lib/hub/glyphs";
+import { seeded } from "@/lib/hub/island";
+import type { DistrictId } from "@/lib/hub/districts";
+
+/**
+ * The island's materials and generated textures, made once and shared.
+ *
+ * One material per surface kind, not per mesh: fewer shader programs, and the
+ * night can switch the whole city on by changing a handful of numbers
+ * (`setLamps`) instead of walking the scene. Every texture is drawn on a
+ * canvas here — nothing is downloaded.
+ */
+
+export interface HubMaterials {
+  white: THREE.MeshStandardMaterial;
+  trim: THREE.MeshStandardMaterial;
+  paving: THREE.MeshStandardMaterial;
+  path: THREE.MeshStandardMaterial;
+  coast: THREE.MeshStandardMaterial;
+  grey: THREE.MeshStandardMaterial;
+  metal: THREE.MeshStandardMaterial;
+  glass: THREE.MeshStandardMaterial;
+  storefront: THREE.MeshStandardMaterial;
+  dome: THREE.MeshStandardMaterial;
+  navy: THREE.MeshStandardMaterial;
+  grass: THREE.MeshStandardMaterial;
+  leaf: THREE.MeshStandardMaterial;
+  cypress: THREE.MeshStandardMaterial;
+  trunk: THREE.MeshStandardMaterial;
+  wood: THREE.MeshStandardMaterial;
+  rock: THREE.MeshStandardMaterial;
+  cream: THREE.MeshStandardMaterial;
+  crane: THREE.MeshStandardMaterial;
+  pool: THREE.MeshStandardMaterial;
+  lampHead: THREE.MeshStandardMaterial;
+  beacon: THREE.MeshStandardMaterial;
+  lantern: THREE.MeshStandardMaterial;
+  dial: THREE.MeshStandardMaterial;
+  hand: THREE.MeshStandardMaterial;
+}
+
+let shared: HubMaterials | null = null;
+
+const std = (params: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(params);
+
+/** Warm window light, the colour of a lit room seen from outside. */
+export const WINDOW_LIGHT = new THREE.Color("#ffc98a");
+
+export function hubMaterials(): HubMaterials {
+  if (shared) return shared;
+  const windows = windowTexture();
+  const shopWindows = windowTexture(2, 1, 0.85);
+  shared = {
+    white: std({ color: "#f3f2ef", roughness: 0.62 }),
+    trim: std({ color: "#fbfbf9", roughness: 0.48 }),
+    paving: std({ color: "#e6e3dc", roughness: 0.92, map: pavingTexture() }),
+    path: std({ color: "#f1eee8", roughness: 0.9 }),
+    coast: std({ color: "#d3cec4", roughness: 0.95 }),
+    grey: std({ color: "#b8bcc3", roughness: 0.6 }),
+    metal: std({ color: "#2b313b", roughness: 0.38, metalness: 0.6 }),
+    glass: std({
+      color: "#22344a",
+      roughness: 0.08,
+      metalness: 0.85,
+      envMapIntensity: 1.35,
+      emissive: WINDOW_LIGHT,
+      emissiveMap: windows,
+      emissiveIntensity: 0,
+    }),
+    storefront: std({
+      color: "#2a3a4c",
+      roughness: 0.1,
+      metalness: 0.7,
+      envMapIntensity: 1.2,
+      emissive: WINDOW_LIGHT,
+      emissiveMap: shopWindows,
+      emissiveIntensity: 0.12,
+    }),
+    dome: std({
+      color: "#a9c8ff",
+      roughness: 0.04,
+      metalness: 0.25,
+      transparent: true,
+      opacity: 0.32,
+      depthWrite: false,
+      envMapIntensity: 1.6,
+      side: THREE.DoubleSide,
+    }),
+    navy: std({ color: "#17243f", roughness: 0.45 }),
+    grass: std({ color: "#78a255", roughness: 1 }),
+    leaf: std({ color: "#4f8340", roughness: 0.85 }),
+    cypress: std({ color: "#3b6a36", roughness: 0.9 }),
+    trunk: std({ color: "#6c513c", roughness: 0.9 }),
+    wood: std({ color: "#a07a55", roughness: 0.78 }),
+    rock: std({ color: "#8f8b85", roughness: 1, flatShading: true }),
+    cream: std({ color: "#f6f1e7", roughness: 0.7, side: THREE.DoubleSide }),
+    crane: std({ color: "#f0b429", roughness: 0.5 }),
+    pool: std({ color: "#7fd3e6", roughness: 0.06, metalness: 0.1, emissive: new THREE.Color("#5fd0ff"), emissiveIntensity: 0 }),
+    lampHead: std({ color: "#fff4df", roughness: 0.3, emissive: WINDOW_LIGHT, emissiveIntensity: 0 }),
+    beacon: std({ color: "#ff453a", roughness: 0.4, emissive: new THREE.Color("#ff2d20"), emissiveIntensity: 0.6 }),
+    lantern: std({
+      color: "#fff3c4",
+      roughness: 0.1,
+      metalness: 0.2,
+      transparent: true,
+      opacity: 0.8,
+      emissive: new THREE.Color("#ffe39a"),
+      emissiveIntensity: 0,
+    }),
+    dial: std({ color: "#ffffff", roughness: 0.4, map: dialTexture(), emissive: new THREE.Color("#fff6e0"), emissiveMap: null, emissiveIntensity: 0 }),
+    hand: std({ color: "#1c2233", roughness: 0.5 }),
+  };
+  return shared;
+}
+
+/** Signs are one material each (their own texture); they register here to be lit. */
+export const signMaterials = new Set<THREE.MeshStandardMaterial>();
+let currentLamps = 0;
+
+export function signGlow(lamps: number): number {
+  return 0.22 + lamps * 1.1;
+}
+
+/** The lamps level last applied — for a sign created after nightfall. */
+export function lampsNow(): number {
+  return currentLamps;
+}
+
+/**
+ * Turns the city's lights up for the night: windows, lamps, the pool, the
+ * clock faces, the signs and the lighthouse. `lamps` is `SkyState.lamps`, 0 by
+ * day and 1 at night.
+ */
+export function setLamps(lamps: number): void {
+  currentLamps = lamps;
+  for (const s of signMaterials) s.emissiveIntensity = signGlow(lamps);
+  const m = hubMaterials();
+  m.glass.emissiveIntensity = lamps * 1.15;
+  m.storefront.emissiveIntensity = 0.12 + lamps * 1.6;
+  m.lampHead.emissiveIntensity = 0.1 + lamps * 3;
+  m.pool.emissiveIntensity = lamps * 0.55;
+  m.dial.emissiveIntensity = lamps * 0.6;
+  m.lantern.emissiveIntensity = lamps * 3.2;
+  // A hint of warmth in the glass by day too would look like a fault; none.
+  m.glass.envMapIntensity = 1.35 - lamps * 0.6;
+}
+
+/* ── Generated textures ──────────────────────────────────────────── */
+
+function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("2d canvas unavailable");
+  return [c, ctx];
+}
+
+/**
+ * A facade's lit windows, for night: a grid where most rooms are lit with a
+ * slightly different warmth and some are dark, as in any real building at
+ * nine in the evening. Black is "off".
+ */
+function windowTexture(cols = 6, rows = 4, lit = 0.7): THREE.CanvasTexture {
+  const [c, ctx] = canvas(256, 256);
+  const rnd = seeded(cols * 31 + rows);
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, 256, 256);
+  const cw = 256 / cols;
+  const ch = 256 / rows;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      if (rnd() > lit) continue;
+      const warm = 0.65 + rnd() * 0.35;
+      ctx.fillStyle = `rgb(${Math.round(255 * warm)}, ${Math.round(220 * warm)}, ${Math.round(170 * warm)})`;
+      ctx.fillRect(x * cw + cw * 0.12, y * ch + ch * 0.14, cw * 0.76, ch * 0.72);
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  return t;
+}
+
+/** The plaza's paving: fine joints, as concentric rings would be too busy from above. */
+function pavingTexture(): THREE.CanvasTexture {
+  const [c, ctx] = canvas(256, 256);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, 256, 256);
+  const rnd = seeded(99);
+  for (let y = 0; y < 256; y += 32) {
+    for (let x = 0; x < 256; x += 64) {
+      const shade = 244 + Math.floor(rnd() * 10);
+      ctx.fillStyle = `rgb(${shade},${shade},${shade - 2})`;
+      const off = (y / 32) % 2 ? 32 : 0;
+      ctx.fillRect(x + off + 1, y + 1, 62, 30);
+      ctx.fillRect(x + off - 64 + 1, y + 1, 62, 30);
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(6, 6);
+  t.anisotropy = 8;
+  return t;
+}
+
+/** A clock dial: white, twelve marks, the quarters stronger. Hands are meshes. */
+function dialTexture(): THREE.CanvasTexture {
+  const [c, ctx] = canvas(256, 256);
+  ctx.fillStyle = "#fbfaf6";
+  ctx.beginPath();
+  ctx.arc(128, 128, 126, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#1c2233";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(128, 128, 120, 0, Math.PI * 2);
+  ctx.stroke();
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const quarter = i % 3 === 0;
+    const r1 = quarter ? 86 : 96;
+    ctx.lineWidth = quarter ? 10 : 5;
+    ctx.beginPath();
+    ctx.moveTo(128 + Math.sin(a) * r1, 128 - Math.cos(a) * r1);
+    ctx.lineTo(128 + Math.sin(a) * 110, 128 - Math.cos(a) * 110);
+    ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+/** A soft round glow, for lamp halos, light pools on the ground and stars of light. */
+let glow: THREE.CanvasTexture | null = null;
+export function glowTexture(): THREE.CanvasTexture {
+  if (glow) return glow;
+  const [c, ctx] = canvas(128, 128);
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.22, "rgba(255,255,255,0.55)");
+  g.addColorStop(0.55, "rgba(255,255,255,0.12)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  glow = new THREE.CanvasTexture(c);
+  glow.colorSpace = THREE.SRGBColorSpace;
+  return glow;
+}
+
+/**
+ * A building's sign: its pictogram and its name in capitals, white on navy,
+ * in the app's own typeface. Emissive, so it lights up at night like a real
+ * backlit sign. Returns the texture and its aspect ratio (width / height).
+ */
+export function signTexture(id: DistrictId, text: string, fontFamily: string): { texture: THREE.CanvasTexture; aspect: number } {
+  const h = 128;
+  const pad = 40;
+  const icon = 64;
+  const gap = 26;
+  const font = `600 50px ${fontFamily}`;
+  const [, measure] = canvas(8, 8);
+  measure.font = font;
+  const label = text.toUpperCase();
+  // Letter-spaced by hand: canvas letterSpacing is not everywhere yet.
+  const spacing = 5;
+  const textWidth = [...label].reduce((w, ch) => w + measure.measureText(ch).width + spacing, -spacing);
+  const w = Math.ceil(pad + icon + gap + textWidth + pad);
+  const [c, ctx] = canvas(w, h);
+
+  ctx.fillStyle = "#17243f";
+  roundRect(ctx, 0, 0, w, h, 18);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  ctx.lineWidth = 3;
+  roundRect(ctx, 4, 4, w - 8, h - 8, 15);
+  ctx.stroke();
+
+  // Pictogram: the 24-unit Lucide paths, scaled and stroked.
+  ctx.save();
+  ctx.translate(pad, (h - icon) / 2);
+  ctx.scale(icon / 24, icon / 24);
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const d of GLYPHS[id]) ctx.stroke(new Path2D(d));
+  ctx.restore();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = font;
+  ctx.textBaseline = "middle";
+  let x = pad + icon + gap;
+  for (const ch of label) {
+    ctx.fillText(ch, x, h / 2 + 3);
+    x += measure.measureText(ch).width + spacing;
+  }
+
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return { texture, aspect: w / h };
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}

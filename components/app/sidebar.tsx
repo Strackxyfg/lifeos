@@ -26,7 +26,7 @@ export function SidebarContent({ profile, onNavigate }: { profile: Profile; onNa
 
   return (
     <>
-      <Link href="/brain" onClick={onNavigate} className="mb-6 flex items-center gap-2 px-2 font-medium tracking-tight">
+      <Link href="/hub" onClick={onNavigate} className="mb-6 flex items-center gap-2 px-2 font-medium tracking-tight">
         <span className="grid h-7 w-7 place-items-center rounded-lg bg-foreground text-background">
           <Sparkles className="h-4 w-4" />
         </span>

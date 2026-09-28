@@ -13,7 +13,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "LifeOS — second brain",
     short_name: "LifeOS",
     description: "Capture your thoughts, connect them, find them again.",
-    start_url: "/brain",
+    start_url: "/hub",
     scope: "/",
     display: "standalone",
     background_color: BRAND_BACKGROUND,
@@ -29,6 +29,7 @@ export default function manifest(): MetadataRoute.Manifest {
       params: { title: "title", text: "text", url: "url" },
     },
     shortcuts: [
+      { name: "Le hub · The hub", short_name: "Hub", url: "/hub" },
       { name: "Vider ma tête · Brain dump", short_name: "Dump", url: "/brain?dump=1" },
       { name: "Mon cerveau · My brain", short_name: "Brain", url: "/brain" },
     ],

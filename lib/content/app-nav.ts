@@ -1,11 +1,11 @@
 import {
   LayoutDashboard, Boxes, Users, Wallet, Sparkles, Brain, Bot,
-  Settings, CreditCard,
+  Settings, CreditCard, Map,
   type LucideIcon,
 } from "lucide-react";
 
 export type NavId =
-  | "dashboard" | "projects" | "crm" | "finance"
+  | "hub" | "dashboard" | "projects" | "crm" | "finance"
   | "assistant" | "brain" | "agent" | "billing" | "settings";
 
 export interface NavItem {
@@ -15,8 +15,9 @@ export interface NavItem {
   hint?: string;
 }
 
-/** The product: the second brain, and the two ways of working from it. */
+/** The product: the island it all starts from, the second brain, and the two ways of working from it. */
 export const primaryNav: NavItem[] = [
+  { id: "hub", href: "/hub", icon: Map, hint: "G H" },
   { id: "brain", href: "/brain", icon: Brain, hint: "G R" },
   { id: "assistant", href: "/assistant", icon: Sparkles, hint: "G A" },
   { id: "agent", href: "/agent", icon: Bot, hint: "G G" },

@@ -23,7 +23,14 @@ const FORBIDDEN: { what: string; pattern: RegExp }[] = [
   { what: "a fake renewal date", pattern: /Renews August/ },
   { what: "the fabricated habit streak", pattern: /habitStreak|\b23-day\b|série de 23/ },
   { what: "an invented weekly score", pattern: /68\s?% (on-track|dans les temps)/ },
-  { what: "a hardcoded timezone shown as the user's", pattern: /America\/Los_Angeles/ },
+  // It was `<Field label="Timezone" defaultValue="America/Los_Angeles" />`: a
+  // zone written into the code and shown as the person's. Any zone given as a
+  // value or a default is that again; a table that *reads* the person's zone
+  // (lib/hub/place.ts) is not.
+  {
+    what: "a hardcoded timezone shown as the user's",
+    pattern: /\b(defaultValue|value|timezone|timeZone)\s*[=:]\s*\{?\s*["'`](America|Europe|Asia|Africa|Australia|Pacific|Indian|Atlantic)\//,
+  },
   {
     what: "build steps the Notion generator never performed",
     pattern: /Connecting calendars|Training your AI assistant|Setting up automations|Computing KPIs/,

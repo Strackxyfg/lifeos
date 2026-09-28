@@ -13,7 +13,8 @@ import { join } from "node:path";
  */
 
 const ROOT = join(__dirname, "..");
-const APP_GROUP = join(ROOT, "app", "(app)");
+/** Route groups whose every page needs a session: the app, and the hub's full-screen island. */
+const PRIVATE_GROUPS = [join(ROOT, "app", "(app)"), join(ROOT, "app", "(hub)")];
 
 /**
  * Private pages that live outside the (app) group. Onboarding and generation
@@ -24,10 +25,12 @@ const PRIVATE_OUTSIDE_GROUP = ["onboarding", "generate"];
 
 /** Top-level route segments that require a session. */
 function privateSegments(): string[] {
-  const grouped = readdirSync(APP_GROUP).filter((name) => {
-    const full = join(APP_GROUP, name);
-    return statSync(full).isDirectory() && !name.startsWith("(") && !name.startsWith("_");
-  });
+  const grouped = PRIVATE_GROUPS.flatMap((group) =>
+    readdirSync(group).filter((name) => {
+      const full = join(group, name);
+      return statSync(full).isDirectory() && !name.startsWith("(") && !name.startsWith("_");
+    })
+  );
   return [...grouped, ...PRIVATE_OUTSIDE_GROUP];
 }
 
@@ -50,6 +53,7 @@ describe("route protection", () => {
     expect(matched.size).toBeGreaterThan(5);
     expect(pages).toContain("brain");
     expect(pages).toContain("agent");
+    expect(pages).toContain("hub");
   });
 
   it("protects every page in the authenticated app", () => {

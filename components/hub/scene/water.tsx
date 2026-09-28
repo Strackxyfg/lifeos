@@ -5,6 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { shoreField } from "@/lib/hub/island";
 import { useHubLight } from "./light";
+import { EQUIRECT_GLSL, useSkyMap } from "./atmosphere";
 
 /** The square of sea the shore field covers, centred on the island. */
 const EXTENT = 36;
@@ -71,21 +72,25 @@ const vertex = /* glsl */ `
 const fragment = /* glsl */ `
   uniform float uTime;
   uniform float uMotion;
-  uniform vec3 uDeep;
-  uniform vec3 uShallow;
-  uniform vec3 uHorizon;
-  uniform vec3 uZenith;
-  uniform vec3 uSunColor;
+  uniform sampler2D uSky;
+  uniform vec3 uSunLight;
   uniform vec3 uSunDir;
-  uniform float uSunI;
-  uniform vec3 uMoonColor;
+  uniform vec3 uMoonLight;
   uniform vec3 uMoonDir;
-  uniform float uMoonI;
+  uniform vec3 uSkyUp;
   uniform float uLamps;
   uniform sampler2D uShore;
   uniform float uExtent;
   uniform float uBendStart;
   varying vec3 vWorld;
+
+  const float PI = 3.141592653589793;
+  // What the water sends back from below its surface, per unit of light
+  // entering it: the open sea's deep blue; over pale sand, turquoise.
+  const vec3 DEEP = vec3(0.0055, 0.034, 0.078);
+  const vec3 SHALLOW = vec3(0.05, 0.27, 0.3);
+
+  ${EQUIRECT_GLSL}
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float noise(vec2 p) {
@@ -95,7 +100,20 @@ const fragment = /* glsl */ `
   }
   float waves(vec2 p) {
     float t = uTime * uMotion;
-    return noise(p + vec2(t * 0.35, t * 0.2)) * 0.6 + noise(p * 2.3 - vec2(t * 0.5, -t * 0.3)) * 0.3 + noise(p * 5.1 + t * 0.7) * 0.1;
+    return noise(p + vec2(t * 0.35, t * 0.2)) * 0.5
+      + noise(p * 2.3 - vec2(t * 0.5, -t * 0.3)) * 0.28
+      + noise(p * 5.1 + t * 0.7) * 0.14
+      + noise(p * 11.3 - t * 0.9) * 0.08;
+  }
+  vec3 sky(vec3 dir) {
+    return texture2D(uSky, skyUv(vec3(dir.x, max(dir.y, 0.002), dir.z))).rgb;
+  }
+  // Schlick, water's F0 = 0.02.
+  float fresnel(float c) { return 0.02 + 0.98 * pow(1.0 - clamp(c, 0.0, 1.0), 5.0); }
+  // Normalised Blinn-Phong: a glint whose energy does not depend on its sharpness.
+  float glint(vec3 n, vec3 V, vec3 L, float s) {
+    vec3 H = normalize(V + L);
+    return (s + 8.0) / (8.0 * PI) * pow(max(dot(n, H), 0.0), s) * fresnel(dot(V, H)) * max(dot(n, L), 0.0);
   }
 
   void main() {
@@ -103,57 +121,61 @@ const fragment = /* glsl */ `
     float inField = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
     float shore = texture2D(uShore, uv).r * inField;
 
-    // Colour by depth: the shallows turquoise, the open sea deep blue.
-    vec3 base = mix(uDeep, uShallow, smoothstep(0.0, 0.9, shore));
-
-    // Ripples: a normal from the slope of layered noise.
+    // Ripples: a normal from the slope of layered noise, calmer far away
+    // (where they would only shimmer between pixels).
+    float d = length(vWorld.xz);
+    vec3 V = normalize(cameraPosition - vWorld);
     vec2 p = vWorld.xz * 0.45;
-    float e = 0.08;
+    float e = 0.06;
     float h0 = waves(p);
     vec2 grad = vec2(waves(p + vec2(e, 0.0)) - h0, waves(p + vec2(0.0, e)) - h0) / e;
-    vec3 n = normalize(vec3(-grad.x * 0.1, 1.0, -grad.y * 0.1));
+    float calm = 1.0 - 0.6 * smoothstep(20.0, 60.0, length(cameraPosition - vWorld));
+    vec3 n = normalize(vec3(-grad.x * 0.085 * calm, 1.0, -grad.y * 0.085 * calm));
 
-    vec3 V = normalize(cameraPosition - vWorld);
-    float fresnel = pow(1.0 - max(dot(n, V), 0.0), 4.0);
+    float F = fresnel(dot(n, V));
     vec3 R = reflect(-V, n);
-    vec3 sky = mix(uHorizon, uZenith, clamp(R.y * 1.6, 0.0, 1.0));
-    vec3 col = mix(base, sky, 0.1 + 0.65 * fresnel);
+    R.y = abs(R.y);
 
-    // Glints of the sun and the moon.
-    col += uSunColor * pow(max(dot(R, uSunDir), 0.0), 420.0) * uSunI * 1.4;
-    col += uSunColor * pow(max(dot(R, uSunDir), 0.0), 40.0) * uSunI * 0.05;
-    col += uMoonColor * pow(max(dot(R, uMoonDir), 0.0), 260.0) * uMoonI * 2.2;
+    // Light entering the water, scattered back up through it.
+    vec3 E = uSkyUp + uSunLight * max(uSunDir.y, 0.0) + uMoonLight * max(uMoonDir.y, 0.0);
+    vec3 albedo = mix(DEEP, SHALLOW, smoothstep(0.05, 0.95, shore));
+    vec3 body = albedo * E / PI;
 
-    // The foam line where the sea meets the coast, moving with the water.
+    vec3 col = mix(body, sky(R), F);
+    col += uSunLight * glint(n, V, uSunDir, 1400.0);
+    col += uSunLight * glint(n, V, uSunDir, 90.0) * 0.08;
+    col += uMoonLight * glint(n, V, uMoonDir, 700.0);
+
+    // The foam line where the sea meets the coast, moving with the water:
+    // white foam, lit like any white thing.
     float band = smoothstep(0.84, 0.95, shore) * (1.0 - smoothstep(0.985, 1.0, shore));
     float foam = smoothstep(0.42, 0.72, noise(vWorld.xz * 2.4 + uTime * uMotion * 0.3));
-    // Foam is white only in daylight: at night it is barely lighter than the sea.
-    float lit = clamp(uSunI / 2.5 + uMoonI * 0.8, 0.0, 1.0);
-    vec3 foamColor = mix(base * 1.6 + vec3(0.015), vec3(0.95), lit);
-    col = mix(col, foamColor, band * foam * (0.35 + 0.45 * lit));
+    col = mix(col, 0.75 * E / PI, band * foam * 0.7);
 
     // At night the city's lights shimmer on the water near the shore.
     float shimmer = 0.5 + 0.5 * sin(vWorld.x * 3.1 + uTime * uMotion * 1.7) * sin(vWorld.z * 2.3 - uTime * uMotion * 1.1);
-    col += vec3(1.0, 0.72, 0.42) * uLamps * pow(shore, 3.0) * (0.06 + 0.1 * shimmer);
+    col += vec3(1.0, 0.62, 0.3) * uLamps * pow(shore, 3.0) * (0.012 + 0.02 * shimmer);
 
-    // Where it curves away, the sea melts into the horizon's colour — the
-    // sky's own at that height, so the two meet without a seam.
-    float d = length(vWorld.xz);
-    col = mix(col, uHorizon, smoothstep(uBendStart + 6.0, uBendStart + 58.0, d));
+    // Where it curves away, the sea melts into the horizon — the sky's own
+    // radiance there, so the two meet without a seam.
+    col = mix(col, sky(vec3(-V.x, 0.0, -V.z)), smoothstep(uBendStart + 6.0, uBendStart + 58.0, d));
 
     gl_FragColor = vec4(col, 1.0);
-    #include <colorspace_fragment>
   }
 `;
 
 /**
- * The sea: a flat plane whose colour, ripples, glints and foam are all
- * computed in its shader from the sky of the moment and a distance field of
- * the coast — shallow turquoise near the island, deep blue beyond.
+ * The sea: a flat plane shaded as water — the sky reflected by the Fresnel
+ * law, the sun's glints, the light scattered back from under the surface
+ * (deep blue offshore, turquoise over the sand), the foam — all from the
+ * physical sky of the moment and a distance field of the coast.
  */
 export function Water({ reducedMotion }: { reducedMotion: boolean }) {
   const light = useHubLight();
+  const skyMap = useSkyMap();
+  const mesh = useRef<THREE.Mesh>(null);
   const seen = useRef(-1);
+  const seenSky = useRef(-1);
 
   const material = useMemo(() => {
     const field = shoreField(FIELD, EXTENT, REACH);
@@ -167,20 +189,15 @@ export function Water({ reducedMotion }: { reducedMotion: boolean }) {
     return new THREE.ShaderMaterial({
       vertexShader: vertex,
       fragmentShader: fragment,
-      toneMapped: false,
       uniforms: {
         uTime: { value: 0 },
         uMotion: { value: 1 },
-        uDeep: { value: new THREE.Color() },
-        uShallow: { value: new THREE.Color() },
-        uHorizon: { value: new THREE.Color() },
-        uZenith: { value: new THREE.Color() },
-        uSunColor: { value: new THREE.Color() },
+        uSky: { value: null },
+        uSunLight: { value: new THREE.Vector3() },
         uSunDir: { value: new THREE.Vector3(0, 1, 0) },
-        uSunI: { value: 0 },
-        uMoonColor: { value: new THREE.Color() },
+        uMoonLight: { value: new THREE.Vector3() },
         uMoonDir: { value: new THREE.Vector3(0, -1, 0) },
-        uMoonI: { value: 0 },
+        uSkyUp: { value: new THREE.Vector3() },
         uLamps: { value: 0 },
         uShore: { value: texture },
         uExtent: { value: EXTENT },
@@ -194,25 +211,25 @@ export function Water({ reducedMotion }: { reducedMotion: boolean }) {
     const u = material.uniforms;
     u.uTime.value = clock.elapsedTime;
     u.uMotion.value = reducedMotion ? 0.15 : 1;
+    if (skyMap.current.version !== seenSky.current) {
+      seenSky.current = skyMap.current.version;
+      u.uSky.value = skyMap.current.texture;
+    }
+    if (mesh.current) mesh.current.visible = skyMap.current.texture !== null;
     const l = light.current;
     if (l.version === seen.current) return;
     seen.current = l.version;
-    const s = l.sky;
-    (u.uDeep.value as THREE.Color).setRGB(...s.waterDeep);
-    (u.uShallow.value as THREE.Color).setRGB(...s.waterShallow);
-    (u.uHorizon.value as THREE.Color).setRGB(...s.horizon);
-    (u.uZenith.value as THREE.Color).setRGB(...s.zenith);
-    (u.uSunColor.value as THREE.Color).setRGB(...s.sunColor);
+    const a = l.atmo;
+    (u.uSunLight.value as THREE.Vector3).set(...a.sun);
     (u.uSunDir.value as THREE.Vector3).copy(l.sunDir);
-    u.uSunI.value = s.sunIntensity;
-    (u.uMoonColor.value as THREE.Color).setRGB(...s.moonColor);
+    (u.uMoonLight.value as THREE.Vector3).set(...a.moon);
     (u.uMoonDir.value as THREE.Vector3).copy(l.moonDir);
-    u.uMoonI.value = s.moonIntensity;
-    u.uLamps.value = s.lamps;
+    (u.uSkyUp.value as THREE.Vector3).set(...a.skyUp);
+    u.uLamps.value = l.sky.lamps;
   });
 
   return (
-    <mesh material={material} rotation-x={-Math.PI / 2} position-y={WATER_LEVEL} receiveShadow={false}>
+    <mesh ref={mesh} material={material} rotation-x={-Math.PI / 2} position-y={WATER_LEVEL} receiveShadow={false}>
       {/* Fine enough for the curve to be smooth; flat maths near the island. */}
       <planeGeometry args={[900, 900, 150, 150]} />
     </mesh>

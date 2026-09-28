@@ -5,6 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { moonPosition, skyDirection, sunPosition, type MoonPosition, type SunPosition } from "@/lib/hub/solar";
 import { skyState, type SkyState } from "@/lib/hub/sky";
+import { atmoLight, luminance, type AtmoLight } from "@/lib/hub/atmosphere";
 import type { Place } from "@/lib/hub/place";
 import { setLamps } from "./materials";
 
@@ -18,6 +19,8 @@ import { setLamps } from "./materials";
  */
 export interface HubLight {
   sky: SkyState;
+  /** The physical light of the moment (`lib/hub/atmosphere.ts`). */
+  atmo: AtmoLight;
   sun: SunPosition;
   moon: MoonPosition;
   sunDir: THREE.Vector3;
@@ -30,12 +33,16 @@ export interface HubLight {
 export function computeLight(time: Date, place: Place): Omit<HubLight, "version"> {
   const sun = sunPosition(time, place.lat, place.lon);
   const moon = moonPosition(time, place.lat, place.lon);
+  const sunDir = skyDirection(sun);
+  const moonDir = skyDirection(moon);
+  const sky = skyState(sun, moon);
   return {
     sun,
     moon,
-    sky: skyState(sun, moon),
-    sunDir: new THREE.Vector3(...skyDirection(sun)),
-    moonDir: new THREE.Vector3(...skyDirection(moon)),
+    sky,
+    atmo: atmoLight(sun.elevation, sunDir, moon.elevation, moonDir, moon.illumination, sky.lamps),
+    sunDir: new THREE.Vector3(...sunDir),
+    moonDir: new THREE.Vector3(...moonDir),
     time,
   };
 }
@@ -58,17 +65,18 @@ export function LightProvider({ time, place, children }: { time: Date; place: Pl
 }
 
 /**
- * The two lights of the island: the sky's (a hemisphere, blue from above,
- * warm from the ground) and one directional — the sun by day, the moon by
- * night, whichever is brighter. Its shadow map is static and re-rendered only
- * when that light has moved (about once a minute): the city does not move,
- * so re-drawing shadows sixty times a second would be pure waste.
+ * The island's direct light: one directional, the sun by day, the moon by
+ * night — whichever gives more — with the colour and strength the
+ * atmosphere lets through. The sky's light comes from the environment map
+ * (`SkyProvider`), not from a light. The shadow map is static and
+ * re-rendered only when that light has moved (about once a minute): the
+ * city does not move, so re-drawing shadows sixty times a second would be
+ * pure waste.
  */
 export function SceneLights({ shadows, shadowSize }: { shadows: boolean; shadowSize: number }) {
   const light = useHubLight();
   const key = useRef<THREE.DirectionalLight>(null);
-  const hemi = useRef<THREE.HemisphereLight>(null);
-  const { gl, scene } = useThree();
+  const { gl } = useThree();
   const seen = useRef(-1);
   const lastDir = useRef(new THREE.Vector3(0, 1, 0));
   const warmup = useRef(4);
@@ -76,25 +84,20 @@ export function SceneLights({ shadows, shadowSize }: { shadows: boolean; shadowS
   useFrame(() => {
     const l = light.current;
     const k = key.current;
-    const h = hemi.current;
-    if (!k || !h) return;
-    // Every frame: the reflections' cube map is rebuilt from time to time and
-    // resets this on the way.
-    scene.environmentIntensity = l.sky.envIntensity;
+    if (!k) return;
     if (l.version !== seen.current) {
       seen.current = l.version;
-      const s = l.sky;
-      const bySun = s.sunIntensity >= s.moonIntensity;
+      const a = l.atmo;
+      const bySun = luminance(a.sun) >= luminance(a.moon);
+      const rgb = bySun ? a.sun : a.moon;
       const dir = (bySun ? l.sunDir : l.moonDir).clone();
       // Never light from below the ground: at worst, graze it.
       if (dir.y < 0.06) dir.setY(0.06).normalize();
       k.position.copy(dir).multiplyScalar(48);
-      k.color.setRGB(...(bySun ? s.sunColor : s.moonColor));
-      k.intensity = bySun ? s.sunIntensity : s.moonIntensity;
-      h.color.setRGB(...s.hemiSky);
-      h.groundColor.setRGB(...s.hemiGround);
-      h.intensity = s.hemiIntensity;
-      setLamps(s.lamps);
+      const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-6);
+      k.color.setRGB(rgb[0] / peak, rgb[1] / peak, rgb[2] / peak);
+      k.intensity = peak;
+      setLamps(l.sky.lamps, a.exposure);
       if (dir.angleTo(lastDir.current) > 0.003) {
         lastDir.current.copy(dir);
         gl.shadowMap.needsUpdate = true;
@@ -109,7 +112,6 @@ export function SceneLights({ shadows, shadowSize }: { shadows: boolean; shadowS
 
   return (
     <>
-      <hemisphereLight ref={hemi} />
       <directionalLight
         ref={key}
         castShadow={shadows}

@@ -4,7 +4,7 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { PLAZA_LAMPS, WATERFRONT_LAMPS } from "@/lib/hub/island";
-import { glowTexture, hubMaterials, WINDOW_LIGHT } from "./materials";
+import { glowTexture, hubMaterials, lightScale, WINDOW_LIGHT } from "./materials";
 import { useHubLight } from "./light";
 
 const LAMPS = [...PLAZA_LAMPS, ...WATERFRONT_LAMPS];
@@ -85,7 +85,11 @@ export function Lamps() {
     if (l.version === seen.current) return;
     seen.current = l.version;
     const lamps = l.sky.lamps;
+    // Additive: the colour is the light. Scaled to the exposure like every lamp.
+    const k = lightScale(l.atmo.exposure);
+    haloMaterial.color.copy(WINDOW_LIGHT).multiplyScalar(k * 1.2);
     haloMaterial.opacity = lamps * 0.85;
+    poolMaterial.color.copy(WINDOW_LIGHT).multiplyScalar(k * 1.1);
     poolMaterial.opacity = lamps * 0.55;
     if (pools.current) pools.current.visible = lamps > 0.01;
   });

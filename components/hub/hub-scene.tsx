@@ -1,16 +1,15 @@
 "use client";
 
 import { memo, useLayoutEffect, useRef } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { Environment, Lightformer, PerformanceMonitor } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { PerformanceMonitor } from "@react-three/drei";
 import * as THREE from "three";
 import type { DistrictId } from "@/lib/hub/districts";
 import type { Place } from "@/lib/hub/place";
 import { TIERS, type Tier } from "@/lib/hub/perf";
 import { HUB_FOV } from "@/lib/hub/framing";
-import { skyDirection, sunPosition } from "@/lib/hub/solar";
-import { skyState, toHex } from "@/lib/hub/sky";
-import { LightProvider, SceneLights } from "./scene/light";
+import { LightProvider, SceneLights, useHubLight } from "./scene/light";
+import { SkyProvider } from "./scene/atmosphere";
 import { SkyDome } from "./scene/sky";
 import { Water } from "./scene/water";
 import { Ground } from "./scene/ground";
@@ -20,6 +19,7 @@ import { Buildings } from "./scene/buildings";
 import { Boats, People } from "./scene/life";
 import { Pins, type PinLabel } from "./scene/pins";
 import { CameraRig, type CameraGoal } from "./scene/camera-rig";
+import { PostPipeline, type PostHandle } from "./scene/post";
 
 // Nothing below depends on the hour: they read the light from its ref each
 // frame. Memoised, so scrubbing the time preview re-renders only the light.
@@ -54,32 +54,28 @@ export interface HubSceneProps {
 }
 
 /**
- * What glass and water reflect: a small room of soft panels coloured like
- * this moment's sky, rendered once into a cube map — nothing downloaded. It
- * is rebuilt when the sky has changed enough to see (every few degrees of
- * sun), not every minute.
+ * How the rendered light becomes the picture. On capable devices, the post
+ * pipeline (`scene/post.tsx`): ambient occlusion, bloom, AgX and the grade of
+ * the moment. On the lowest tier, three's own AgX curve, straight to screen.
  */
-function SkyReflections({ time, place }: { time: Date; place: Place }) {
-  const sun = sunPosition(time, place.lat, place.lon);
-  const s = skyState(sun);
-  const bucket = `${Math.round(sun.elevation / 4)}${sun.rising ? "r" : "s"}`;
-  const dir = skyDirection(sun);
-  const up = Math.max(0.15, dir[1]);
-  return (
-    <Environment key={bucket} resolution={64} frames={1}>
-      <color attach="background" args={[toHex(s.horizon)]} />
-      <Lightformer form="rect" color={toHex(s.zenith)} intensity={1.2} scale={[60, 60, 1]} position={[0, 18, 0]} rotation-x={Math.PI / 2} />
-      <Lightformer form="rect" color={toHex(s.hemiGround)} intensity={0.35} scale={[60, 60, 1]} position={[0, -12, 0]} rotation-x={-Math.PI / 2} />
-      <Lightformer
-        form="circle"
-        color={toHex(s.sunGlow)}
-        intensity={s.sunIntensity > 0 ? 3 : 0.4}
-        scale={7}
-        position={[dir[0] * 20, up * 20, dir[2] * 20]}
-      />
-      <Lightformer form="ring" color={toHex(s.horizon)} intensity={0.8} scale={40} position={[0, 0, -22]} />
-    </Environment>
-  );
+function Look({ tier, onPost }: { tier: Tier; onPost?: (h: PostHandle | null) => void }) {
+  const gl = useThree((s) => s.gl);
+  const light = useHubLight();
+  const seen = useRef(-1);
+  useLayoutEffect(() => {
+    // The post pipeline tone-maps in its grade pass (the scene renders
+    // linear into it); straight to screen, three's AgX does.
+    gl.toneMapping = THREE.AgXToneMapping;
+    seen.current = -1;
+  }, [gl, tier]);
+  useFrame(() => {
+    const l = light.current;
+    if (tier !== "low" || l.version === seen.current) return;
+    seen.current = l.version;
+    gl.toneMappingExposure = Math.pow(2, l.atmo.exposure);
+  });
+  if (tier === "low") return null;
+  return <PostPipeline quality={tier === "high" ? "high" : "medium"} handle={onPost} />;
 }
 
 /** Tells the page the island is drawn — after two frames, so the first is not a blank one. */
@@ -113,14 +109,13 @@ export default function HubScene(p: HubSceneProps) {
 
   return (
     <Canvas
-      shadows
+      shadows="percentage"
       dpr={settings.dpr}
       camera={{ fov: HUB_FOV, near: 0.5, far: 1500, position: [0, 21, 29] }}
-      gl={{ antialias: settings.antialias, powerPreference: "high-performance", alpha: false }}
+      // The post pipeline multisamples its own buffer; the canvas's would be wasted work.
+      gl={{ antialias: p.tier === "low" && settings.antialias, powerPreference: "high-performance", alpha: false }}
       onCreated={({ gl }) => {
-        gl.toneMapping = THREE.NeutralToneMapping;
-        gl.toneMappingExposure = 1;
-        gl.shadowMap.type = THREE.PCFSoftShadowMap;
+        gl.shadowMap.type = THREE.PCFShadowMap;
         gl.shadowMap.autoUpdate = false;
         gl.domElement.addEventListener("webglcontextlost", (e) => {
           e.preventDefault();
@@ -130,35 +125,37 @@ export default function HubScene(p: HubSceneProps) {
       onPointerMissed={() => p.onBackground()}
     >
       <LightProvider time={p.time} place={p.place}>
-        <SceneLights shadows={settings.shadows} shadowSize={settings.shadowSize} />
-        <SkyReflections time={p.time} place={p.place} />
-        <SkyDome reducedMotion={p.reducedMotion} />
-        <MWater reducedMotion={p.reducedMotion} />
-        <MGround reducedMotion={p.reducedMotion} />
-        <MTrees />
-        <MLamps />
-        <MBuildings
-          hovered={p.hovered}
-          focused={focused}
-          interactive={interactive}
-          onHover={p.onHover}
-          onSelect={p.onSelect}
-          signs={p.signs}
-          reducedMotion={p.reducedMotion}
-        />
-        <MPeople count={settings.people} reducedMotion={p.reducedMotion} />
-        <MBoats reducedMotion={p.reducedMotion} />
-        <MPins
-          labels={p.pinLabels}
-          badges={p.badges}
-          hovered={p.hovered}
-          visible={p.goal.kind === "overview"}
-          onHover={p.onHover}
-          onSelect={p.onSelect}
-        />
-        <MCameraRig goal={p.goal} returnFrom={p.returnFrom} reducedMotion={p.reducedMotion} onArrive={p.onArrive} />
-        <FirstFrames onReady={p.onReady} />
-        <PerformanceMonitor onDecline={p.onTierDown} />
+        <SkyProvider>
+          <SceneLights shadows={settings.shadows} shadowSize={settings.shadowSize} />
+          <SkyDome reducedMotion={p.reducedMotion} />
+          <MWater reducedMotion={p.reducedMotion} />
+          <MGround reducedMotion={p.reducedMotion} />
+          <MTrees />
+          <MLamps />
+          <MBuildings
+            hovered={p.hovered}
+            focused={focused}
+            interactive={interactive}
+            onHover={p.onHover}
+            onSelect={p.onSelect}
+            signs={p.signs}
+            reducedMotion={p.reducedMotion}
+          />
+          <MPeople count={settings.people} reducedMotion={p.reducedMotion} />
+          <MBoats reducedMotion={p.reducedMotion} />
+          <MPins
+            labels={p.pinLabels}
+            badges={p.badges}
+            hovered={p.hovered}
+            visible={p.goal.kind === "overview"}
+            onHover={p.onHover}
+            onSelect={p.onSelect}
+          />
+          <MCameraRig goal={p.goal} returnFrom={p.returnFrom} reducedMotion={p.reducedMotion} onArrive={p.onArrive} />
+          <Look tier={p.tier} />
+          <FirstFrames onReady={p.onReady} />
+          <PerformanceMonitor onDecline={p.onTierDown} />
+        </SkyProvider>
       </LightProvider>
     </Canvas>
   );

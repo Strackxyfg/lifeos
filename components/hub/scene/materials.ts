@@ -52,11 +52,13 @@ export function hubMaterials(): HubMaterials {
   const windows = windowTexture();
   const shopWindows = windowTexture(2, 1, 0.85);
   shared = {
-    white: std({ color: "#f3f2ef", roughness: 0.62 }),
-    trim: std({ color: "#fbfbf9", roughness: 0.48 }),
-    paving: std({ color: "#e6e3dc", roughness: 0.92, map: pavingTexture() }),
-    path: std({ color: "#f1eee8", roughness: 0.9 }),
-    coast: std({ color: "#d3cec4", roughness: 0.95 }),
+    // Albedos of real materials, not of paint on a screen: lime plaster
+    // reflects about 70 % of light, pale stone paving under half.
+    white: std({ color: "#dcd9d2", roughness: 0.62 }),
+    trim: std({ color: "#e9e7e2", roughness: 0.48 }),
+    paving: std({ color: "#c2bcb0", roughness: 0.92, map: pavingTexture() }),
+    path: std({ color: "#cfc9bd", roughness: 0.9 }),
+    coast: std({ color: "#a8a297", roughness: 0.95 }),
     grey: std({ color: "#b8bcc3", roughness: 0.6 }),
     metal: std({ color: "#2b313b", roughness: 0.38, metalness: 0.6 }),
     glass: std({
@@ -88,9 +90,9 @@ export function hubMaterials(): HubMaterials {
       side: THREE.DoubleSide,
     }),
     navy: std({ color: "#17243f", roughness: 0.45 }),
-    grass: std({ color: "#78a255", roughness: 1 }),
-    leaf: std({ color: "#4f8340", roughness: 0.85 }),
-    cypress: std({ color: "#3b6a36", roughness: 0.9 }),
+    grass: std({ color: "#5f8a3c", roughness: 1 }),
+    leaf: std({ color: "#46743a", roughness: 0.85 }),
+    cypress: std({ color: "#325c2f", roughness: 0.9 }),
     trunk: std({ color: "#6c513c", roughness: 0.9 }),
     wood: std({ color: "#a07a55", roughness: 0.78 }),
     rock: std({ color: "#8f8b85", roughness: 1, flatShading: true }),
@@ -117,9 +119,10 @@ export function hubMaterials(): HubMaterials {
 /** Signs are one material each (their own texture); they register here to be lit. */
 export const signMaterials = new Set<THREE.MeshStandardMaterial>();
 let currentLamps = 0;
+let currentScale = 1;
 
-export function signGlow(lamps: number): number {
-  return 0.22 + lamps * 1.1;
+export function signGlow(lamps: number, scale = currentScale): number {
+  return (0.22 + lamps * 1.1) * scale;
 }
 
 /** The lamps level last applied — for a sign created after nightfall. */
@@ -128,22 +131,39 @@ export function lampsNow(): number {
 }
 
 /**
+ * How bright the town's own lights are in scene units, for the exposure of
+ * the moment. Real lamps keep their radiance while the camera opens up at
+ * night; carried all the way, they would blind at night or vanish at noon.
+ * Most, not all, of the exposure is compensated: a lamp still reads brighter
+ * at night than at dusk — as it does to the eye.
+ */
+export function lightScale(exposure: number): number {
+  return Math.pow(2, -0.82 * exposure);
+}
+
+/** The scale last applied, for lights drawn outside `setLamps` (lamp halos, pools). */
+export function lightScaleNow(): number {
+  return currentScale;
+}
+
+/**
  * Turns the city's lights up for the night: windows, lamps, the pool, the
  * clock faces, the signs and the lighthouse. `lamps` is `SkyState.lamps`, 0 by
- * day and 1 at night.
+ * day and 1 at night; `exposure` the metered exposure (stops).
  */
-export function setLamps(lamps: number): void {
+export function setLamps(lamps: number, exposure = 0): void {
   currentLamps = lamps;
-  for (const s of signMaterials) s.emissiveIntensity = signGlow(lamps);
+  const k = lightScale(exposure);
+  currentScale = k;
+  for (const s of signMaterials) s.emissiveIntensity = signGlow(lamps, k);
   const m = hubMaterials();
-  m.glass.emissiveIntensity = lamps * 1.15;
-  m.storefront.emissiveIntensity = 0.12 + lamps * 1.6;
-  m.lampHead.emissiveIntensity = 0.1 + lamps * 3;
-  m.pool.emissiveIntensity = lamps * 0.55;
-  m.dial.emissiveIntensity = lamps * 0.6;
-  m.lantern.emissiveIntensity = lamps * 3.2;
-  // A hint of warmth in the glass by day too would look like a fault; none.
-  m.glass.envMapIntensity = 1.35 - lamps * 0.6;
+  m.glass.emissiveIntensity = lamps * 1.15 * k;
+  m.storefront.emissiveIntensity = (0.12 + lamps * 1.6) * k;
+  m.lampHead.emissiveIntensity = (0.1 + lamps * 3) * k;
+  m.pool.emissiveIntensity = lamps * 0.55 * k;
+  m.dial.emissiveIntensity = lamps * 0.6 * k;
+  m.lantern.emissiveIntensity = lamps * 3.2 * k;
+  m.beacon.emissiveIntensity = 0.6 * k;
 }
 
 /* ── Generated textures ──────────────────────────────────────────── */

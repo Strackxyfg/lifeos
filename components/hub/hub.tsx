@@ -77,6 +77,7 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
   const [mounted, setMounted] = useState(false);
   const [place, setPlace] = useState<Place | null>(null);
   const [tier, setTier] = useState<Tier>("medium");
+  const tierPinned = useRef(false);
   const [webgl, setWebgl] = useState(true);
   const [lost, setLost] = useState(false);
   const [sceneKey, setSceneKey] = useState(0);
@@ -112,8 +113,15 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
     const last = readSession<{ id: string }>(RESUME_KEY);
     if (last && isDistrictId(last.id)) setResume(last.id);
     // `?at=21:30` opens the island at that hour — to show someone the night at noon.
-    const at = new URLSearchParams(window.location.search).get("at")?.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+    const params = new URLSearchParams(window.location.search);
+    const at = params.get("at")?.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
     if (at) setPreviewMinutes(Number(at[1]) * 60 + Number(at[2]));
+    // `?quality=high` pins the rendering quality: no automatic step down.
+    const quality = params.get("quality");
+    if (quality === "high" || quality === "medium" || quality === "low") {
+      setTier(quality);
+      tierPinned.current = true;
+    }
     setMounted(true);
     return () => motionQuery.removeEventListener("change", onMotion);
   }, []);
@@ -256,7 +264,9 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
     [m, badges, locale]
   );
 
-  const onTierDown = useCallback(() => setTier((t) => lowerTier(t)), []);
+  const onTierDown = useCallback(() => {
+    if (!tierPinned.current) setTier((t) => lowerTier(t));
+  }, []);
   const onContextLost = useCallback(() => setLost(true), []);
   const onReady = useCallback(() => setReady(true), []);
 

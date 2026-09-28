@@ -6,7 +6,7 @@ import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { DISTRICTS, facing, type District, type DistrictId } from "@/lib/hub/districts";
 import { seeded } from "@/lib/hub/island";
-import { hubMaterials, lampsNow, signGlow, signMaterials, signTexture } from "./materials";
+import { hubMaterials, lampsNow, lightScale, signGlow, signMaterials, signTexture } from "./materials";
 import { useHubLight } from "./light";
 
 type V3 = [number, number, number];
@@ -294,7 +294,7 @@ function NeuralCore() {
   );
   useFrame(({ clock }, dt) => {
     material.uniforms.uTime.value = clock.elapsedTime;
-    material.uniforms.uOpacity.value = 0.55 + light.current.sky.lamps * 0.45;
+    material.uniforms.uOpacity.value = (0.55 + light.current.sky.lamps * 0.45) * lightScale(light.current.atmo.exposure);
     if (group.current) group.current.rotation.y += dt * 0.12;
   });
   return (
@@ -619,7 +619,8 @@ function Lighthouse({ reducedMotion }: { reducedMotion: boolean }) {
   }, []);
   useFrame((_, dt) => {
     const lamps = light.current.sky.lamps;
-    beamMaterial.uniforms.uOpacity.value = lamps * 0.5;
+    // A beam is only seen in the haze it crosses: faint, not a solid cone.
+    beamMaterial.uniforms.uOpacity.value = lamps * 0.26 * lightScale(light.current.atmo.exposure);
     if (beam.current) {
       beam.current.visible = lamps > 0.02;
       if (!reducedMotion) beam.current.rotation.y += dt * 0.55;

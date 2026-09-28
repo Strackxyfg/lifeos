@@ -4,6 +4,7 @@ import { memo, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useHubLight } from "./light";
+import { EQUIRECT_GLSL, useSkyMap } from "./atmosphere";
 import { horizonDip } from "./water";
 
 const skyVertex = /* glsl */ `
@@ -17,22 +18,24 @@ const skyVertex = /* glsl */ `
 `;
 
 const skyFragment = /* glsl */ `
-  uniform vec3 uZenith;
-  uniform vec3 uHorizon;
-  uniform vec3 uGlow;
-  uniform vec3 uSunColor;
+  uniform sampler2D uSky;
   uniform vec3 uSunDir;
+  uniform vec3 uSunDisc;
   uniform vec3 uMoonDir;
-  uniform float uSunVisible;
+  uniform vec3 uSunForMoon;
   uniform float uMoonVisible;
+  uniform vec3 uMoonDisc;
   uniform float uStars;
   uniform float uTime;
   uniform float uDip;
-  uniform vec3 uCloudLight;
+  uniform vec3 uCloudLit;
   uniform vec3 uCloudShade;
+  uniform vec3 uSilver;
   uniform float uCloudOpacity;
   uniform float uMotion;
   varying vec3 vDir;
+
+  ${EQUIRECT_GLSL}
 
   float hash13(vec3 p) {
     p = fract(p * 0.1031);
@@ -52,7 +55,7 @@ const skyFragment = /* glsl */ `
   float fbm(vec2 p) {
     float s = 0.0;
     float a = 0.5;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
       s += a * vnoise(p);
       p = p * 2.03 + vec2(11.7, 5.3);
       a *= 0.5;
@@ -70,16 +73,9 @@ const skyFragment = /* glsl */ `
     float az = atan(d.x, -d.z);
     vec3 v = vec3(sin(az) * cos(el), sin(el), -cos(az) * cos(el));
     float h = v.y;
-    float up = clamp(h, 0.0, 1.0);
 
-    vec3 col = mix(uHorizon, uZenith, pow(up, 0.5));
-    col = mix(col, uHorizon * 0.92, smoothstep(0.0, -0.25, h));
-
-    // Glow around the sun, widest near the horizon, where the air is thickest.
-    float cs = max(dot(v, uSunDir), 0.0);
-    float nearHorizon = 1.0 - smoothstep(0.0, 0.45, up);
-    float glow = pow(cs, 7.0) * (0.3 + 0.7 * nearHorizon) + pow(cs, 120.0) * 0.6;
-    col = mix(col, uGlow, clamp(glow, 0.0, 1.0) * (0.35 + 0.65 * uSunVisible));
+    // The sky's radiance, computed from the physics for this sun and moon.
+    vec3 col = texture2D(uSky, skyUv(vec3(v.x, max(h, 0.0), v.z))).rgb;
 
     // Stars: one in a few hundred cells of a grid on the sphere, twinkling.
     if (uStars > 0.001 && h > 0.0) {
@@ -90,50 +86,62 @@ const skyFragment = /* glsl */ `
         float dist = length(v - c) * 150.0;
         float star = smoothstep(0.5, 0.0, dist);
         float twinkle = 0.65 + 0.35 * sin(uTime * (1.3 + r * 2.7) + r * 71.0);
-        float bright = 0.45 + 0.55 * fract(r * 17.0);
-        col += vec3(0.92, 0.95, 1.0) * star * twinkle * bright * uStars * smoothstep(0.0, 0.3, h);
+        float bright = 0.3 + 0.7 * pow(fract(r * 17.0), 3.0);
+        // Extinction near the horizon, as through more air.
+        col += vec3(0.92, 0.95, 1.0) * 0.05 * star * twinkle * bright * uStars * smoothstep(0.0, 0.3, h);
       }
     }
 
     // The moon: a disc lit on the side that faces the sun — its phase, from geometry.
-    float moonR = 0.026;
+    float moonR = 0.012;
     float cm = dot(v, uMoonDir);
-    if (uMoonVisible > 0.001 && cm > cos(moonR)) {
+    if (uMoonVisible > 0.001 && cm > cos(moonR * 1.2)) {
       vec3 q = v - uMoonDir * cm;
       float lq = max(length(q), 1e-6);
       float rho = clamp(lq / sin(moonR), 0.0, 1.0);
       vec3 n = (q / lq) * rho - uMoonDir * sqrt(max(0.0, 1.0 - rho * rho));
-      float lit = smoothstep(-0.04, 0.08, dot(n, uSunDir));
-      float edge = smoothstep(1.0, 0.9, rho);
-      vec3 moon = mix(uZenith * 1.15 + vec3(0.02), vec3(0.95, 0.94, 0.88), lit);
-      col = mix(col, moon, edge * uMoonVisible);
+      float lit = smoothstep(-0.04, 0.08, dot(n, uSunForMoon));
+      // Maria: darker patches, so it reads as the moon and not a lamp.
+      float maria = 0.78 + 0.22 * smoothstep(0.35, 0.65, vnoise(q.xy / sin(moonR) * 2.2 + 3.0));
+      float edge = smoothstep(1.0, 0.94, rho);
+      col += uMoonDisc * lit * maria * edge * uMoonVisible;
     }
 
-    // A layer of cumulus, drifting; lit by the sun of the moment.
+    // Cumulus, drifting: lit by the sun of the moment, shaded by the sky,
+    // silver-edged towards the sun, and hazed towards the horizon.
     if (h > 0.0) {
       vec2 cp = v.xz / (h + 0.09) * 0.55 + vec2(uTime * 0.006 * uMotion, uTime * 0.002 * uMotion);
       float n = fbm(cp);
       float cover = smoothstep(0.5, 0.74, n) * smoothstep(0.0, 0.08, h) * (1.0 - smoothstep(0.45, 0.9, h));
-      vec3 cloud = mix(uCloudShade, uCloudLight, smoothstep(0.52, 0.86, n));
-      cloud = mix(cloud, uGlow, pow(cs, 5.0) * 0.45 * (1.0 - smoothstep(0.0, 0.3, h)));
+      // Thicker cores are darker underneath; thin edges let the sun through.
+      float thick = smoothstep(0.55, 0.9, n);
+      float toSun = max(dot(v, uSunDir), 0.0);
+      vec3 cloud = mix(uCloudLit, uCloudShade, thick * 0.65);
+      cloud += uSilver * pow(toSun, 8.0) * (1.0 - thick);
+      vec3 haze = texture2D(uSky, skyUv(vec3(v.x, 0.0, v.z))).rgb;
+      cloud = mix(cloud, haze, 1.0 - smoothstep(0.0, 0.35, h));
       col = mix(col, cloud, cover * uCloudOpacity);
     }
 
-    // The sun's disc, over its clouds' edges — larger than the true half degree, so it reads.
-    float disc = smoothstep(0.99955, 0.99978, dot(v, uSunDir));
-    col += uSunColor * disc * 2.5 * uSunVisible;
+    // The sun's disc, over its clouds' edges — larger than the true half
+    // degree, so it reads; its limb darkened, as the real one is.
+    float cs = dot(v, uSunDir);
+    float disc = smoothstep(0.99955, 0.99978, cs);
+    float limb = 0.6 + 0.4 * smoothstep(0.99955, 0.99995, cs);
+    col += uSunDisc * disc * limb;
 
     gl_FragColor = vec4(col, 1.0);
-    #include <colorspace_fragment>
   }
 `;
 
 /**
- * The sky dome: gradient, sun, clouds, stars and the moon in its real phase.
- * It follows the camera, and lowers its horizon to meet the curved sea.
+ * The sky dome: the physical sky's radiance (`SkyProvider`), the sun's disc,
+ * clouds, stars and the moon in its real phase. It follows the camera, and
+ * lowers its horizon to meet the curved sea.
  */
 export const SkyDome = memo(function SkyDome({ reducedMotion }: { reducedMotion: boolean }) {
   const light = useHubLight();
+  const sky = useSkyMap();
   const mesh = useRef<THREE.Mesh>(null);
   const material = useMemo(
     () =>
@@ -142,21 +150,20 @@ export const SkyDome = memo(function SkyDome({ reducedMotion }: { reducedMotion:
         fragmentShader: skyFragment,
         side: THREE.BackSide,
         depthWrite: false,
-        toneMapped: false,
         uniforms: {
-          uZenith: { value: new THREE.Color() },
-          uHorizon: { value: new THREE.Color() },
-          uGlow: { value: new THREE.Color() },
-          uSunColor: { value: new THREE.Color() },
+          uSky: { value: null },
           uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+          uSunDisc: { value: new THREE.Vector3() },
           uMoonDir: { value: new THREE.Vector3(0, -1, 0) },
-          uSunVisible: { value: 1 },
+          uSunForMoon: { value: new THREE.Vector3(0, 1, 0) },
           uMoonVisible: { value: 0 },
+          uMoonDisc: { value: new THREE.Vector3() },
           uStars: { value: 0 },
           uTime: { value: 0 },
           uDip: { value: 0.3 },
-          uCloudLight: { value: new THREE.Color() },
-          uCloudShade: { value: new THREE.Color() },
+          uCloudLit: { value: new THREE.Vector3() },
+          uCloudShade: { value: new THREE.Vector3() },
+          uSilver: { value: new THREE.Vector3() },
           uCloudOpacity: { value: 0.8 },
           uMotion: { value: 1 },
         },
@@ -164,6 +171,7 @@ export const SkyDome = memo(function SkyDome({ reducedMotion }: { reducedMotion:
     []
   );
   const seen = useRef(-1);
+  const seenSky = useRef(-1);
   const lastCamera = useRef(new THREE.Vector3(Infinity, 0, 0));
   const forward = useMemo(() => new THREE.Vector3(), []);
 
@@ -172,6 +180,11 @@ export const SkyDome = memo(function SkyDome({ reducedMotion }: { reducedMotion:
     const u = material.uniforms;
     u.uTime.value = clock.elapsedTime;
     u.uMotion.value = reducedMotion ? 0.2 : 1;
+    if (sky.current.version !== seenSky.current) {
+      seenSky.current = sky.current.version;
+      u.uSky.value = sky.current.texture;
+    }
+    if (mesh.current) mesh.current.visible = sky.current.texture !== null;
 
     // Where the curved sea's edge is from here: recomputed only when the camera moved.
     if (camera.position.distanceToSquared(lastCamera.current) > 1e-4) {
@@ -186,25 +199,32 @@ export const SkyDome = memo(function SkyDome({ reducedMotion }: { reducedMotion:
     if (l.version === seen.current) return;
     seen.current = l.version;
     const s = l.sky;
-    (u.uZenith.value as THREE.Color).setRGB(...s.zenith);
-    (u.uHorizon.value as THREE.Color).setRGB(...s.horizon);
-    (u.uGlow.value as THREE.Color).setRGB(...s.sunGlow);
-    (u.uSunColor.value as THREE.Color).setRGB(...s.sunColor);
+    const a = l.atmo;
     (u.uSunDir.value as THREE.Vector3).copy(l.sunDir);
+    // The disc's radiance: the sunlight that crosses the air, spread over the
+    // (enlarged) disc — capped, a display cannot show the sun anyway; the
+    // bloom does the rest.
+    const disc = Math.min(40, 12 * Math.max(a.sun[0], a.sun[1], a.sun[2])) / Math.max(1e-6, Math.max(a.sun[0], a.sun[1], a.sun[2]));
+    (u.uSunDisc.value as THREE.Vector3).set(a.sun[0] * disc, a.sun[1] * disc, a.sun[2] * disc);
     (u.uMoonDir.value as THREE.Vector3).copy(l.moonDir);
-    u.uSunVisible.value = THREE.MathUtils.smoothstep(l.sun.elevation, -1.2, 0.6);
-    // Faint by day, bright at night, gone below the horizon.
-    u.uMoonVisible.value = THREE.MathUtils.smoothstep(l.moon.elevation, -0.5, 1.5) * (0.3 + 0.7 * s.stars);
+    (u.uSunForMoon.value as THREE.Vector3).copy(l.sunDir);
+    u.uMoonVisible.value = THREE.MathUtils.smoothstep(l.moon.elevation, -0.5, 1.5);
+    // The moon's surface: grey rock under full sunlight — far brighter than
+    // the night sky, a little brighter than the day's.
+    (u.uMoonDisc.value as THREE.Vector3).set(0.46, 0.45, 0.42);
     u.uStars.value = s.stars;
 
-    // Clouds: white at noon, gilded at the ends of the day, dim at night.
-    const day = Math.min(1, s.sunIntensity / 2.4);
-    const lightColor = new THREE.Color(1, 1, 1).lerp(new THREE.Color().setRGB(...s.sunGlow), 0.55 * (1 - day));
-    lightColor.multiplyScalar(0.28 + 0.72 * (1 - s.stars * 0.85));
-    (u.uCloudLight.value as THREE.Color).copy(lightColor);
-    const shade = new THREE.Color().setRGB(...s.horizon).lerp(new THREE.Color().setRGB(...s.zenith), 0.45).multiplyScalar(0.82);
-    (u.uCloudShade.value as THREE.Color).copy(shade);
-    u.uCloudOpacity.value = 0.85 - 0.35 * s.stars;
+    // Clouds: white under the sun, lit by the sky from beneath; the ends of
+    // the day colour them through the sunlight itself.
+    const albedo = 0.8 / Math.PI;
+    const sunUp = Math.max(0.15, l.sunDir.y);
+    const lit: [number, number, number] = [0, 1, 2].map((c) => albedo * (a.sun[c] * (0.35 + 0.65 * sunUp) + a.skyUp[c] + a.moon[c] * 0.6)) as [number, number, number];
+    (u.uCloudLit.value as THREE.Vector3).set(...lit);
+    const shade = [0, 1, 2].map((c) => albedo * (a.skyUp[c] * 0.8 + a.sun[c] * 0.08)) as [number, number, number];
+    (u.uCloudShade.value as THREE.Vector3).set(...shade);
+    (u.uSilver.value as THREE.Vector3).set(a.sun[0] * 0.5, a.sun[1] * 0.5, a.sun[2] * 0.5);
+    // Thinner clouds at night: they would only be dark shapes.
+    u.uCloudOpacity.value = 0.85 - 0.4 * s.stars;
   });
 
   return (

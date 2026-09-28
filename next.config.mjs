@@ -1,9 +1,15 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Lets a verification build run without clobbering the `.next` a dev server
   // is using (they share the directory otherwise, which corrupts the dev
   // server's RSC payloads). Defaults to the normal location.
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // This project is the root. Next otherwise guesses from lockfiles and can
+  // settle on a parent folder that merely has one of its own.
+  outputFileTracingRoot: path.dirname(fileURLToPath(import.meta.url)),
   reactStrictMode: true,
   poweredByHeader: false,
   experimental: {

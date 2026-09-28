@@ -28,3 +28,19 @@ self.addEventListener("fetch", (event) => {
   if (event.request.mode !== "navigate") return;
   event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE)));
 });
+
+// A reminder's notification, clicked: back to LifeOS — the open window if
+// there is one, else a new one on the dashboard. Only same-origin paths.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  // A path on this site only: "/x", never "//elsewhere" or a full URL.
+  const url = event.notification.data?.url;
+  const wanted = typeof url === "string" && /^\/(?![\/\\])/.test(url) ? url : "/dashboard";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
+      if (open) return open.focus();
+      return self.clients.openWindow(wanted);
+    })
+  );
+});

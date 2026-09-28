@@ -176,6 +176,12 @@ class LocalStore implements Store {
           set[dependent] = rows.filter((l) => l.fromId !== id && l.toId !== id) as unknown as { id: string }[];
         }
       }
+      // A reminder outlives the note it was about (ON DELETE SET NULL).
+      if (collection === "brain") {
+        for (const r of set.reminders as unknown as { noteId?: string | null }[]) {
+          if (r.noteId === id) r.noteId = null;
+        }
+      }
       // And its ON DELETE SET NULL: a note outlives its recording, as text.
       if (collection === "audio") {
         const notes = set.brain as unknown as { audioId?: string | null; audioStartMs?: number | null; audioEndMs?: number | null }[];
@@ -223,6 +229,10 @@ class LocalStore implements Store {
   }
 
   async supportsVoice(): Promise<boolean> {
+    return true;
+  }
+
+  async supportsReminders(): Promise<boolean> {
     return true;
   }
 

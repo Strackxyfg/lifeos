@@ -1,5 +1,6 @@
 import "server-only";
-import { loadWorkspace } from "@/lib/data/live";
+import { loadReminders, loadWorkspace } from "@/lib/data/live";
+import { reminderCounts } from "@/lib/reminders/client";
 import { computeSnapshot } from "@/lib/data/workspace";
 import { loadBrainView } from "@/lib/brain/load";
 import { brainDigest } from "@/lib/brain/digest";
@@ -14,7 +15,12 @@ import type { HubFacts } from "./summary";
  * contradicts.
  */
 export async function loadHubFacts(m: Messages, now = new Date()): Promise<HubFacts> {
-  const [view, data, memory] = await Promise.all([loadBrainView(m), loadWorkspace(), getStore().supportsMemory()]);
+  const [view, data, memory, { reminders, available }] = await Promise.all([
+    loadBrainView(m),
+    loadWorkspace(),
+    getStore().supportsMemory(),
+    loadReminders(),
+  ]);
   const digest = brainDigest({ notes: view.notes, links: view.links, now, memory });
   const snap = computeSnapshot(data);
   return {
@@ -25,7 +31,7 @@ export async function loadHubFacts(m: Messages, now = new Date()): Promise<HubFa
     unreviewed: digest.awaitingReview,
     tasksOpen: snap.tasks.open,
     tasksDone: snap.tasks.done,
-    reminders: null,
+    reminders: available ? reminderCounts(reminders, now) : null,
     projects: {
       active: snap.projects.total - snap.projects.done,
       blocked: snap.projects.blocked,

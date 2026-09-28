@@ -7,10 +7,13 @@ import { getProfile } from "@/lib/user/profile";
 import { getLocale, getMessages } from "@/lib/i18n/server";
 import { LocaleProvider } from "@/lib/i18n/client";
 import { buildAlerts } from "@/lib/data/alerts";
+import { loadReminders } from "@/lib/data/live";
+import { upcomingReminders } from "@/lib/reminders/client";
+import { ReminderWatcher } from "@/components/reminders/reminder-watcher";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const [profile, locale, messages] = await Promise.all([getProfile(), getLocale(), getMessages()]);
-  const alerts = await buildAlerts(messages);
+  const [alerts, { reminders }] = await Promise.all([buildAlerts(messages, locale), loadReminders()]);
 
   return (
     <LocaleProvider locale={locale} messages={messages}>
@@ -25,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <CommandMenu />
         <Shortcuts />
         <Toaster />
+        <ReminderWatcher initial={upcomingReminders(reminders, new Date())} />
       </div>
     </LocaleProvider>
   );

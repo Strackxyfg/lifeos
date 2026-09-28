@@ -22,6 +22,7 @@ const MECHANISMS: { name: string; pattern: RegExp }[] = [
   { name: "runner token", pattern: /\bauthenticateRunner\(/ },
   { name: "Telegram secret", pattern: /\bverifyWebhookSecret\(/ },
   { name: "Stripe signature", pattern: /\bconstructEvent\(/ },
+  { name: "cron secret", pattern: /\bverifyCronSecret\(/ },
 ];
 
 /**

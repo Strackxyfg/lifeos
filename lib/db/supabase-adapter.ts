@@ -29,6 +29,7 @@ const TABLE: Record<Collection, string> = {
   links: "lifeos_brain_links",
   dismissals: "lifeos_brain_dismissals",
   audio: "lifeos_brain_audio",
+  reminders: "lifeos_reminders",
 };
 
 /** One row per person, keyed by `user_key` (migration 007). */
@@ -40,6 +41,7 @@ const PROFILE_TABLE = "lifeos_profiles";
  * change leaves orphans behind.
  */
 const ERASE_ORDER: string[] = [
+  TABLE.reminders,
   TABLE.dismissals,
   TABLE.links,
   TABLE.brain,
@@ -90,6 +92,17 @@ class SupabaseStore implements Store {
   private synapses: { value: boolean; until: number } | null = null;
   private memory: { value: boolean; until: number } | null = null;
   private voice: { value: boolean; until: number } | null = null;
+  private reminders: { value: boolean; until: number } | null = null;
+
+  /** Whether migration 011 is applied — cached like the others. */
+  async supportsReminders(): Promise<boolean> {
+    if (this.reminders && Date.now() < this.reminders.until) return this.reminders.value;
+    const db = await client();
+    const { error } = await db.from(TABLE.reminders).select("id, anchor_at, zone, notified_at").limit(1);
+    const value = !error;
+    this.reminders = { value, until: value ? Number.POSITIVE_INFINITY : Date.now() + 60_000 };
+    return value;
+  }
 
   async supportsSynapses(): Promise<boolean> {
     if (this.synapses && Date.now() < this.synapses.until) return this.synapses.value;

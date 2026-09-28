@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { getStore, getUserKey } from "@/lib/db/store";
 import { computeSnapshot, type WorkspaceSnapshot } from "./workspace";
-import type { Dataset, DbBrainDismissal, DbBrainLink } from "@/lib/db/types";
+import type { Dataset, DbBrainDismissal, DbBrainLink, DbReminder } from "@/lib/db/types";
 import { isMissingTable } from "@/lib/db/errors";
 
 export { isMissingTable };
@@ -43,6 +43,23 @@ export const loadDismissals = cache(async function loadDismissals(): Promise<DbB
 });
 
 /**
+ * The person's reminders (migration 011), or an explicit "not available yet".
+ * Tolerant like links: the layout reads them on every page.
+ */
+export const loadReminders = cache(async function loadReminders(): Promise<{
+  reminders: DbReminder[];
+  available: boolean;
+}> {
+  try {
+    const reminders = await getStore().list(await getUserKey(), "reminders");
+    return { reminders, available: true };
+  } catch (err) {
+    if (isMissingTable(err)) return { reminders: [], available: false };
+    throw err;
+  }
+});
+
+/**
  * Reads the signed-in user's whole workspace in one pass.
  *
  * `cache()` matters here: the layout (for alerts) and the page both need the
@@ -52,7 +69,7 @@ export const loadDismissals = cache(async function loadDismissals(): Promise<DbB
 export const loadWorkspace = cache(async function loadWorkspace(): Promise<Dataset> {
   const store = getStore();
   const userKey = await getUserKey();
-  const [projects, deals, transactions, tasks, brain, { links }, dismissals] = await Promise.all([
+  const [projects, deals, transactions, tasks, brain, { links }, dismissals, { reminders }] = await Promise.all([
     store.list(userKey, "projects"),
     store.list(userKey, "deals"),
     store.list(userKey, "transactions"),
@@ -60,10 +77,11 @@ export const loadWorkspace = cache(async function loadWorkspace(): Promise<Datas
     store.list(userKey, "brain"),
     loadLinks(),
     loadDismissals(),
+    loadReminders(),
   ]);
   // Recordings are not part of a page's workspace: each carries its whole
   // transcript, and one is read by id when a note is played.
-  return { projects, deals, transactions, tasks, brain, links, dismissals, audio: [] };
+  return { projects, deals, transactions, tasks, brain, links, dismissals, audio: [], reminders };
 });
 
 /** Single collection. Served from the cached full read to avoid a second query. */

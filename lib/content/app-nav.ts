@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Boxes, Users, Wallet, Sparkles, Brain, Bot,
-  Settings, CreditCard, Map,
+  Settings, CreditCard, Map as MapIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -17,7 +17,7 @@ export interface NavItem {
 
 /** The product: the island it all starts from, the second brain, and the two ways of working from it. */
 export const primaryNav: NavItem[] = [
-  { id: "hub", href: "/hub", icon: Map, hint: "G H" },
+  { id: "hub", href: "/hub", icon: MapIcon, hint: "G H" },
   { id: "brain", href: "/brain", icon: Brain, hint: "G R" },
   { id: "assistant", href: "/assistant", icon: Sparkles, hint: "G A" },
   { id: "agent", href: "/agent", icon: Bot, hint: "G G" },

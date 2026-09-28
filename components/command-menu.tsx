@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Search, Sparkles, LayoutDashboard, Boxes, Users, Wallet,
-  Settings, CreditCard, ArrowRight, CornerDownLeft, Brain, Bot, Plus, AudioLines, Map,
+  Settings, CreditCard, ArrowRight, CornerDownLeft, Brain, Bot, Plus, AudioLines, Map as MapIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui/kbd";
@@ -44,7 +44,7 @@ export function CommandMenu() {
         action: () => (pathname === "/brain" ? window.dispatchEvent(new Event(OPEN_DUMP_EVENT)) : router.push("/brain?dump=1")),
       },
       { id: "ask", label: m.command.ask, hint: "G A", icon: Sparkles, group: "actions", href: "/assistant" },
-      { id: "hub", label: m.nav.hub, hint: "G H", icon: Map, group: "navigate", href: "/hub" },
+      { id: "hub", label: m.nav.hub, hint: "G H", icon: MapIcon, group: "navigate", href: "/hub" },
       { id: "brain", label: m.nav.brain, hint: "G R", icon: Brain, group: "navigate", href: "/brain" },
       { id: "agent", label: m.nav.agent, hint: "G G", icon: Bot, group: "navigate", href: "/agent" },
       { id: "dash", label: m.nav.dashboard, hint: "G D", icon: LayoutDashboard, group: "navigate", href: "/dashboard" },

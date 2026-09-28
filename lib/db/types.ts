@@ -3,6 +3,7 @@ import type { BrainCategoryId, BrainItemKind } from "@/lib/data/brain";
 import type { Concept } from "@/lib/brain/concepts";
 import type { LinkOrigin, RelationKind } from "@/lib/brain/relations";
 import type { AudioWord } from "@/lib/voice/align";
+import type { Repeat } from "@/lib/reminders/schedule";
 
 /**
  * Persisted entities. `userKey` scopes every row to its owner — it holds the
@@ -106,6 +107,27 @@ export interface DbBrainDismissal extends Owned {
   toId: string;
 }
 
+/**
+ * A reminder (migration 011). It keeps the clock of the zone it was set in:
+ * "every day at 9" is 9 there, winter and summer.
+ */
+export interface DbReminder extends Owned {
+  title: string;
+  /** When it is next due. */
+  dueAt: string;
+  /** The first occurrence: a series is counted from it, so the 31st stays the 31st. */
+  anchorAt: string;
+  repeat: Repeat;
+  /** The IANA time zone whose clock it keeps. */
+  zone: string;
+  done: boolean;
+  doneAt: string | null;
+  /** The note it is about, if any; cleared if that note is deleted. */
+  noteId: string | null;
+  /** When the person was last told of this occurrence — so it is never told twice. */
+  notifiedAt: string | null;
+}
+
 export interface Dataset {
   projects: DbProject[];
   deals: DbDeal[];
@@ -115,6 +137,7 @@ export interface Dataset {
   links: DbBrainLink[];
   dismissals: DbBrainDismissal[];
   audio: DbBrainAudio[];
+  reminders: DbReminder[];
 }
 
 export type Collection = keyof Dataset;
@@ -162,6 +185,8 @@ export interface Store {
   supportsMemory(): Promise<boolean>;
   /** Whether migration 010 has been applied: recordings kept, with their storage. */
   supportsVoice(): Promise<boolean>;
+  /** Whether migration 011 has been applied: reminders. */
+  supportsReminders(): Promise<boolean>;
   /** One row by id, if it belongs to the caller. */
   get<C extends Collection>(userKey: string, collection: C, id: string): Promise<Dataset[C][number] | null>;
   /** Stores a recording in the person's own folder; returns the path to keep. `file` is "<id>.<ext>". */

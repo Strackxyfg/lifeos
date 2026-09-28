@@ -89,6 +89,8 @@ export function seedDataset(userKey: string): Dataset {
     links: [],
     dismissals: [],
     audio: [],
+    // A reminder is a promise to the person about a real moment: never sample data.
+    reminders: [],
   };
 }
 
@@ -108,4 +110,5 @@ export const EMPTY_DATASET: Dataset = {
   links: [],
   dismissals: [],
   audio: [],
+  reminders: [],
 };

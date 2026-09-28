@@ -1,4 +1,5 @@
-import { loadSnapshot } from "./live";
+import { loadReminders, loadSnapshot } from "./live";
+import { plural, type Locale } from "@/lib/i18n/config";
 import { fill } from "@/lib/i18n/config";
 import type { Messages } from "@/lib/i18n/dictionaries";
 
@@ -12,10 +13,21 @@ export interface Alert {
 }
 
 /** Derives real, localized alerts from the persisted workspace. */
-export async function buildAlerts(m: Messages): Promise<Alert[]> {
-  const s = await loadSnapshot();
+export async function buildAlerts(m: Messages, locale: Locale = "en"): Promise<Alert[]> {
+  const [s, { reminders }] = await Promise.all([loadSnapshot(), loadReminders()]);
   const n = m.notifications;
   const alerts: Alert[] = [];
+
+  const now = Date.now();
+  const overdue = reminders.filter((r) => !r.done && Date.parse(r.dueAt) <= now).length;
+  if (overdue > 0) {
+    alerts.push({
+      id: "reminders-overdue",
+      level: "danger",
+      text: plural(locale, overdue, m.hub.cards.overdue),
+      href: "/dashboard",
+    });
+  }
 
   for (const name of s.projects.blockedNames) {
     alerts.push({

@@ -1,11 +1,14 @@
 # LifeOS — description produit
 
-> État au 24 septembre 2026, **établi depuis le code**. Le produit a pivoté :
+> État au 28 septembre 2026, **établi depuis le code**. Le produit a pivoté :
 > ce n'est plus un générateur d'espaces Notion, c'est un second cerveau
 > souverain avec un agent IA. Notion devient un export facultatif. Depuis, le
 > cerveau se relie lui-même (section 2), se laisse vider à la voix (section 1),
-> montre comment il pense (section 5), se souvient (section 3), et se parle
-> (section 6).
+> montre comment il pense (section 5), se souvient (section 3), se parle
+> (section 6). L'application s'ouvre désormais sur une île en 3D sous votre
+> propre ciel (section 7), le tableau de bord devient votre journée avec ses
+> rappels (section 8), et LifeOS se partage en équipe ou en cercle — sans que
+> personne ne lise jamais votre cerveau (section 9).
 
 **Légende** — ✅ fonctionnel · 🟡 partiel · ⛔ pas construit
 
@@ -22,7 +25,9 @@ que vous fixez.
 
 Fondateurs, freelances et managers qui pensent vite et oublient autant. Ils
 veulent un endroit unique pour leurs idées, leurs objectifs et leurs prochaines
-actions, et un assistant qui les connaît vraiment.
+actions, et un assistant qui les connaît vraiment. Et, depuis la section 9 :
+les **entreprises** qui équipent chaque salarié d'un second cerveau et d'un
+espace d'équipe, et les **cercles de fondateurs** qui avancent entre pairs.
 
 ---
 
@@ -197,7 +202,104 @@ premiers mots 0,8 s plus tard.
 puis suit exactement le chemin d'un message tapé : file d'attente, politique,
 journal d'audit.
 
-## 7. L'agent autonome ✅
+## 7. L'île — le hub ✅
+
+LifeOS s'ouvre sur une île en 3D, comme le hub d'un jeu : chaque bâtiment est
+une partie du produit — la rotonde du **second cerveau** (sous sa coupole, un
+cœur de lumière en forme de cerveau), le beffroi du **tableau de bord** (son
+horloge donne l'heure), le café de l'**assistant**, l'atelier et l'antenne de
+l'**agent**, le studio et sa grue des **projets**, la tour des **finances**, les
+pavillons reliés des **relations**, le club de l'**équipe**, le phare des
+**paramètres**. Au-dessus de chacun, un repère — une vraie icône cliquable,
+accessible au clavier — avec le nombre de choses qui attendent (notes à revoir
+et tensions, rappels du jour, projets bloqués, point hebdo à écrire).
+
+Un clic (ou ←/→) : la caméra vole jusqu'au bâtiment, en arc, et sa fiche
+s'ouvre avec les vrais chiffres de la personne. « Entrer » pousse la caméra
+jusqu'à la porte et ouvre la page ; au retour, l'île repart devant le bâtiment
+quitté puis s'éloigne. En bas, trois cartes : aujourd'hui, votre cerveau, là
+où vous étiez.
+
+**Le ciel est le vôtre.** Le soleil et la lune sont à leur vraie position pour
+la ville de votre fuseau horaire (calcul NOAA avec réfraction, série lunaire
+de l'Almanach, phase de la lune comprise) — sans géolocalisation, rien ne
+quitte l'appareil. L'île passe par l'aube, midi, l'heure dorée, le coucher et
+une nuit éclairée (fenêtres, lampadaires, fontaine, enseignes, faisceau du
+phare) quand ils arrivent vraiment chez vous ; au-dessus de l'horizon courbé
+comme celui d'une petite planète, une bande de vrai ciel, avec nuages et
+étoiles. Un aperçu permet de voir l'île à une autre heure (`/hub?at=21:30`).
+
+Tenu à l'exigence d'un produit : le cadrage est **calculé** (l'île entière
+tient sur tout écran, du 21:9 au téléphone ; chaque bâtiment tient dans la
+partie de l'écran que sa fiche laisse libre, vu depuis un point qu'aucun autre
+bâtiment n'obstrue) ; les ombres ne sont recalculées que quand la lumière
+bouge ; la qualité baisse d'elle-même sur un appareil lent ; « réduire les
+animations » transforme chaque vol en coupe ; sans WebGL, les mêmes lieux
+deviennent une liste.
+
+## 8. Le tableau de bord et les rappels ✅
+
+Le tableau de bord n'est plus l'accueil : c'est la journée. D'abord les
+**rappels**, puis ce que le cerveau juge prioritaire (le focus et ses raisons,
+les notes à revoir, les tensions à trancher, les connexions à vérifier), puis
+les chiffres (notes, connexions, tâches, projets, montant en cours, solde) et
+quatorze jours de captures.
+
+**Des rappels écrits comme on les dit**, en français ou en anglais :
+« appeler Marc demain à 9h », « réunion tous les lundis à 10h30 », « payer le
+loyer le 5 de chaque mois », « call Anna tomorrow at 3pm ». Des règles, pas un
+modèle : les mêmes mots donnent toujours le même rappel, hors ligne, et ce qui
+a été compris s'affiche pendant la frappe — une erreur se voit avant d'être
+enregistrée. Les répétitions gardent l'heure du fuseau où elles ont été créées
+(9 h reste 9 h au changement d'heure ; le 31 de chaque mois est le 30 en avril
+et redevient le 31 en mai). Fait, annuler, reporter, supprimer.
+
+**Ils arrivent à l'heure.** Sur n'importe quelle page, une alerte (« fait »,
+« dans 10 min »), une notification système si l'onglet est en arrière-plan et
+que vous l'avez autorisée, et le titre de l'onglet qui compte ce qui attend.
+Chaque échéance est marquée « annoncée » : aucun autre onglet ne la répète.
+Application fermée : avec l'agent relié à Telegram, un envoi planifié
+(`/api/reminders/dispatch`, protégé par `CRON_SECRET`) les y transmet — chaque
+échéance réservée avant l'envoi, deux passages ne l'envoient jamais deux fois.
+
+## 9. Équipes et cercles ✅
+
+LifeOS à plusieurs : une **entreprise** qui achète un siège par salarié, ou un
+**cercle** de fondateurs qui avancent entre pairs. Mêmes mécanismes, deux
+usages.
+
+**La règle sur laquelle tout repose : une équipe ne lit jamais le cerveau d'un
+membre.** Elle voit ce qu'il partage, note par note — et la page n'envoie que
+l'identifiant de la note : son texte est relu côté serveur dans le cerveau de
+la personne, rien ne peut être partagé en son nom qu'elle n'ait écrit. La
+phrase est affichée sur chaque écran d'équipe : même les administrateurs ne
+peuvent pas lire le reste.
+
+- **Un cerveau commun, et ses synapses entre les personnes** : les
+  *rencontres* (deux membres qui pensent à la même chose sans le savoir, avec
+  les termes en commun) et *pour vous* (ce que les collègues ont partagé qui
+  rejoint l'une de vos notes privées — calculé pour vous seul, jamais
+  stocké). « Garder dans mon cerveau » copie une note partagée chez soi, avec
+  son auteur.
+- **Le point hebdo** (fait / focus / blocage), avec un brouillon tiré de votre
+  propre cerveau (votre focus, votre tension ouverte — « fait » reste vide :
+  le cerveau ne peut pas le savoir honnêtement), « j'aimerais de l'aide » et
+  « je peux aider ».
+- **Des bravos**, et un fil d'activité.
+- **La météo**, anonyme : chaque réponse n'est lisible que par son auteur ;
+  l'équipe voit des moyennes à partir de cinq réponses — en dessous, aucune.
+- **Membres et rôles** (un propriétaire, des admins, des membres), sièges,
+  liens d'invitation (affichés une fois ; seule leur empreinte SHA-256 est
+  gardée), transmission, départ, suppression.
+
+La frontière de sécurité est la base elle-même (migration 012) : politiques
+ligne par ligne, **privilèges par colonne** (un membre peut se renommer,
+jamais se promouvoir), fonctions pour tout ce qui touche à l'appartenance
+(sièges attribués un par un sous verrou, un seul propriétaire, un membre
+n'apprend rien en essayant de changer un rôle). Validée sur Postgres avec les
+rôles de Supabase : ~75 vérifications, dont chaque tentative d'élévation.
+
+## 10. L'agent autonome ✅
 
 Un agent IA qui travaille sur vos données, **sur un serveur séparé — jamais
 sur votre ordinateur** — et qui ne peut rien faire de dangereux sans vous.
@@ -219,16 +321,15 @@ sur votre ordinateur** — et qui ne peut rien faire de dangereux sans vous.
 | ✅ | lire et chercher dans le second cerveau · voir à quoi une note est reliée et pourquoi · relier deux notes avec un sens et une raison (marqué « agent, à valider ») · lancer le moteur de connexions · créer des notes (reliées automatiquement) · créer tâches, projets, opportunités · rédiger e-mails, campagnes, propositions · envoyer un e-mail validé *(si un fournisseur d'envoi est configuré)* |
 | ⛔ | agenda · recherche web · Slack · publicité · services externes · exécution de code — ces actions répondent « non implémenté » au lieu de prétendre avoir réussi |
 
-## 8. Le reste de l'activité ✅
+## 11. Le reste de l'activité ✅
 
-Tableau de bord, projets, clients (CRM) et finances, avec de vraies données
-persistées. Le **résumé du jour** et le **bilan de la semaine** partent
+Projets, clients (CRM) et finances, avec de vraies données persistées. Le **résumé du jour** et le **bilan de la semaine** partent
 désormais du second cerveau — le focus dans l'ordre, les objectifs sans
 prochaine action, les tensions à arbitrer, ce qui a été capturé et relié cette
 semaine, les notes à revoir — puis situent les projets et les finances. Sans
 IA, le même texte est calculé depuis les mêmes faits.
 
-## 9. Notion — export facultatif ✅
+## 12. Notion — export facultatif ✅
 
 Depuis les Paramètres, une fois Notion connecté : LifeOS montre les bases qu'il
 va créer (un socle, plus un module par domaine de vie choisi), attend votre
@@ -236,27 +337,33 @@ clic, puis les crée dans la page partagée avec une page d'accueil. L'écran de
 progression n'affiche que les étapes réellement exécutées. Sans connexion, il
 refuse au lieu de simuler.
 
-## 10. Vos données ✅
+## 13. Vos données ✅
 
 - Export Markdown / JSON à tout moment, ou **ZIP complet** : les deux, plus
   chaque enregistrement et sa transcription mot à mot (le Markdown relie chaque
   note vocale à son audio et à son passage).
 - **Suppression complète** depuis les Paramètres (mot à taper, vérifié côté
   serveur) : notes, connexions, projets, opportunités, transactions, tâches,
-  enregistrements, profil. Le compte et le contenu Notion restent.
+  enregistrements, rappels, profil — et la présence dans chaque équipe, avec
+  ce qui y a été partagé (une équipe dont on est propriétaire passe à
+  l'admin le plus ancien, ou disparaît si l'on y était seul). Le compte et le
+  contenu Notion restent.
 
-## 11. Tarifs — accès anticipé
+## 14. Tarifs — accès anticipé
 
 Gratuit, sans carte. Prix affichés pour après l'accès anticipé :
 **Essentiel 19 $**, **Pro 49 $**, **Souverain 99 $** par mois. Chaque promesse
 de la grille correspond à une fonction qui existe. Rien n'est facturé : le
-paiement n'est pas branché.
+paiement n'est pas branché. Les équipes gèrent des **sièges**, prêts à
+devenir une facturation par siège — le tarif entreprise reste à décider
+(voir « Avant de lancer »).
 
-## 12. Technique
+## 15. Technique
 
 Next.js 15 · React 19 · TypeScript strict · Supabase (authentification,
 Postgres, sécurité ligne par ligne) · API Notion · agent sur VPS · PWA
-(installable, cible de partage) · interface intégralement bilingue · 466 tests
+(installable, cible de partage) · three.js / React Three Fiber · interface
+intégralement bilingue · 568 tests
 automatisés, dont des gardes contre les fausses allégations, les routes non
 protégées et les caractères de contrôle dans le code.
 
@@ -276,21 +383,39 @@ export ZIP écrit en flux. Synthèse : voix de l'appareil, lues phrase par phras
 avec une file maison (les défauts de Chrome contournés : coupure à 15 s,
 événement de fin perdu).
 
+**L'île.** Scène procédurale (aucun fichier 3D téléchargé : géométries,
+textures d'enseignes et de fenêtres dessinées au chargement), mer et ciel en
+shaders, carte de distance de la côte pour les hauts-fonds et l'écume, ombres
+statiques recalculées au mouvement du soleil, reflets générés sur place,
+instanciation des arbres, lampadaires et passants, qualité adaptative.
+Éphémérides testées contre les horaires publiés (Paris, Sydney, New York,
+nuit polaire, soleil de minuit, phases de la lune sur les éclipses de 2026).
+
+**Rappels.** Heure murale par fuseau sans bibliothèque (IANA via `Intl`),
+heures sautées ou doublées au changement d'heure traitées, séries comptées
+depuis une ancre ; analyseur FR/EN déterministe (44 cas testés).
+
+**Équipes.** Deux implémentations d'un même contrat — Supabase (la base
+applique les règles) et fichier local (les mêmes règles en TypeScript) —
+testées sur le même scénario ; membres désignés par un identifiant opaque,
+jamais par leur compte.
+
 **Échelle.** Similarité par index inversé (tous les couples d'un cerveau de
 4 000 notes en ~1,3 s au lieu de 107 s), carte mentale de 3 000 notes en moins
 de 5 s, testées.
 
 ---
 
-## 13. Avant de lancer
+## 16. Avant de lancer
 
-1. **Appliquer les migrations 007, 008, 009 puis 010** dans Supabase
-   (idempotentes, validées sur Postgres, politiques de stockage comprises).
-   Sans 007 : pas de connexions, profil limité au navigateur. Sans 008 : les
-   connexions restent simples et le moteur de connexions reste éteint. Sans
-   009 : la révision retombe sur une note du jour, et une tension décidée reste
-   listée. Sans 010 : les notes vocales sont enregistrées en texte, sans leur
-   audio. L'app le dit, elle ne fait pas semblant.
+1. **Appliquer les migrations 007 à 012, dans l'ordre**, dans Supabase
+   (idempotentes, validées sur Postgres, politiques comprises). Sans 007 : pas
+   de connexions, profil limité au navigateur. Sans 008 : les connexions
+   restent simples et le moteur de connexions reste éteint. Sans 009 : la
+   révision retombe sur une note du jour, et une tension décidée reste listée.
+   Sans 010 : les notes vocales sont enregistrées en texte, sans leur audio.
+   Sans 011 : pas de rappels. Sans 012 : pas d'équipes. L'app le dit, elle ne
+   fait pas semblant.
 2. **Paiement** : Stripe n'est pas branché. Aucun revenu possible.
 3. **Pages légales** : mentions légales, CGU et politique de confidentialité
    sont obligatoires pour un site commercial en France (LCEN, RGPD). Elles
@@ -309,8 +434,15 @@ de 5 s, testées.
    est vide : ni l'une ni l'autre n'est utilisée. La voix anglaise d'Orpheus
    (Groq) demande que l'administrateur accepte ses conditions dans la console
    Groq — non utilisée, les voix de l'appareil suffisent.
-6. **Telegram** : les mémos vocaux au bot sont codés et testés, pas éprouvés
-   sur l'API réelle (aucun jeton de bot configuré ici).
+6. **Telegram** : les mémos vocaux au bot et l'envoi des rappels sont codés et
+   testés, pas éprouvés sur l'API réelle (aucun jeton de bot configuré ici).
+7. **Rappels application fermée** : définir `CRON_SECRET` (16 caractères au
+   moins) et faire appeler `/api/reminders/dispatch` chaque minute avec
+   `Authorization: Bearer <CRON_SECRET>` — cron Vercel (offre Pro : l'offre
+   gratuite n'autorise qu'un passage par jour), un service de cron externe, ou
+   le VPS de l'agent. Sans cela, les rappels n'arrivent que dans l'app ouverte.
+8. **Tarif entreprise** : les sièges existent, leur prix non. À décider, puis
+   à brancher sur Stripe (quantité = sièges).
 
 ## Ce qui a été retiré parce que c'était faux
 
@@ -337,6 +469,11 @@ le total des revenus.
   contradictions se tranchent au lieu de s'accumuler.
 - **Un cerveau qui garde votre voix** : chaque note issue d'un mémo rejoue la
   phrase exacte où vous l'avez dite ; et on peut lui parler, il répond.
+- **Un lieu, pas un menu** : une île sous votre ciel réel, où chaque bâtiment
+  dit ce qui vous y attend.
+- **Une équipe où partager est un choix** : un cerveau commun qui relie les
+  idées de plusieurs personnes, sans jamais lire le cerveau de personne — et
+  la base de données, pas l'interface, qui le garantit.
 - **Un agent qu'on peut réellement laisser travailler** : rédiger librement,
   envoyer sous contrôle, garde-fous non contournables, exécution hors de la
   machine de l'utilisateur, le même agent dans l'app et sur Telegram.

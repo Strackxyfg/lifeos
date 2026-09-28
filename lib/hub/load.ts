@@ -5,7 +5,8 @@ import { computeSnapshot } from "@/lib/data/workspace";
 import { loadBrainView } from "@/lib/brain/load";
 import { brainDigest } from "@/lib/brain/digest";
 import { openTensions } from "@/lib/brain/graph";
-import { getStore } from "@/lib/db/store";
+import { getStore, getUserKey } from "@/lib/db/store";
+import { teamWaiting } from "@/lib/team/load";
 import type { Messages } from "@/lib/i18n/dictionaries";
 import type { HubFacts } from "./summary";
 
@@ -15,11 +16,13 @@ import type { HubFacts } from "./summary";
  * contradicts.
  */
 export async function loadHubFacts(m: Messages, now = new Date()): Promise<HubFacts> {
-  const [view, data, memory, { reminders, available }] = await Promise.all([
+  const [view, data, memory, { reminders, available }, team] = await Promise.all([
     loadBrainView(m),
     loadWorkspace(),
     getStore().supportsMemory(),
     loadReminders(),
+    // The island must render even if the teams' tables are unreachable.
+    getUserKey().then((k) => teamWaiting(k, now)).catch(() => null),
   ]);
   const digest = brainDigest({ notes: view.notes, links: view.links, now, memory });
   const snap = computeSnapshot(data);
@@ -39,6 +42,6 @@ export async function loadHubFacts(m: Messages, now = new Date()): Promise<HubFa
     },
     deals: { open: snap.crm.openCount, openValue: snap.crm.openValue },
     finance: { income: snap.finance.income, expense: snap.finance.expense, net: snap.finance.net },
-    team: null,
+    team,
   };
 }

@@ -1,11 +1,11 @@
 import {
   LayoutDashboard, Boxes, Users, Wallet, Sparkles, Brain, Bot,
-  Settings, CreditCard, Map as MapIcon,
+  Settings, CreditCard, Map as MapIcon, UsersRound,
   type LucideIcon,
 } from "lucide-react";
 
 export type NavId =
-  | "hub" | "dashboard" | "projects" | "crm" | "finance"
+  | "hub" | "team" | "dashboard" | "projects" | "crm" | "finance"
   | "assistant" | "brain" | "agent" | "billing" | "settings";
 
 export interface NavItem {
@@ -21,6 +21,7 @@ export const primaryNav: NavItem[] = [
   { id: "brain", href: "/brain", icon: Brain, hint: "G R" },
   { id: "assistant", href: "/assistant", icon: Sparkles, hint: "G A" },
   { id: "agent", href: "/agent", icon: Bot, hint: "G G" },
+  { id: "team", href: "/team", icon: UsersRound, hint: "G T" },
 ];
 
 /** The rest of the activity it helps run. */

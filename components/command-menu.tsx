@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Search, Sparkles, LayoutDashboard, Boxes, Users, Wallet,
-  Settings, CreditCard, ArrowRight, CornerDownLeft, Brain, Bot, Plus, AudioLines, Map as MapIcon,
+  Settings, CreditCard, ArrowRight, CornerDownLeft, Brain, Bot, Plus, AudioLines, Map as MapIcon, UsersRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui/kbd";
@@ -47,6 +47,7 @@ export function CommandMenu() {
       { id: "hub", label: m.nav.hub, hint: "G H", icon: MapIcon, group: "navigate", href: "/hub" },
       { id: "brain", label: m.nav.brain, hint: "G R", icon: Brain, group: "navigate", href: "/brain" },
       { id: "agent", label: m.nav.agent, hint: "G G", icon: Bot, group: "navigate", href: "/agent" },
+      { id: "team", label: m.nav.team, hint: "G T", icon: UsersRound, group: "navigate", href: "/team" },
       { id: "dash", label: m.nav.dashboard, hint: "G D", icon: LayoutDashboard, group: "navigate", href: "/dashboard" },
       { id: "proj", label: m.nav.projects, hint: "G P", icon: Boxes, group: "navigate", href: "/projects" },
       { id: "crm", label: m.nav.crm, hint: "G C", icon: Users, group: "navigate", href: "/crm" },

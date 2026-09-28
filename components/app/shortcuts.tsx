@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
  */
 const MAP: Record<string, string> = {
   h: "/hub",
+  t: "/team",
   d: "/dashboard",
   p: "/projects",
   c: "/crm",

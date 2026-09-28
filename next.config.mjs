@@ -11,11 +11,10 @@ const nextConfig = {
   },
   // Pages retired in the pivot. They showed fabricated data; old bookmarks
   // and muscle-memory shortcuts land on the second brain instead of a 404.
+  // (/team was one of them; it is a real page again — teams and circles —
+  // and shows only what members shared.)
   async redirects() {
-    return [
-      { source: "/analytics", destination: "/brain", permanent: false },
-      { source: "/team", destination: "/brain", permanent: false },
-    ];
+    return [{ source: "/analytics", destination: "/brain", permanent: false }];
   },
   async headers() {
     return [

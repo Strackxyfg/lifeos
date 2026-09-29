@@ -60,6 +60,19 @@ export const loadReminders = cache(async function loadReminders(): Promise<{
 });
 
 /**
+ * A collection migration 013 adds (balances, reviews), or nothing before it
+ * runs: pages read them alongside the workspace and must still render.
+ */
+async function loadFounderCollection<C extends "balances" | "reviews">(collection: C): Promise<Dataset[C]> {
+  try {
+    return await getStore().list(await getUserKey(), collection);
+  } catch (err) {
+    if (isMissingTable(err)) return [] as Dataset[C];
+    throw err;
+  }
+}
+
+/**
  * Reads the signed-in user's whole workspace in one pass.
  *
  * `cache()` matters here: the layout (for alerts) and the page both need the
@@ -69,7 +82,7 @@ export const loadReminders = cache(async function loadReminders(): Promise<{
 export const loadWorkspace = cache(async function loadWorkspace(): Promise<Dataset> {
   const store = getStore();
   const userKey = await getUserKey();
-  const [projects, deals, transactions, tasks, brain, { links }, dismissals, { reminders }] = await Promise.all([
+  const [projects, deals, transactions, tasks, brain, { links }, dismissals, { reminders }, balances, reviews] = await Promise.all([
     store.list(userKey, "projects"),
     store.list(userKey, "deals"),
     store.list(userKey, "transactions"),
@@ -78,10 +91,12 @@ export const loadWorkspace = cache(async function loadWorkspace(): Promise<Datas
     loadLinks(),
     loadDismissals(),
     loadReminders(),
+    loadFounderCollection("balances"),
+    loadFounderCollection("reviews"),
   ]);
   // Recordings are not part of a page's workspace: each carries its whole
   // transcript, and one is read by id when a note is played.
-  return { projects, deals, transactions, tasks, brain, links, dismissals, audio: [], reminders };
+  return { projects, deals, transactions, tasks, brain, links, dismissals, audio: [], reminders, balances, reviews };
 });
 
 /** Single collection. Served from the cached full read to avoid a second query. */

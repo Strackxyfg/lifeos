@@ -14,7 +14,7 @@ import { ease } from "@/lib/motion";
 export interface QuickAddField {
   name: string;
   label: string;
-  type?: "text" | "number" | "select";
+  type?: "text" | "number" | "select" | "date";
   options?: { value: string; label: string }[];
   placeholder?: string;
   required?: boolean;

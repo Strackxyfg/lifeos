@@ -111,9 +111,15 @@ export async function createTransaction(
 
   try {
     const t = parsed.data;
-    await getStore().insert(await getUserKey(), "transactions", {
+    const store = getStore();
+    // A date picked in the form is a real day: kept as one (migration 013)
+    // for the treasury, and as text for the list.
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(t.date) ? t.date : null;
+    const dated = day !== null && (await store.supportsFounder());
+    await store.insert(await getUserKey(), "transactions", {
       ...t,
       date: t.date || new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit" }),
+      ...(dated ? { occurredOn: day } : {}),
     });
     revalidatePath("/finance");
     revalidatePath("/dashboard");

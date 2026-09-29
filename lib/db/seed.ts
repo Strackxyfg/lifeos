@@ -91,6 +91,9 @@ export function seedDataset(userKey: string): Dataset {
     audio: [],
     // A reminder is a promise to the person about a real moment: never sample data.
     reminders: [],
+    // Nor are a bank balance or a week's review: figures and decisions are the person's own.
+    balances: [],
+    reviews: [],
   };
 }
 
@@ -111,4 +114,6 @@ export const EMPTY_DATASET: Dataset = {
   dismissals: [],
   audio: [],
   reminders: [],
+  balances: [],
+  reviews: [],
 };

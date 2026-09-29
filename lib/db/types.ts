@@ -31,6 +31,8 @@ export interface DbDeal extends Owned {
   value: number;
   owner: string;
   next: string;
+  /** Migration 013: when the next action is due (ISO instant), if said. */
+  nextAt?: string | null;
 }
 
 export interface DbTransaction extends Owned {
@@ -38,7 +40,40 @@ export interface DbTransaction extends Owned {
   type: TxnType;
   amount: number;
   category: string;
+  /** As typed ("Jul 26"): free text, kept for display. */
   date: string;
+  /** Migration 013: the real day (YYYY-MM-DD), once confirmed. Treasury and runway count only these. */
+  occurredOn?: string | null;
+}
+
+/** Migration 013: a cash balance as the person stated it — the anchor of the treasury. */
+export interface DbBalance extends Owned {
+  amount: number;
+  /** The day it was true (YYYY-MM-DD). */
+  asOf: string;
+  note: string | null;
+}
+
+/** A decision taken in a weekly review: what, why, and when to look at it again. */
+export interface ReviewDecision {
+  id: string;
+  text: string;
+  why: string;
+  /** YYYY-MM-DD, or null for "no need to revisit". */
+  revisitOn: string | null;
+  /** The reminder set for that day, once created. */
+  reminderId?: string | null;
+}
+
+/** Migration 013: the Friday review of one ISO week (keyed by its Monday). */
+export interface DbReview extends Owned {
+  weekStart: string;
+  wins: string;
+  blockers: string;
+  lessons: string;
+  focus: string;
+  decisions: ReviewDecision[];
+  updatedAt: string;
 }
 
 export interface DbTask extends Owned {
@@ -126,6 +161,8 @@ export interface DbReminder extends Owned {
   noteId: string | null;
   /** When the person was last told of this occurrence — so it is never told twice. */
   notifiedAt: string | null;
+  /** Migration 013: the deal whose next action this is; cleared if the deal is deleted. */
+  dealId?: string | null;
 }
 
 export interface Dataset {
@@ -138,6 +175,8 @@ export interface Dataset {
   dismissals: DbBrainDismissal[];
   audio: DbBrainAudio[];
   reminders: DbReminder[];
+  balances: DbBalance[];
+  reviews: DbReview[];
 }
 
 export type Collection = keyof Dataset;
@@ -187,6 +226,11 @@ export interface Store {
   supportsVoice(): Promise<boolean>;
   /** Whether migration 011 has been applied: reminders. */
   supportsReminders(): Promise<boolean>;
+  /**
+   * Whether migration 013 has been applied: dated transactions, balances,
+   * deals' next moments and reminders about them, weekly reviews.
+   */
+  supportsFounder(): Promise<boolean>;
   /** One row by id, if it belongs to the caller. */
   get<C extends Collection>(userKey: string, collection: C, id: string): Promise<Dataset[C][number] | null>;
   /** Stores a recording in the person's own folder; returns the path to keep. `file` is "<id>.<ext>". */

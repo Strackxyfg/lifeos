@@ -182,6 +182,12 @@ class LocalStore implements Store {
           if (r.noteId === id) r.noteId = null;
         }
       }
+      // And the deal whose next action it was.
+      if (collection === "deals") {
+        for (const r of set.reminders as unknown as { dealId?: string | null }[]) {
+          if (r.dealId === id) r.dealId = null;
+        }
+      }
       // And its ON DELETE SET NULL: a note outlives its recording, as text.
       if (collection === "audio") {
         const notes = set.brain as unknown as { audioId?: string | null; audioStartMs?: number | null; audioEndMs?: number | null }[];
@@ -233,6 +239,10 @@ class LocalStore implements Store {
   }
 
   async supportsReminders(): Promise<boolean> {
+    return true;
+  }
+
+  async supportsFounder(): Promise<boolean> {
     return true;
   }
 

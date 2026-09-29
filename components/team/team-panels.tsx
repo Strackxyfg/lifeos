@@ -21,6 +21,7 @@ import {
   shareNote,
 } from "@/app/actions/team";
 import { useTeamAction } from "./use-team-action";
+import { PinButton } from "./first-hire";
 
 const input = "w-full rounded-lg border border-border bg-surface-2/60 px-3 text-sm outline-none transition-colors placeholder:text-muted focus:border-accent/60";
 
@@ -204,6 +205,7 @@ function NoteCard({ note, view, compact = false }: { note: TeamNoteView; view: T
               {t.brain.keep}
             </button>
           )}
+          <PinButton note={note} view={view} />
           {canRemove && (
             <button
               type="button"

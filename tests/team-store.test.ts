@@ -59,6 +59,23 @@ describe("a team in the file store", () => {
     await expect(store.removeMember("alice", team, "alice")).rejects.toMatchObject({ code: "forbidden" });
   });
 
+  it("keeps the welcome pack to owners and admins", async () => {
+    const n = await store.addNote("carol", team, { sourceId: "w1", category: "knowledge", title: "How we ship", detail: null, concepts: [] });
+    // Permission first: a member learns nothing, not even whether the note exists.
+    await expect(store.pinNote("carol", team, n.id, true)).rejects.toMatchObject({ code: "forbidden" });
+    await expect(store.pinNote("carol", team, "nope", true)).rejects.toMatchObject({ code: "forbidden" });
+    await expect(store.pinNote("stranger", team, n.id, true)).rejects.toMatchObject({ code: "not_found" });
+    await store.pinNote("alice", team, n.id, true);
+    const pinned = (await store.notes("dan", team)).find((x) => x.id === n.id);
+    expect(pinned?.pinned).toBe(true);
+    expect(pinned?.pinnedAt).toBeTruthy();
+    await expect(store.pinNote("alice", team, "nope", true)).rejects.toMatchObject({ code: "not_found" });
+    await store.pinNote("bob", team, n.id, false); // an admin tidies it too
+    const unpinned = (await store.notes("dan", team)).find((x) => x.id === n.id);
+    expect(unpinned).toMatchObject({ pinned: false, pinnedAt: null });
+    await store.removeNote("carol", team, n.id);
+  });
+
   it("shares notes, check-ins and kudos, each under its author's control", async () => {
     const n = await store.addNote("carol", team, { sourceId: "p1", category: "knowledge", title: "Checklist", detail: null, concepts: [] });
     await expect(store.addNote("carol", team, { sourceId: "p1", category: "knowledge", title: "Again", detail: null, concepts: [] })).rejects.toMatchObject({ code: "invalid" });

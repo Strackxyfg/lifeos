@@ -4,7 +4,9 @@ import { Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { dealStages } from "@/lib/data/workspace";
-import { loadCollection } from "@/lib/data/live";
+import { loadWorkspace } from "@/lib/data/live";
+import { getStore } from "@/lib/db/store";
+import { DealNext } from "@/components/crm/deal-next";
 import { QuickAdd } from "@/components/app/quick-add";
 import { createDeal } from "@/app/actions/workspace";
 import { formatCurrency, cn } from "@/lib/utils";
@@ -13,15 +15,19 @@ import { getMessages, getLocale } from "@/lib/i18n/server";
 export const metadata: Metadata = { title: "CRM" };
 
 export default async function CrmPage() {
-  const [m, locale, deals] = await Promise.all([getMessages(), getLocale(), loadCollection("deals")]);
+  const [m, locale, data, founder] = await Promise.all([getMessages(), getLocale(), loadWorkspace(), getStore().supportsFounder()]);
+  const { deals, reminders } = data;
   const open = deals.filter((d) => d.stage !== "Won" && d.stage !== "Lost");
   const openValue = open.reduce((s, d) => s + d.value, 0);
   const wonValue = deals.filter((d) => d.stage === "Won").reduce((s, d) => s + d.value, 0);
+  // The open reminder each deal's next action has, if any.
+  const reminderOf = new Map(reminders.filter((r) => r.dealId && !r.done).map((r) => [r.dealId as string, { dueAt: r.dueAt }]));
 
+  // Deals keep no date of winning: the figure is all-time, and says so.
   const kpis = [
-    { label: "Open pipeline", value: formatCurrency(openValue, locale) },
-    { label: "Won this quarter", value: formatCurrency(wonValue, locale) },
-    { label: "Open deals", value: String(open.length) },
+    { label: m.founder.crm.openPipeline, value: formatCurrency(openValue, locale) },
+    { label: m.founder.crm.won, value: formatCurrency(wonValue, locale) },
+    { label: m.founder.crm.openDeals, value: String(open.length) },
   ];
 
   return (
@@ -92,10 +98,8 @@ export default async function CrmPage() {
                   >
                     <p className="text-[0.875rem] font-medium">{d.company}</p>
                     <p className="text-[0.72rem] text-muted-foreground">{d.name}</p>
-                    <div className="mt-2.5 flex items-center justify-between text-[0.72rem]">
-                      <span className="font-mono text-foreground/80">{formatCurrency(d.value, locale)}</span>
-                      <span className="text-muted">{d.next}</span>
-                    </div>
+                    <p className="mt-2.5 font-mono text-[0.72rem] text-foreground/80">{formatCurrency(d.value, locale)}</p>
+                    <DealNext id={d.id} next={d.next} nextAt={d.nextAt ?? null} reminder={reminderOf.get(d.id) ?? null} enabled={founder} />
                   </div>
                 ))}
               </div>

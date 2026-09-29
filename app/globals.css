@@ -141,3 +141,21 @@ body {
     animation: shimmer 1.6s infinite;
   }
 }
+
+/* Printing the investor update: only the update, on white. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #investor-report,
+  #investor-report * {
+    visibility: visible;
+  }
+  #investor-report {
+    position: absolute;
+    inset: 0 0 auto 0;
+    border: 0;
+    background: #fff;
+    color: #111;
+  }
+}

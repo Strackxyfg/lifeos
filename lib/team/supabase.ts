@@ -38,6 +38,13 @@ const T = {
 type Row = Record<string, unknown>;
 const rows = <X>(data: Row[] | null) => (data ?? []).map((r) => fromRow<X>(r));
 
+/** An error for a feature whose migration has not been applied yet. */
+function migrationPending(n: number): Error {
+  const e = new Error(`migration ${n} pending`);
+  e.name = "MigrationPending";
+  return e;
+}
+
 function check(error: { message: string; code?: string } | null, what: string): void {
   if (!error) return;
   if (error.code === "42501" || /permission denied|row-level security/i.test(error.message)) throw new TeamError("forbidden");
@@ -240,6 +247,18 @@ export const supabaseTeamStore: TeamStore = {
     const { data, error } = await db.from(T.notes).delete().eq("id", noteId).eq("team_id", teamId).select("id");
     check(error, "remove note");
     if (!data?.length) throw new TeamError("forbidden");
+  },
+
+  async pinNote(_userKey, teamId, noteId, pinned) {
+    const db = await createRlsClient();
+    // The note must be this team's: the function checks the role in the note's own team.
+    const { data: row, error: e0 } = await db.from(T.notes).select("id").eq("id", noteId).eq("team_id", teamId).maybeSingle();
+    check(e0, "find note");
+    if (!row) throw new TeamError("not_found");
+    const { error } = await db.rpc("lifeos_pin_team_note", { p_note: noteId, p_pinned: pinned });
+    if (error && /Could not find the function|function .* does not exist/i.test(error.message)) throw migrationPending(13);
+    if (error?.code === "P0002") throw new TeamError("not_found");
+    check(error, "pin note");
   },
 
   async checkins(_userKey, teamId, week) {

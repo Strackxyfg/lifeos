@@ -305,6 +305,18 @@ export const localTeamStore: TeamStore = {
     });
   },
 
+  pinNote(userKey, teamId, noteId, pinned) {
+    return mutate((data) => {
+      const me = need(data, teamId, userKey);
+      // Permission first, as the database's function checks it.
+      if (!canManageTeam(me.role)) throw new TeamError("forbidden");
+      const note = data.notes.find((n) => n.id === noteId && n.teamId === teamId);
+      if (!note) throw new TeamError("not_found");
+      note.pinned = pinned;
+      note.pinnedAt = pinned ? now() : null;
+    });
+  },
+
   checkins(userKey, teamId, week) {
     return read((data) => {
       if (!memberOf(data, teamId, userKey)) return { checkins: [], help: [] };

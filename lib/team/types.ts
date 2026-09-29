@@ -46,6 +46,9 @@ export interface DbTeamNote {
   concepts: Concept[];
   createdAt: string;
   updatedAt: string;
+  /** Migration 013: in the team's welcome pack (pinned by an owner or admin). */
+  pinned?: boolean;
+  pinnedAt?: string | null;
 }
 
 export interface DbCheckin {
@@ -139,6 +142,8 @@ export interface TeamStore {
   notes(userKey: string, teamId: string): Promise<DbTeamNote[]>;
   addNote(userKey: string, teamId: string, note: NewNote): Promise<DbTeamNote>;
   removeNote(userKey: string, teamId: string, noteId: string): Promise<void>;
+  /** Puts a shared note in (or out of) the welcome pack: owners and admins only (migration 013). */
+  pinNote(userKey: string, teamId: string, noteId: string, pinned: boolean): Promise<void>;
 
   checkins(userKey: string, teamId: string, week: string): Promise<{ checkins: DbCheckin[]; help: DbHelp[] }>;
   saveCheckin(userKey: string, teamId: string, week: string, input: CheckinInput): Promise<DbCheckin>;

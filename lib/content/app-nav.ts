@@ -1,11 +1,11 @@
 import {
   LayoutDashboard, Boxes, Users, Wallet, Sparkles, Brain, Bot,
-  Settings, CreditCard, Map as MapIcon, UsersRound,
+  Settings, CreditCard, Map as MapIcon, UsersRound, CalendarCheck2, FileText,
   type LucideIcon,
 } from "lucide-react";
 
 export type NavId =
-  | "hub" | "team" | "dashboard" | "projects" | "crm" | "finance"
+  | "hub" | "team" | "dashboard" | "projects" | "crm" | "finance" | "review" | "reports"
   | "assistant" | "brain" | "agent" | "billing" | "settings";
 
 export interface NavItem {
@@ -30,6 +30,8 @@ export const workNav: NavItem[] = [
   { id: "projects", href: "/projects", icon: Boxes, hint: "G P" },
   { id: "crm", href: "/crm", icon: Users, hint: "G C" },
   { id: "finance", href: "/finance", icon: Wallet, hint: "G F" },
+  { id: "review", href: "/review", icon: CalendarCheck2, hint: "G W" },
+  { id: "reports", href: "/reports/investor", icon: FileText, hint: "G I" },
 ];
 
 export const secondaryNav: NavItem[] = [

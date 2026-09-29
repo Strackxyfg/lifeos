@@ -9,6 +9,7 @@ import { RemindersPanel } from "@/components/reminders/reminders-panel";
 import { CaptureChart } from "@/components/dashboard/capture-chart";
 import { computeSnapshot, statusColor } from "@/lib/data/workspace";
 import { loadReminders, loadWorkspace } from "@/lib/data/live";
+import { ReviewNudge } from "@/components/review/review-nudge";
 import { loadBrainView } from "@/lib/brain/load";
 import { brainDigest } from "@/lib/brain/digest";
 import { computeFocus } from "@/lib/brain/focus";
@@ -91,6 +92,8 @@ export default async function DashboardPage() {
           </Link>
         }
       />
+
+      <ReviewNudge reviewedWeeks={data.reviews.map((r) => r.weekStart)} />
 
       <div className="grid gap-3 lg:grid-cols-3">
         {/* Reminders — the day's promises. */}

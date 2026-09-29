@@ -25,6 +25,8 @@ export interface TeamNoteView {
   detail: string | null;
   createdAt: string;
   mine: boolean;
+  /** In the welcome pack (migration 013). */
+  pinned: boolean;
 }
 
 export interface CheckinView {

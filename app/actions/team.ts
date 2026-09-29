@@ -36,6 +36,7 @@ async function actor(): Promise<{ userKey: string } | TeamResult<never>> {
 
 function failure(err: unknown): TeamResult<never> {
   if (err instanceof TeamError) return fail(err.code);
+  if (err instanceof Error && err.name === "MigrationPending") return fail("migration_pending");
   console.error("[team]", err);
   return fail("failed");
 }
@@ -267,6 +268,66 @@ export async function shareNote(teamId: unknown, noteId: unknown): Promise<TeamR
       detail: note.detail ? note.detail.slice(0, LIMITS.noteDetail) : null,
       concepts: sanitizeConcepts(note.concepts),
     });
+    refresh(t.data);
+    return { ok: true, data: null };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/**
+ * Shares several notes at once — the first hire's reading, chosen in one
+ * go. Each is read from the person's own brain, as `shareNote` does; one
+ * already shared is skipped, not an error.
+ */
+export async function shareNotes(teamId: unknown, noteIds: unknown): Promise<TeamResult<{ shared: number; skipped: number }>> {
+  const t = id.safeParse(teamId);
+  const ns = z.array(id).min(1).max(100).safeParse(noteIds);
+  if (!t.success || !ns.success) return fail("invalid");
+  const a = await actor();
+  if ("ok" in a) return a;
+  try {
+    const messages = await getMessages();
+    let shared = 0;
+    let skipped = 0;
+    for (const noteId of new Set(ns.data)) {
+      const item = await getStore().get(a.userKey, "brain", noteId);
+      if (!item) {
+        skipped++;
+        continue;
+      }
+      const [note] = toBrainNotes([item], messages);
+      try {
+        await getTeamStore().addNote(a.userKey, t.data, {
+          sourceId: note.id,
+          category: note.category,
+          title: note.title.slice(0, LIMITS.noteTitle),
+          detail: note.detail ? note.detail.slice(0, LIMITS.noteDetail) : null,
+          concepts: sanitizeConcepts(note.concepts),
+        });
+        shared++;
+      } catch (err) {
+        if (err instanceof TeamError && err.code === "invalid") skipped++;
+        else throw err;
+      }
+    }
+    refresh(t.data);
+    return { ok: true, data: { shared, skipped } };
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+/** Pins a shared note to the team's welcome pack, or unpins it. Owners and admins. */
+export async function pinTeamNote(teamId: unknown, noteId: unknown, pinned: unknown): Promise<TeamResult<null>> {
+  const t = id.safeParse(teamId);
+  const n = id.safeParse(noteId);
+  const p = z.boolean().safeParse(pinned);
+  if (!t.success || !n.success || !p.success) return fail("invalid");
+  const a = await actor();
+  if ("ok" in a) return a;
+  try {
+    await getTeamStore().pinNote(a.userKey, t.data, n.data, p.data);
     refresh(t.data);
     return { ok: true, data: null };
   } catch (err) {

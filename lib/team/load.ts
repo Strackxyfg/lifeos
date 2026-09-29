@@ -61,6 +61,7 @@ export async function loadTeamPage(userKey: string, teamId: string, m: Messages,
     detail: n.detail,
     createdAt: n.createdAt,
     mine: n.userKey === userKey,
+    pinned: !!n.pinned,
   });
   const byId = new Map(notes.map((n) => [n.id, noteView(n)]));
   const authored = notes.map((n) => ({ id: n.id, title: n.title, detail: n.detail, category: n.category, done: false, createdAt: n.createdAt, concepts: n.concepts, author: n.userKey }));

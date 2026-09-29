@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 /**
  * Raycast/Linear-style "G then key" navigation chords.
  * G H → Hub, G R → Second brain, G A → Assistant, G G → Agent, G D → Dashboard,
- * G P → Projects, G C → CRM, G F → Finance, G S → Settings, G B → Billing.
+ * G P → Projects, G C → CRM, G F → Finance, G W → the week's review,
+ * G I → the investor update, G S → Settings, G B → Billing.
  * Ignored while typing in inputs; the second key must land within 1s.
  */
 const MAP: Record<string, string> = {
@@ -16,6 +17,8 @@ const MAP: Record<string, string> = {
   p: "/projects",
   c: "/crm",
   f: "/finance",
+  w: "/review",
+  i: "/reports/investor",
   a: "/assistant",
   r: "/brain",
   g: "/agent",

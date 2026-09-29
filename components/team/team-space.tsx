@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import type { TeamPageView } from "@/lib/team/view";
 import { TeamBrain, TeamCheckin, TeamFeed, TeamPulse } from "./team-panels";
 import { TeamMembers } from "./team-members";
+import { FirstHire, WelcomePack } from "./first-hire";
 
 type Tab = "feed" | "brain" | "checkin" | "pulse" | "members";
 const TABS: { id: Tab; icon: typeof Activity }[] = [
@@ -102,7 +103,13 @@ export function TeamSpace({ view }: { view: TeamPageView }) {
       </nav>
 
       <section id={`panel-${tab}`} role="tabpanel" className="mt-5">
-        {tab === "feed" && <TeamFeed view={view} />}
+        {tab === "feed" && (
+          <div className="space-y-3">
+            <FirstHire view={view} />
+            <WelcomePack view={view} />
+            <TeamFeed view={view} />
+          </div>
+        )}
         {tab === "brain" && <TeamBrain view={view} />}
         {tab === "checkin" && <TeamCheckin view={view} />}
         {tab === "pulse" && <TeamPulse view={view} />}

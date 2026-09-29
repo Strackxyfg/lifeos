@@ -56,6 +56,8 @@ export const config = {
     "/projects/:path*",
     "/crm/:path*",
     "/finance/:path*",
+    "/review/:path*",
+    "/reports/:path*",
     "/assistant/:path*",
     "/brain/:path*",
     "/agent/:path*",

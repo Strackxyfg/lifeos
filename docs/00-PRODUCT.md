@@ -1,6 +1,6 @@
 # LifeOS — description produit
 
-> État au 28 septembre 2026, **établi depuis le code**. Le produit a pivoté :
+> État au 29 septembre 2026, **établi depuis le code**. Le produit a pivoté :
 > ce n'est plus un générateur d'espaces Notion, c'est un second cerveau
 > souverain avec un agent IA. Notion devient un export facultatif. Depuis, le
 > cerveau se relie lui-même (section 2), se laisse vider à la voix (section 1),
@@ -8,7 +8,11 @@
 > (section 6). L'application s'ouvre désormais sur une île en 3D sous votre
 > propre ciel (section 7), le tableau de bord devient votre journée avec ses
 > rappels (section 8), et LifeOS se partage en équipe ou en cercle — sans que
-> personne ne lise jamais votre cerveau (section 9).
+> personne ne lise jamais votre cerveau (section 9). Dernière étape : l'île en
+> rendu physique avec un mode photo par lancer de rayons (section 7), les outils
+> du fondateur — trésorerie, relances, revue du vendredi, rapport aux
+> investisseurs (section 11) — et ce qu'une grande entreprise exige : connexion
+> unique, provisionnement automatique, accord de traitement RGPD (section 9).
 
 **Légende** — ✅ fonctionnel · 🟡 partiel · ⛔ pas construit
 
@@ -237,6 +241,30 @@ bouge ; la qualité baisse d'elle-même sur un appareil lent ; « réduire les
 animations » transforme chaque vol en coupe ; sans WebGL, les mêmes lieux
 deviennent une liste.
 
+**Un rendu physique.** Le ciel est calculé comme la lumière traverse
+l'atmosphère (diffusion de Rayleigh et de Mie, couche d'ozone), et c'est lui
+qui éclaire l'île : sa lumière ambiante vient du ciel du moment, pas d'une
+couleur fixe. L'exposition se règle comme un appareil photo sur la lumière
+réelle ; l'image passe par un étalonnage de photographe (courbe AgX, balance des
+blancs selon l'heure, légère vignette et grain), occlusion ambiante et halo des
+lumières sur un appareil capable. Les bâtiments sont creux : à travers les
+vitres, on voit les **intérieurs meublés** (tables et chaises du café, bureaux
+de l'atelier et de la tour, salle du club), chacun éclairé **de sa couleur** la
+nuit. Des **passants** marchent (le pied d'appui reste au sol), s'assoient et
+discutent ; les goélands tournent, les arbres bougent au vent, la lentille du
+**phare** tourne avec son faisceau.
+
+**Le mode photo** (bouton ou touche P) : la vue devant vous, recalculée par
+**lancer de rayons** (path tracing) — lumière qui rebondit, vitres qui
+transmettent, ombres douces — puis enregistrable en PNG. Il demande **WebGPU**
+(Chrome ou Edge récents) ; le chemin WebGL est refusé sous Windows avec ANGLE
+Direct3D 11, où il rendait une image noire, plutôt que d'afficher un faux
+résultat. Sur une puce graphique intégrée, une image se construit en quelques
+minutes ; la première compilation des shaders peut être longue.
+
+Honnêtement : le rendu en temps réel reste une scène procédurale — réaliste,
+pas une photographie. Le mode photo est ce qui s'en approche le plus.
+
 ## 8. Le tableau de bord et les rappels ✅
 
 Le tableau de bord n'est plus l'accueil : c'est la journée. D'abord les
@@ -299,6 +327,37 @@ jamais se promouvoir), fonctions pour tout ce qui touche à l'appartenance
 n'apprend rien en essayant de changer un rôle). Validée sur Postgres avec les
 rôles de Supabase : ~75 vérifications, dont chaque tentative d'élévation.
 
+**Le premier recrutement.** Tant que son propriétaire est seul dans l'équipe,
+une carte l'accompagne : partager plusieurs notes d'un coup (des copies, note
+par note), épingler le **pack d'accueil** du nouvel arrivant (propriétaires et
+admins), l'inviter. Chacun voit le pack d'accueil en premier.
+
+**Pour les grandes entreprises** (équipes « entreprise », onglet *Entreprise*,
+réglé par le propriétaire, visible des admins) :
+
+- **Domaines vérifiés** par un enregistrement DNS que seul le propriétaire du
+  domaine peut publier ; les messageries publiques (gmail.com…) sont refusées ;
+  un domaine vérifié appartient à une seule équipe.
+- **Connexion unique (SAML)** avec Microsoft Entra ID, Okta, Google
+  Workspace… par Supabase Auth : la personne tape son adresse professionnelle
+  (seul le domaine part), se connecte chez son entreprise, et rejoint l'équipe
+  selon l'annuaire, ou « à la première connexion » pour une adresse d'un domaine
+  vérifié.
+- **Connexion unique exigée — dans la base** : un membre connecté autrement
+  n'est plus membre pour Postgres (le propriétaire fait exception, pour que
+  l'équipe ne soit jamais verrouillée).
+- **Provisionnement automatique (SCIM 2.0)** : le fournisseur d'identité crée,
+  met à jour et retire les personnes ; **une personne désactivée quitte
+  l'équipe à l'instant**. Les groupes n'accordent rien tant que le propriétaire
+  ne choisit pas lesquels font des admins ; le propriétaire n'est jamais touché.
+  Jetons affichés une fois, gardés en empreinte.
+- **Accord de traitement des données (RGPD, article 28)** : modèle français et
+  anglais dans `docs/legal/`, écrit depuis ce que fait le logiciel — à compléter
+  et à faire relire.
+
+Frontière : migration 014, validée sur Postgres (114 vérifications, et les
+scénarios 012 et 013 rejoués par-dessus). Guide : `docs/17-ENTERPRISE.md`.
+
 ## 10. L'agent autonome ✅
 
 Un agent IA qui travaille sur vos données, **sur un serveur séparé — jamais
@@ -321,9 +380,27 @@ sur votre ordinateur** — et qui ne peut rien faire de dangereux sans vous.
 | ✅ | lire et chercher dans le second cerveau · voir à quoi une note est reliée et pourquoi · relier deux notes avec un sens et une raison (marqué « agent, à valider ») · lancer le moteur de connexions · créer des notes (reliées automatiquement) · créer tâches, projets, opportunités · rédiger e-mails, campagnes, propositions · envoyer un e-mail validé *(si un fournisseur d'envoi est configuré)* |
 | ⛔ | agenda · recherche web · Slack · publicité · services externes · exécution de code — ces actions répondent « non implémenté » au lieu de prétendre avoir réussi |
 
-## 11. Le reste de l'activité ✅
+## 11. Le reste de l'activité, et les outils du fondateur ✅
 
-Projets, clients (CRM) et finances, avec de vraies données persistées. Le **résumé du jour** et le **bilan de la semaine** partent
+Projets, clients (CRM) et finances, avec de vraies données persistées.
+
+- **Trésorerie et runway** : la trésorerie du jour part du solde que vous avez
+  déclaré et des mouvements datés depuis ; la consommation moyenne des derniers
+  mois complets et le mois où l'argent s'arrête, chaque chiffre dépliable. Ce qui
+  n'est pas compté est dit (transactions sans date, à venir). Un assistant
+  propose la date des anciennes écritures d'après ce qui avait été tapé — sûre
+  quand l'année est écrite, déduite sinon (« à vérifier ») — et rien n'est daté
+  sans votre accord.
+- **Des affaires qui reviennent** : la prochaine action de chaque affaire a un
+  moment et, si vous le voulez, un rappel à ce moment.
+- **La revue du vendredi** (G W) : les faits de la semaine tirés des données,
+  les décisions à revoir, puis réussites, blocages, leçons, focus et décisions
+  (avec leur pourquoi et un jour pour les revoir, rappel à 9 h).
+- **Le rapport aux investisseurs** (G I) : revenus, dépenses, croissance,
+  trésorerie et runway en fin de mois, pipeline et projets (dits « au jour
+  d'aujourd'hui »), faits marquants des revues ; **chaque chiffre a sa source
+  numérotée** ; copie en Markdown ou impression.
+ Le **résumé du jour** et le **bilan de la semaine** partent
 désormais du second cerveau — le focus dans l'ordre, les objectifs sans
 prochaine action, les tensions à arbitrer, ce qui a été capturé et relié cette
 semaine, les notes à revoir — puis situent les projets et les finances. Sans
@@ -341,7 +418,10 @@ refuse au lieu de simuler.
 
 - Export Markdown / JSON à tout moment, ou **ZIP complet** : les deux, plus
   chaque enregistrement et sa transcription mot à mot (le Markdown relie chaque
-  note vocale à son audio et à son passage).
+  note vocale à son audio et à son passage). Le JSON et le ZIP contiennent
+  aussi **tout le reste** : profil, projets, affaires, transactions, tâches,
+  rappels, soldes, revues, et ce que vous avez écrit dans vos équipes (les
+  collègues y sont nommés, jamais identifiés). Le Markdown reste le cerveau.
 - **Suppression complète** depuis les Paramètres (mot à taper, vérifié côté
   serveur) : notes, connexions, projets, opportunités, transactions, tâches,
   enregistrements, rappels, profil — et la présence dans chaque équipe, avec
@@ -363,7 +443,7 @@ devenir une facturation par siège — le tarif entreprise reste à décider
 Next.js 15 · React 19 · TypeScript strict · Supabase (authentification,
 Postgres, sécurité ligne par ligne) · API Notion · agent sur VPS · PWA
 (installable, cible de partage) · three.js / React Three Fiber · interface
-intégralement bilingue · 568 tests
+intégralement bilingue · 690 tests
 automatisés, dont des gardes contre les fausses allégations, les routes non
 protégées et les caractères de contrôle dans le code.
 
@@ -400,6 +480,15 @@ applique les règles) et fichier local (les mêmes règles en TypeScript) —
 testées sur le même scénario ; membres désignés par un identifiant opaque,
 jamais par leur compte.
 
+**Entreprise.** SCIM 2.0 selon les RFC 7643 et 7644 (filtres complets, PATCH
+tel qu'Entra ID et Okta l'écrivent), testé de bout en bout ; SAML par l'API
+d'administration de Supabase Auth ; l'appartenance suit l'annuaire par des
+déclencheurs Postgres, quel que soit l'écrivain.
+
+**Rendu.** Atmosphère calculée sur GPU dans une table de ciel, qui sert aussi
+d'éclairage ambiant (IBL) ; post-traitement en demi-flottants ; mode photo par
+three-gpu-pathtracer sur WebGPU.
+
 **Échelle.** Similarité par index inversé (tous les couples d'un cerveau de
 4 000 notes en ~1,3 s au lieu de 107 s), carte mentale de 3 000 notes en moins
 de 5 s, testées.
@@ -408,8 +497,12 @@ de 5 s, testées.
 
 ## 16. Avant de lancer
 
-1. **Appliquer les migrations 007 à 012, dans l'ordre**, dans Supabase
-   (idempotentes, validées sur Postgres, politiques comprises). Sans 007 : pas
+1. **Appliquer les migrations 013 puis 014** dans Supabase (007 à 012 sont
+   faites). Sans 013 : ni trésorerie datée, ni soldes, ni rappels d'affaires,
+   ni revue du vendredi, ni pack d'accueil. Sans 014 : ni domaines, ni
+   connexion unique, ni provisionnement. Toutes les migrations (007 à 014)
+   s'appliquent dans l'ordre, sont idempotentes et validées sur Postgres,
+   politiques comprises. Sans 007 : pas
    de connexions, profil limité au navigateur. Sans 008 : les connexions
    restent simples et le moteur de connexions reste éteint. Sans 009 : la
    révision retombe sur une note du jour, et une tension décidée reste listée.
@@ -443,6 +536,21 @@ de 5 s, testées.
    le VPS de l'agent. Sans cela, les rappels n'arrivent que dans l'app ouverte.
 8. **Tarif entreprise** : les sièges existent, leur prix non. À décider, puis
    à brancher sur Stripe (quantité = sièges).
+9. **Connexion unique** : activer SAML 2.0 dans Supabase (Authentication →
+   Providers ; vérifier que l'offre l'inclut), ajouter
+   `https://<domaine>/auth/callback` aux URL de redirection, et régler
+   `NEXT_PUBLIC_APP_URL`. La première vraie connexion SAML est à observer
+   (liste dans `docs/17-ENTERPRISE.md`) : elle n'a pas pu être essayée ici.
+10. **Accord de traitement (DPA)** : compléter les crochets de
+    `docs/legal/DPA.fr.md` / `.en.md` (identité de l'éditeur, régions et
+    garanties de chaque fournisseur), trancher qui est responsable des espaces
+    personnels (article 3.2), faire relire par un juriste.
+11. **Cookies de session Supabase** : ils ne sont pas `httpOnly` (réglage par
+    défaut de la bibliothèque) alors que rien, dans le navigateur, ne les lit —
+    à verrouiller, et à vérifier sur le vrai projet.
+12. **« Continuer avec Google »** sur la page de connexion n'est relié à rien.
+    Le brancher (fournisseur Google dans Supabase ; `/auth/callback` existe
+    désormais) ou le retirer.
 
 ## Ce qui a été retiré parce que c'était faux
 

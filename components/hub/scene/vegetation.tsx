@@ -1,17 +1,22 @@
 "use client";
 
 import { useLayoutEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { TREES, seeded } from "@/lib/hub/island";
-import { hubMaterials } from "./materials";
+import { hubMaterials, wind } from "./materials";
 
 /**
  * The island's trees, instanced: one draw call per part (trunks, round
  * crowns, cypresses) however many trees there are. They never move, so their
  * matrices are written once.
  */
-export function Trees() {
+export function Trees({ reducedMotion = false }: { reducedMotion?: boolean }) {
   const m = hubMaterials();
+  // The wind's clock: slowed right down, not stopped, when motion should be reduced.
+  useFrame((_, dt) => {
+    wind.value += Math.min(dt, 0.1) * (reducedMotion ? 0.15 : 1);
+  });
   const trunks = useRef<THREE.InstancedMesh>(null);
   const crowns = useRef<THREE.InstancedMesh>(null);
   const cypresses = useRef<THREE.InstancedMesh>(null);

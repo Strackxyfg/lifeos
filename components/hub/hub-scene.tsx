@@ -16,7 +16,9 @@ import { Ground } from "./scene/ground";
 import { Trees } from "./scene/vegetation";
 import { Lamps } from "./scene/lamps";
 import { Buildings } from "./scene/buildings";
-import { Boats, People } from "./scene/life";
+import { Boats } from "./scene/life";
+import { People } from "./scene/people";
+import { Birds } from "./scene/birds";
 import { Pins, type PinLabel } from "./scene/pins";
 import { CameraRig, type CameraGoal } from "./scene/camera-rig";
 import { PostPipeline, type PostHandle } from "./scene/post";
@@ -30,6 +32,7 @@ const MLamps = memo(Lamps);
 const MBuildings = memo(Buildings);
 const MPeople = memo(People);
 const MBoats = memo(Boats);
+const MBirds = memo(Birds);
 const MPins = memo(Pins);
 const MCameraRig = memo(CameraRig);
 
@@ -130,7 +133,7 @@ export default function HubScene(p: HubSceneProps) {
           <SkyDome reducedMotion={p.reducedMotion} />
           <MWater reducedMotion={p.reducedMotion} />
           <MGround reducedMotion={p.reducedMotion} />
-          <MTrees />
+          <MTrees reducedMotion={p.reducedMotion} />
           <MLamps />
           <MBuildings
             hovered={p.hovered}
@@ -140,9 +143,11 @@ export default function HubScene(p: HubSceneProps) {
             onSelect={p.onSelect}
             signs={p.signs}
             reducedMotion={p.reducedMotion}
+            lights={settings.interiorLights}
           />
           <MPeople count={settings.people} reducedMotion={p.reducedMotion} />
           <MBoats reducedMotion={p.reducedMotion} />
+          <MBirds reducedMotion={p.reducedMotion} />
           <MPins
             labels={p.pinLabels}
             badges={p.badges}

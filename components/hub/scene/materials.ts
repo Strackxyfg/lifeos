@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLYPHS } from "@/lib/hub/glyphs";
 import { seeded } from "@/lib/hub/island";
 import type { DistrictId } from "@/lib/hub/districts";
+import { windowGlass } from "./glass";
 
 /**
  * The island's materials and generated textures, made once and shared.
@@ -38,11 +39,28 @@ export interface HubMaterials {
   lantern: THREE.MeshStandardMaterial;
   dial: THREE.MeshStandardMaterial;
   hand: THREE.MeshStandardMaterial;
+  /** Inside walls and ceilings: they see the sky only through the windows. */
+  interior: THREE.MeshStandardMaterial;
+  /** The same, for surfaces seen from their back (the hangar's vault). */
+  interiorBack: THREE.MeshStandardMaterial;
+  floorWood: THREE.MeshStandardMaterial;
+  floorStone: THREE.MeshStandardMaterial;
+  /** Office floors lit by their ceiling panels at night (the panels' light, without a light per floor). */
+  officeFloor: THREE.MeshStandardMaterial;
+  /** The lighthouse's Fresnel lens: cut glass, blazing at night. */
+  lens: THREE.MeshStandardMaterial;
+  /** A shop window: clear, reflecting by the Fresnel law. */
+  shopGlass: THREE.MeshPhysicalMaterial;
+  /** Office curtain wall: coated, reflects more, a slight tint. */
+  officeGlass: THREE.MeshPhysicalMaterial;
 }
 
 let shared: HubMaterials | null = null;
 
 const std = (params: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(params);
+
+/** How much of the sky's ambient light reaches indoor surfaces. */
+export const INDOOR_SKY = 0.1;
 
 /** Warm window light, the colour of a lit room seen from outside. */
 export const WINDOW_LIGHT = new THREE.Color("#ffc98a");
@@ -91,8 +109,8 @@ export function hubMaterials(): HubMaterials {
     }),
     navy: std({ color: "#17243f", roughness: 0.45 }),
     grass: std({ color: "#5f8a3c", roughness: 1 }),
-    leaf: std({ color: "#46743a", roughness: 0.85 }),
-    cypress: std({ color: "#325c2f", roughness: 0.9 }),
+    leaf: swaying(std({ color: "#46743a", roughness: 0.85 })),
+    cypress: swaying(std({ color: "#325c2f", roughness: 0.9 })),
     trunk: std({ color: "#6c513c", roughness: 0.9 }),
     wood: std({ color: "#a07a55", roughness: 0.78 }),
     rock: std({ color: "#8f8b85", roughness: 1, flatShading: true }),
@@ -112,8 +130,49 @@ export function hubMaterials(): HubMaterials {
     }),
     dial: std({ color: "#ffffff", roughness: 0.4, map: dialTexture(), emissive: new THREE.Color("#fff6e0"), emissiveMap: null, emissiveIntensity: 0 }),
     hand: std({ color: "#1c2233", roughness: 0.5 }),
+    // Indoors, the sky's light arrives only through the windows: a few per
+    // cent of what falls outside. The rooms are lit by their own lamps.
+    interior: std({ color: "#e6e1d7", roughness: 0.85, envMapIntensity: INDOOR_SKY }),
+    interiorBack: std({ color: "#e6e1d7", roughness: 0.85, envMapIntensity: INDOOR_SKY, side: THREE.BackSide }),
+    floorWood: std({ color: "#8a6446", roughness: 0.5, envMapIntensity: INDOOR_SKY * 1.4, map: plankTexture() }),
+    floorStone: std({ color: "#b8b2a7", roughness: 0.35, envMapIntensity: INDOOR_SKY * 1.4 }),
+    officeFloor: std({ color: "#9a958c", roughness: 0.6, envMapIntensity: INDOOR_SKY * 1.4, emissive: new THREE.Color("#cdeedd"), emissiveIntensity: 0 }),
+    lens: std({ color: "#fdf6e0", roughness: 0.08, metalness: 0.4, envMapIntensity: 1.6, emissive: new THREE.Color("#ffe6a3"), emissiveIntensity: 0 }),
+    shopGlass: windowGlass({ tint: "#0b1215", absorb: 0.05, roughness: 0.02 }),
+    // Solar-control glass lets through about half the light each way.
+    officeGlass: windowGlass({ tint: "#0d1a20", absorb: 0.45, roughness: 0.03, ior: 2.3, coating: 1.9 }),
   };
   return shared;
+}
+
+/** Seconds of wind, advanced by the trees' frame loop and read by the foliage's shader. */
+export const wind = { value: 0 };
+
+/**
+ * Foliage that moves: crowns bend with the wind, more at the top than at
+ * the trunk, each tree on its own rhythm (from where it stands), with a
+ * slower gust over a quicker flutter.
+ */
+function swaying(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uWind = wind;
+    shader.vertexShader = shader.vertexShader.replace("#include <common>", "#include <common>\nuniform float uWind;").replace(
+      "#include <begin_vertex>",
+      /* glsl */ `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vec3 treeAt = vec3(instanceMatrix[3]);
+      #else
+        vec3 treeAt = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+      #endif
+      float bend = smoothstep(-0.8, 1.0, position.y);
+      float gust = sin(uWind * 0.9 + treeAt.x * 0.37 + treeAt.z * 0.21) * 0.6 + sin(uWind * 2.3 + treeAt.z * 0.9) * 0.25;
+      float flutter = sin(uWind * 7.0 + position.x * 9.0 + position.z * 7.0) * 0.12;
+      transformed.x += (gust + flutter) * 0.045 * bend;
+      transformed.z += (cos(uWind * 1.1 + treeAt.x) * 0.5 + flutter) * 0.03 * bend;`
+    );
+  };
+  m.customProgramCacheKey = () => "swaying";
+  return m;
 }
 
 /** Signs are one material each (their own texture); they register here to be lit. */
@@ -164,6 +223,8 @@ export function setLamps(lamps: number, exposure = 0): void {
   m.dial.emissiveIntensity = lamps * 0.6 * k;
   m.lantern.emissiveIntensity = lamps * 3.2 * k;
   m.beacon.emissiveIntensity = 0.6 * k;
+  m.officeFloor.emissiveIntensity = (0.04 + lamps * 0.3) * k;
+  m.lens.emissiveIntensity = lamps * 4.5 * k;
 }
 
 /* ── Generated textures ──────────────────────────────────────────── */
@@ -223,6 +284,30 @@ function pavingTexture(): THREE.CanvasTexture {
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(6, 6);
+  t.anisotropy = 8;
+  return t;
+}
+
+/** Floor planks: long boards, each a slightly different tone, staggered joints. */
+function plankTexture(): THREE.CanvasTexture {
+  const [c, ctx] = canvas(256, 256);
+  const rnd = seeded(404);
+  const rows = 8;
+  const h = 256 / rows;
+  for (let r = 0; r < rows; r++) {
+    let x = -rnd() * 128;
+    while (x < 256) {
+      const len = 90 + rnd() * 110;
+      const tone = 205 + Math.floor(rnd() * 50);
+      ctx.fillStyle = `rgb(${tone},${tone},${tone})`;
+      ctx.fillRect(x + 1, r * h + 1, len - 2, h - 2);
+      x += len;
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(2.5, 2.5);
   t.anisotropy = 8;
   return t;
 }

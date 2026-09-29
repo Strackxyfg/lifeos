@@ -4,10 +4,13 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { DISTRICTS, facing, type District, type DistrictId } from "@/lib/hub/districts";
 import { seeded } from "@/lib/hub/island";
 import { hubMaterials, lampsNow, lightScale, signGlow, signMaterials, signTexture } from "./materials";
 import { useHubLight } from "./light";
+import { panesGeometry, shellGeometry, type ShellSpec } from "./shell";
+import { Furniture, InteriorLights } from "./furniture";
 
 type V3 = [number, number, number];
 
@@ -120,6 +123,41 @@ function Monument({ id, text, p, width }: { id: DistrictId; text: string; p: V3;
   );
 }
 
+/* ── Hollow bodies ───────────────────────────────────────────────── */
+
+/**
+ * A building body with real openings, its glass, and what it holds: walls
+ * cut round the windows (`shell.ts`), panes of physical glass in them.
+ */
+function Hollow({ spec, outside, floor, glass }: { spec: ShellSpec; outside: THREE.Material; floor: THREE.Material; glass?: THREE.Material }) {
+  const m = hubMaterials();
+  const shell = useMemo(() => shellGeometry(spec), [spec]);
+  const panes = useMemo(() => panesGeometry(spec), [spec]);
+  useEffect(
+    () => () => {
+      shell.dispose();
+      panes.dispose();
+    },
+    [shell, panes]
+  );
+  return (
+    <>
+      <mesh geometry={shell} material={[outside, m.interior, floor]} castShadow receiveShadow />
+      <mesh geometry={panes} material={glass ?? m.shopGlass} renderOrder={1} />
+    </>
+  );
+}
+
+/** A building's furniture and its lamps. */
+function Inside({ id, lights }: { id: DistrictId; lights: number }) {
+  return (
+    <>
+      <Furniture id={id} />
+      <InteriorLights id={id} count={lights} />
+    </>
+  );
+}
+
 /* ── The wrapper every building shares ───────────────────────────── */
 
 interface BuildingProps {
@@ -183,8 +221,11 @@ function Building({ district, hovered, focused, interactive, onHover, onSelect, 
 
 /* ── The buildings ───────────────────────────────────────────────── */
 
-/** The second brain: a rotunda under a glass dome, a living core of light inside. */
-function BrainRotunda({ sign }: { sign: string }) {
+/**
+ * The second brain: a rotunda under a glass dome, a living core of light
+ * inside — and through its glass drum, a round reading room.
+ */
+function BrainRotunda({ sign, lights }: { sign: string; lights: number }) {
   const m = hubMaterials();
   const mullions = 28;
   return (
@@ -192,7 +233,17 @@ function BrainRotunda({ sign }: { sign: string }) {
       <Cy rt={3.45} rb={3.55} h={0.24} p={[0, 0.12, 0]} m={m.trim} seg={72} />
       <Bx s={[2.4, 0.16, 0.4]} p={[0, 0.08, 3.72]} m={m.trim} />
       <Bx s={[2.0, 0.08, 0.34]} p={[0, 0.04, 4.05]} m={m.trim} />
-      <Cy rt={3.05} rb={3.05} h={2.1} p={[0, 1.29, 0]} m={m.glass} seg={72} open />
+      <mesh position-y={0.242} rotation-x={-Math.PI / 2} material={m.floorStone} receiveShadow>
+        <circleGeometry args={[3.02, 72]} />
+      </mesh>
+      <mesh position-y={1.29} material={m.shopGlass} renderOrder={1}>
+        <cylinderGeometry args={[3.05, 3.05, 2.1, 72, 1, true]} />
+      </mesh>
+      {/* The drum's ceiling, seen from inside. */}
+      <mesh position-y={2.335} rotation-x={Math.PI / 2} material={m.interior}>
+        <circleGeometry args={[3.05, 72]} />
+      </mesh>
+      <Inside id="brain" lights={lights} />
       {Array.from({ length: mullions }, (_, i) => {
         const a = (i / mullions) * Math.PI * 2 + Math.PI / mullions;
         return <Bx key={i} s={[0.09, 2.1, 0.09]} p={[Math.sin(a) * 3.07, 1.29, Math.cos(a) * 3.07]} r={[0, a, 0]} m={m.trim} />;
@@ -216,7 +267,11 @@ function BrainRotunda({ sign }: { sign: string }) {
       {[-1.28, 1.28].map((x) => (
         <Cy key={x} rt={0.07} rb={0.07} h={1.98} p={[x, 0.99, 3.92]} m={m.trim} seg={12} />
       ))}
-      <Bx s={[1.7, 1.8, 0.06]} p={[0, 1.14, 3.05]} m={m.storefront} shadow={false} />
+      {/* The door's frame in the glass. */}
+      {[-0.62, 0.62].map((x) => (
+        <Bx key={x} s={[0.06, 1.7, 0.08]} p={[x, 1.09, Math.sqrt(3.05 * 3.05 - x * x)]} m={m.trim} />
+      ))}
+      <Bx s={[1.3, 0.08, 0.08]} p={[0, 1.94, 2.99]} m={m.trim} />
       <Sign id="brain" text={sign} height={0.38} maxWidth={2.7} p={[0, 2.05, 4.06]} />
     </group>
   );
@@ -353,16 +408,24 @@ function ClockTower({ sign }: { sign: string }) {
   );
 }
 
-/** The assistant: a café with its terrace, where one comes to talk. */
-function Cafe({ sign }: { sign: string }) {
+const CAFE: ShellSpec = {
+  min: [-1.8, 0, -1.65],
+  max: [1.8, 1.7, 0.75],
+  wall: 0.1,
+  roof: 0.12,
+  openings: { front: [{ a0: -1.6, a1: 1.6, y0: 0.13, y1: 1.43 }] },
+};
+
+/** The assistant: a café with its terrace, where one comes to talk — its bar and tables behind the glass. */
+function Cafe({ sign, lights }: { sign: string; lights: number }) {
   const m = hubMaterials();
   const tables = [-1.25, 0, 1.25];
   return (
     <group>
-      <Rb s={[3.6, 1.7, 2.4]} p={[0, 0.85, -0.45]} m={m.white} />
-      <Bx s={[3.2, 1.3, 0.05]} p={[0, 0.78, 0.78]} m={m.storefront} shadow={false} />
+      <Hollow spec={CAFE} outside={m.white} floor={m.floorWood} />
+      <Inside id="assistant" lights={lights} />
       {[-1.07, 1.07].map((x) => (
-        <Bx key={x} s={[0.06, 1.3, 0.07]} p={[x, 0.78, 0.8]} m={m.trim} />
+        <Bx key={x} s={[0.06, 1.3, 0.07]} p={[x, 0.78, 0.7]} m={m.trim} />
       ))}
       <Bx s={[4.2, 0.14, 3.3]} p={[0, 1.78, -0.25]} m={m.trim} />
       <Bx s={[4.2, 0.36, 0.08]} p={[0, 1.58, 1.36]} m={m.navy} />
@@ -370,13 +433,18 @@ function Cafe({ sign }: { sign: string }) {
       <Bx s={[3.9, 0.06, 1.4]} p={[0, 0.03, 1.62]} m={m.wood} />
       {tables.map((x) => (
         <group key={x} position={[x, 0, 1.7]}>
-          <Cy rt={0.25} rb={0.25} h={0.04} p={[0, 0.42, 0]} m={m.trim} seg={20} />
-          <Cy rt={0.025} rb={0.025} h={1.25} p={[0, 0.66, 0]} m={m.metal} seg={6} />
+          {/* Table height and chairs at the island's human scale (seat 0.13, table 0.2). */}
+          <Cy rt={0.25} rb={0.25} h={0.03} p={[0, 0.2, 0]} m={m.trim} seg={20} />
+          <Cy rt={0.022} rb={0.022} h={1.28} p={[0, 0.64, 0]} m={m.metal} seg={6} />
           <mesh position-y={1.28} material={m.cream} castShadow>
             <coneGeometry args={[0.62, 0.24, 20, 1, true]} />
           </mesh>
-          {[-0.36, 0.36].map((dx) => (
-            <Bx key={dx} s={[0.2, 0.26, 0.2]} p={[dx, 0.13, 0.05]} m={m.white} />
+          {[-0.34, 0.34].map((dx) => (
+            <group key={dx}>
+              <Bx s={[0.16, 0.025, 0.16]} p={[dx, 0.118, 0]} m={m.wood} />
+              <Bx s={[0.12, 0.105, 0.12]} p={[dx, 0.053, 0]} m={m.metal} />
+              <Bx s={[0.025, 0.14, 0.16]} p={[dx + Math.sign(dx) * 0.07, 0.2, 0]} m={m.wood} />
+            </group>
           ))}
         </group>
       ))}
@@ -392,8 +460,11 @@ function Cafe({ sign }: { sign: string }) {
   );
 }
 
-/** The agent: a workshop hangar, and the mast it talks to the world through. */
-function Atelier({ sign }: { sign: string }) {
+/**
+ * The agent: a workshop hangar — server racks and a workbench behind its
+ * glass end — and the mast it talks to the world through.
+ */
+function Atelier({ sign, lights }: { sign: string; lights: number }) {
   const m = hubMaterials();
   const beacon = useRef<THREE.Mesh>(null);
   const shell = useMemo(() => {
@@ -409,9 +480,16 @@ function Atelier({ sign }: { sign: string }) {
   return (
     <group>
       <Bx s={[3.2, 0.12, 3.3]} p={[0, 0.06, 0]} m={m.trim} />
+      {/* The vault: white outside, lit plaster inside. */}
       <mesh geometry={shell} position-y={0.12} material={m.white} castShadow receiveShadow />
-      <mesh geometry={end} position={[0, 0.12, 1.5]} material={m.storefront} />
+      <mesh geometry={shell} position-y={0.12} material={m.interiorBack} receiveShadow />
+      <mesh geometry={end} position={[0, 0.12, 1.5]} material={m.shopGlass} renderOrder={1} />
       <mesh geometry={end} position={[0, 0.12, -1.5]} rotation-y={Math.PI} material={m.white} castShadow />
+      <mesh geometry={end} position={[0, 0.12, -1.49]} rotation-y={Math.PI} material={m.interiorBack} />
+      <mesh position-y={0.122} rotation-x={-Math.PI / 2} material={m.floorStone} receiveShadow>
+        <planeGeometry args={[2.86, 2.98]} />
+      </mesh>
+      <Inside id="agent" lights={lights} />
       {[-0.55, 0, 0.55].map((x) => (
         <Bx key={x} s={[0.05, x === 0 ? 1.44 : 1.3, 0.05]} p={[x, 0.12 + (x === 0 ? 0.72 : 0.65), 1.52]} m={m.trim} shadow={false} />
       ))}
@@ -434,8 +512,31 @@ function Atelier({ sign }: { sign: string }) {
   );
 }
 
-/** Projects: a studio with its top floor going up, and the crane building it. */
-function Studio({ sign, reducedMotion }: { sign: string; reducedMotion: boolean }) {
+const STUDIO_BANDS = (a0: number, a1: number) => [
+  { a0, a1, y0: 0.54, y1: 1.16 },
+  { a0, a1, y0: 1.64, y1: 2.26 },
+];
+
+const STUDIO: ShellSpec = {
+  min: [-1.7, 0, -1.3],
+  max: [1.7, 2.5, 1.3],
+  wall: 0.1,
+  roof: 0.1,
+  slabs: [{ y: 1.45, t: 0.1 }],
+  openings: {
+    front: [...STUDIO_BANDS(-1.55, 1.55), { a0: -0.55, a1: 0.55, y0: 0.1, y1: 1.16 }],
+    back: STUDIO_BANDS(-1.55, 1.55),
+    left: STUDIO_BANDS(-1.15, 1.15),
+    right: STUDIO_BANDS(-1.15, 1.15),
+  },
+};
+
+/**
+ * Projects: a studio — a model on the big table, drafting desks, screens
+ * upstairs, all behind bands of glass — with its top floor going up, and
+ * the crane building it.
+ */
+function Studio({ sign, reducedMotion, lights }: { sign: string; reducedMotion: boolean; lights: number }) {
   const m = hubMaterials();
   const slew = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
@@ -447,13 +548,11 @@ function Studio({ sign, reducedMotion }: { sign: string; reducedMotion: boolean 
   ];
   return (
     <group>
-      <Rb s={[3.4, 2.5, 2.6]} p={[0, 1.25, 0]} m={m.white} />
-      <Bx s={[3.44, 0.62, 2.64]} p={[0, 0.85, 0]} m={m.glass} />
-      <Bx s={[3.44, 0.62, 2.64]} p={[0, 1.95, 0]} m={m.glass} />
+      <Hollow spec={STUDIO} outside={m.white} floor={m.floorWood} />
+      <Inside id="projects" lights={lights} />
       <Bx s={[3.5, 0.1, 2.7]} p={[0, 2.55, 0]} m={m.trim} />
-      <Bx s={[1.8, 0.36, 0.06]} p={[0, 1.4, 1.31]} m={m.navy} shadow={false} />
-      <Sign id="projects" text={sign} height={0.3} maxWidth={1.74} p={[0, 1.4, 1.345]} />
-      <Bx s={[1.1, 0.5, 0.05]} p={[0, 0.35, 1.33]} m={m.storefront} shadow={false} />
+      <Bx s={[1.8, 0.36, 0.06]} p={[0, 1.4, 1.33]} m={m.navy} shadow={false} />
+      <Sign id="projects" text={sign} height={0.3} maxWidth={1.74} p={[0, 1.4, 1.365]} />
       {posts.map((p, i) => (
         <Bx key={i} s={[0.07, 1.1, 0.07]} p={p} m={m.grey} />
       ))}
@@ -482,17 +581,87 @@ function Studio({ sign, reducedMotion }: { sign: string; reducedMotion: boolean 
   );
 }
 
-/** Finance: a slim tower of glass and white bands. */
-function Bank({ sign }: { sign: string }) {
+const BANK_HALL: ShellSpec = {
+  min: [-1.6, 0, -1.5],
+  max: [1.6, 1.2, 1.5],
+  wall: 0.1,
+  roof: 0.1,
+  openings: { front: [{ a0: -1.3, a1: 1.3, y0: 0.1, y1: 1.0 }] },
+};
+
+/** The tower's curtain wall: four sheets of glass from the podium to the crown. */
+function curtainWall(): THREE.BufferGeometry {
+  const s = 1.15;
+  const faces: [number, number, number, number][] = [
+    [0, s, 0, 0],
+    [0, -s, Math.PI, 0],
+    [s, 0, Math.PI / 2, 0],
+    [-s, 0, -Math.PI / 2, 0],
+  ];
+  const parts = faces.map(([x, z, r]) => {
+    const g = new THREE.PlaneGeometry(2.3, 6.4);
+    g.rotateY(r);
+    g.translate(x, 4.4, z);
+    return g;
+  });
+  const merged = mergeGeometries(parts, false);
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+/** The curtain wall's mullions: thin aluminium verticals on every face. */
+function mullions(): THREE.BufferGeometry {
+  const s = 1.16;
+  const parts: THREE.BufferGeometry[] = [];
+  for (let k = 1; k < 5; k++) {
+    const u = -1.15 + (k * 2.3) / 5;
+    for (const [x, z, w, d] of [
+      [u, s, 0.02, 0.025],
+      [u, -s, 0.02, 0.025],
+      [s, u, 0.025, 0.02],
+      [-s, u, 0.025, 0.02],
+    ]) {
+      const g = new THREE.BoxGeometry(w, 6.4, d);
+      g.translate(x, 4.4, z);
+      parts.push(g);
+    }
+  }
+  const merged = mergeGeometries(parts, false);
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+/**
+ * Finance: a slim tower of glass and white bands — a banking hall in its
+ * podium, open-plan floors up the tower round a lift core, all visible.
+ */
+function Bank({ sign, lights }: { sign: string; lights: number }) {
   const m = hubMaterials();
+  const glass = useMemo(curtainWall, []);
+  const frame = useMemo(mullions, []);
+  useEffect(
+    () => () => {
+      glass.dispose();
+      frame.dispose();
+    },
+    [glass, frame]
+  );
   return (
     <group>
-      <Rb s={[3.2, 1.2, 3.0]} p={[0, 0.6, 0]} m={m.white} />
-      <Bx s={[2.6, 0.9, 0.04]} p={[0, 0.55, 1.51]} m={m.storefront} shadow={false} />
-      <Bx s={[2.3, 6.4, 2.3]} p={[0, 4.4, 0]} m={m.glass} />
+      <Hollow spec={BANK_HALL} outside={m.white} floor={m.floorStone} />
+      <mesh geometry={glass} material={m.officeGlass} renderOrder={1} />
+      <mesh geometry={frame} material={m.metal} castShadow />
+      {/* The lift and stair core, and the office floors. */}
+      <Bx s={[0.62, 6.4, 0.62]} p={[0, 4.4, 0]} m={m.interior} />
       {Array.from({ length: 8 }, (_, i) => (
         <Bx key={i} s={[2.36, 0.07, 2.36]} p={[0, 1.6 + i * 0.8, 0]} m={m.trim} />
       ))}
+      {Array.from({ length: 6 }, (_, i) => (
+        <mesh key={i} position-y={2.4 + i * 0.8 + 0.036} rotation-x={-Math.PI / 2} material={m.officeFloor} receiveShadow>
+          <planeGeometry args={[2.26, 2.26]} />
+        </mesh>
+      ))}
+      <Inside id="finance" lights={lights} />
       {[
         [-1.15, -1.15],
         [1.15, -1.15],
@@ -508,40 +677,97 @@ function Bank({ sign }: { sign: string }) {
   );
 }
 
-/** Relations: two pavilions joined by a glass bridge. */
-function Pavilions({ sign }: { sign: string }) {
+const PAVILION_LEFT: ShellSpec = {
+  min: [-2.1, 0, -1.1],
+  max: [-0.5, 2.6, 1.1],
+  wall: 0.1,
+  roof: 0.1,
+  openings: { front: [{ a0: -1.9, a1: -0.7, y0: 0.1, y1: 2.1 }] },
+};
+const PAVILION_RIGHT: ShellSpec = {
+  min: [0.5, 0, -1.1],
+  max: [2.1, 2.9, 1.1],
+  wall: 0.1,
+  roof: 0.1,
+  openings: { front: [{ a0: 0.7, a1: 1.9, y0: 0.1, y1: 2.4 }] },
+};
+const RECEPTION: ShellSpec = {
+  min: [-0.5, 0, -0.6],
+  max: [0.5, 1.45, 0.3],
+  wall: 0.04,
+  roof: 0.05,
+  openings: { front: [{ a0: -0.44, a1: 0.44, y0: 0.02, y1: 1.34 }] },
+};
+
+/** The bridge's glass: its two long sides, floor to roof. */
+function bridgeGlass(): THREE.BufferGeometry {
+  const parts = [0.8, -0.2].map((z) => {
+    const g = new THREE.PlaneGeometry(1.0, 0.64);
+    g.translate(0, 1.95, z);
+    return g;
+  });
+  const merged = mergeGeometries(parts, false);
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+/**
+ * Relations: two pavilions joined by a glass bridge — a lounge in one, a
+ * meeting room in the other, a small reception between.
+ */
+function Pavilions({ sign, lights }: { sign: string; lights: number }) {
   const m = hubMaterials();
+  const bridge = useMemo(bridgeGlass, []);
+  useEffect(() => () => bridge.dispose(), [bridge]);
   return (
     <group>
-      <Rb s={[1.6, 2.6, 2.2]} p={[-1.3, 1.3, 0]} m={m.white} />
-      <Bx s={[1.2, 2.0, 0.04]} p={[-1.3, 1.1, 1.11]} m={m.storefront} shadow={false} />
+      <Hollow spec={PAVILION_LEFT} outside={m.white} floor={m.floorWood} />
       <Bx s={[1.8, 0.1, 2.4]} p={[-1.3, 2.65, 0]} m={m.trim} />
-      <Rb s={[1.6, 2.9, 2.2]} p={[1.3, 1.45, 0]} m={m.white} />
-      <Bx s={[1.2, 2.3, 0.04]} p={[1.3, 1.25, 1.11]} m={m.glass} shadow={false} />
+      <Hollow spec={PAVILION_RIGHT} outside={m.white} floor={m.floorWood} />
       <Bx s={[1.8, 0.1, 2.4]} p={[1.3, 2.95, 0]} m={m.trim} />
-      <Bx s={[1.1, 0.66, 1.0]} p={[0, 1.95, 0.3]} m={m.glass} />
+      <Hollow spec={RECEPTION} outside={m.white} floor={m.floorStone} />
+      <mesh geometry={bridge} material={m.shopGlass} renderOrder={1} />
       <Bx s={[1.12, 0.06, 1.02]} p={[0, 2.3, 0.3]} m={m.trim} />
       <Bx s={[1.12, 0.06, 1.02]} p={[0, 1.6, 0.3]} m={m.trim} />
-      <Bx s={[1.0, 1.4, 0.05]} p={[0, 0.7, 0.3]} m={m.storefront} shadow={false} />
+      <Inside id="relations" lights={lights} />
       <Monument id="relations" text={sign} p={[0, 0, 1.75]} width={1.9} />
     </group>
   );
 }
 
-/** The team: a club house with a glass atrium and a roof terrace. */
-function Club({ sign }: { sign: string }) {
+const CLUB_GROUND: ShellSpec = {
+  min: [-2.5, 0, -1.6],
+  max: [2.5, 2.0, 1.6],
+  wall: 0.1,
+  roof: 0.1,
+  openings: { front: [{ a0: -2.2, a1: 2.2, y0: 0.12, y1: 1.5 }] },
+};
+const CLUB_BAND = (a0: number, a1: number) => [{ a0, a1, y0: 2.47, y1: 2.97 }];
+const CLUB_UPPER: ShellSpec = {
+  min: [-2.2, 2.0, -1.6],
+  max: [2.2, 3.4, 0.8],
+  wall: 0.1,
+  roof: 0.1,
+  openings: { front: CLUB_BAND(-2.05, 2.05), back: CLUB_BAND(-2.05, 2.05), left: CLUB_BAND(-1.45, 0.65), right: CLUB_BAND(-1.45, 0.65) },
+};
+
+/**
+ * The team: a club house — long shared tables, a sofa corner and a
+ * whiteboard behind its glass front, desks upstairs behind a band of glass —
+ * with a roof terrace.
+ */
+function Club({ sign, lights }: { sign: string; lights: number }) {
   const m = hubMaterials();
   return (
     <group>
-      <Rb s={[5.0, 2.0, 3.2]} p={[0, 1.0, 0]} m={m.white} />
-      <Bx s={[4.4, 1.38, 0.04]} p={[0, 0.81, 1.61]} m={m.storefront} shadow={false} />
+      <Hollow spec={CLUB_GROUND} outside={m.white} floor={m.floorWood} />
       {[-1.65, -0.55, 0.55, 1.65].map((x) => (
-        <Bx key={x} s={[0.05, 1.38, 0.06]} p={[x, 0.81, 1.63]} m={m.trim} shadow={false} />
+        <Bx key={x} s={[0.05, 1.38, 0.06]} p={[x, 0.81, 1.55]} m={m.trim} shadow={false} />
       ))}
       <Bx s={[2.1, 0.36, 0.05]} p={[0, 1.74, 1.62]} m={m.navy} shadow={false} />
       <Sign id="team" text={sign} height={0.3} maxWidth={2.0} p={[0, 1.74, 1.652]} />
-      <Rb s={[4.4, 1.4, 2.4]} p={[0, 2.7, -0.4]} m={m.white} />
-      <Bx s={[4.44, 0.5, 2.44]} p={[0, 2.72, -0.4]} m={m.glass} />
+      <Hollow spec={CLUB_UPPER} outside={m.white} floor={m.floorWood} />
+      <Inside id="team" lights={lights} />
       <Bx s={[4.5, 0.08, 2.5]} p={[0, 3.42, -0.4]} m={m.trim} />
       {/* The terrace on the lower roof, in front of the upper floor. */}
       <Bx s={[4.9, 0.28, 0.04]} p={[0, 2.14, 1.58]} m={m.trim} />
@@ -569,6 +795,7 @@ function Lighthouse({ reducedMotion }: { reducedMotion: boolean }) {
   const m = hubMaterials();
   const light = useHubLight();
   const beam = useRef<THREE.Group>(null);
+  const turn = useRef<THREE.Group>(null);
   // A beam fades along its length, from the lantern out to sea — a plain
   // transparent cone reads as a solid megaphone instead.
   const beamMaterial = useMemo(
@@ -621,9 +848,11 @@ function Lighthouse({ reducedMotion }: { reducedMotion: boolean }) {
     const lamps = light.current.sky.lamps;
     // A beam is only seen in the haze it crosses: faint, not a solid cone.
     beamMaterial.uniforms.uOpacity.value = lamps * 0.26 * lightScale(light.current.atmo.exposure);
+    // The lens turns day and night (as a real one does, on its clockwork);
+    // the beams are seen only once it is dark enough.
+    if (turn.current && !reducedMotion) turn.current.rotation.y += dt * 0.55;
     if (beam.current) {
       beam.current.visible = lamps > 0.02;
-      if (!reducedMotion) beam.current.rotation.y += dt * 0.55;
     }
   });
   return (
@@ -636,7 +865,15 @@ function Lighthouse({ reducedMotion }: { reducedMotion: boolean }) {
       <mesh position-y={5.0} rotation-x={Math.PI / 2} material={m.metal}>
         <torusGeometry args={[0.78, 0.018, 6, 40]} />
       </mesh>
-      <Cy rt={0.42} rb={0.42} h={0.62} p={[0, 5.09, 0]} m={m.lantern} seg={24} shadow={false} />
+      {/* The lantern room: glazed, its lens turning inside. */}
+      <mesh position-y={5.09} material={m.shopGlass} renderOrder={1}>
+        <cylinderGeometry args={[0.42, 0.42, 0.62, 24, 1, true]} />
+      </mesh>
+      {Array.from({ length: 8 }, (_, i) => {
+        const a = (i / 8) * Math.PI * 2;
+        return <Bx key={i} s={[0.018, 0.62, 0.018]} p={[Math.sin(a) * 0.42, 5.09, Math.cos(a) * 0.42]} m={m.navy} shadow={false} />;
+      })}
+      <Cy rt={0.2} rb={0.2} h={0.05} p={[0, 4.8, 0]} m={m.metal} seg={16} />
       <mesh position-y={5.62} material={m.navy} castShadow>
         <coneGeometry args={[0.52, 0.45, 24]} />
       </mesh>
@@ -644,9 +881,24 @@ function Lighthouse({ reducedMotion }: { reducedMotion: boolean }) {
         <sphereGeometry args={[0.07, 10, 8]} />
       </mesh>
       <Bx s={[0.3, 0.56, 0.06]} p={[0, 0.58, 0.72]} m={m.navy} shadow={false} />
-      <group ref={beam} position-y={5.09}>
-        <mesh geometry={cone} material={beamMaterial} />
-        <mesh geometry={cone} material={beamMaterial} rotation-y={Math.PI} />
+      <group ref={turn} position-y={5.09}>
+        <group ref={beam}>
+          <mesh geometry={cone} material={beamMaterial} />
+          <mesh geometry={cone} material={beamMaterial} rotation-y={Math.PI} />
+        </group>
+        {/* The Fresnel lens: eight bull's-eye panels round the lamp, turning with the beams. */}
+        {Array.from({ length: 8 }, (_, i) => {
+          const a = (i / 8) * Math.PI * 2;
+          return (
+            // The disc's axis turned to point outwards: first onto +X, then round to its bearing.
+            <mesh key={i} position={[Math.cos(a) * 0.2, 0, Math.sin(a) * 0.2]} rotation={[0, -a, -Math.PI / 2]} material={m.lens}>
+              <cylinderGeometry args={[0.075, 0.075, 0.02, 16]} />
+            </mesh>
+          );
+        })}
+        <mesh material={m.lantern}>
+          <sphereGeometry args={[0.07, 12, 10]} />
+        </mesh>
       </group>
       <group position={[-0.95, 0, -0.75]} rotation-y={0.5}>
         <Bx s={[0.95, 0.62, 0.72]} p={[0, 0.31, 0]} m={m.white} />
@@ -666,6 +918,7 @@ export function Buildings({
   onSelect,
   signs,
   reducedMotion,
+  lights,
 }: {
   hovered: DistrictId | null;
   focused: DistrictId | null;
@@ -674,25 +927,27 @@ export function Buildings({
   onSelect: (id: DistrictId) => void;
   signs: Record<DistrictId, string>;
   reducedMotion: boolean;
+  /** Real interior lights per building: 2 on capable devices, 1, or none. */
+  lights: number;
 }) {
   const model = (d: District): ReactNode => {
     switch (d.id) {
       case "brain":
-        return <BrainRotunda sign={signs.brain} />;
+        return <BrainRotunda sign={signs.brain} lights={lights} />;
       case "today":
         return <ClockTower sign={signs.today} />;
       case "assistant":
-        return <Cafe sign={signs.assistant} />;
+        return <Cafe sign={signs.assistant} lights={lights} />;
       case "agent":
-        return <Atelier sign={signs.agent} />;
+        return <Atelier sign={signs.agent} lights={lights} />;
       case "projects":
-        return <Studio sign={signs.projects} reducedMotion={reducedMotion} />;
+        return <Studio sign={signs.projects} reducedMotion={reducedMotion} lights={lights} />;
       case "finance":
-        return <Bank sign={signs.finance} />;
+        return <Bank sign={signs.finance} lights={lights} />;
       case "relations":
-        return <Pavilions sign={signs.relations} />;
+        return <Pavilions sign={signs.relations} lights={lights} />;
       case "team":
-        return <Club sign={signs.team} />;
+        return <Club sign={signs.team} lights={lights} />;
       case "settings":
         return <Lighthouse reducedMotion={reducedMotion} />;
     }

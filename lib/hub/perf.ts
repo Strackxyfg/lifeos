@@ -41,12 +41,14 @@ export interface TierSettings {
   shadowSize: number;
   antialias: boolean;
   people: number;
+  /** Real lights inside each building (each costs every lit pixel a little). */
+  interiorLights: number;
 }
 
 export const TIERS: Record<Tier, TierSettings> = {
-  high: { dpr: [1, 2], shadows: true, shadowSize: 2048, antialias: true, people: 40 },
-  medium: { dpr: [1, 1.5], shadows: true, shadowSize: 1024, antialias: true, people: 26 },
-  low: { dpr: [1, 1], shadows: false, shadowSize: 512, antialias: false, people: 12 },
+  high: { dpr: [1, 2], shadows: true, shadowSize: 2048, antialias: true, people: 40, interiorLights: 2 },
+  medium: { dpr: [1, 1.5], shadows: true, shadowSize: 1024, antialias: true, people: 26, interiorLights: 1 },
+  low: { dpr: [1, 1], shadows: false, shadowSize: 512, antialias: false, people: 12, interiorLights: 0 },
 };
 
 /** The hints of this browser. */

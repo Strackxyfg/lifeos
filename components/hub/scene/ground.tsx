@@ -134,12 +134,13 @@ export function Ground({ reducedMotion }: { reducedMotion: boolean }) {
       <Fountain reducedMotion={reducedMotion} />
 
       {BENCHES.map((b, i) => (
+        // Seat at 0.155: knee height for the island's people (a person is 0.46 tall).
         <group key={i} position={[b.at[0], 0, b.at[1]]} rotation-y={b.angle}>
-          <mesh position-y={0.2} material={m.wood} castShadow receiveShadow>
-            <boxGeometry args={[0.95, 0.07, 0.34]} />
+          <mesh position-y={0.13} material={m.wood} castShadow receiveShadow>
+            <boxGeometry args={[0.95, 0.05, 0.34]} />
           </mesh>
-          <mesh position-y={0.09} material={m.white} castShadow>
-            <boxGeometry args={[0.8, 0.18, 0.22]} />
+          <mesh position-y={0.053} material={m.white} castShadow>
+            <boxGeometry args={[0.8, 0.106, 0.22]} />
           </mesh>
         </group>
       ))}

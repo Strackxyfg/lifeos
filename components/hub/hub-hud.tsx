@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  ArrowLeft, ArrowRight, Brain, ChevronLeft, ChevronRight, Clock3, Command, CornerDownLeft, History, Menu, Moon,
-  RotateCcw, Sun, Sunrise, Sunset, X,
+  ArrowLeft, ArrowRight, Brain, Camera, ChevronLeft, ChevronRight, Clock3, Command, CornerDownLeft, Download, History,
+  Loader2, Menu, Moon, RotateCcw, Sun, Sunrise, Sunset, X,
 } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -246,6 +246,123 @@ export function SkyChip({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+/* ── Photo mode ──────────────────────────────────────────────────── */
+
+export interface PhotoState {
+  phase: "preparing" | "compiling" | "tracing" | "done" | "failed";
+  samples: number;
+  target: number;
+  reason?: "unsupported" | "error";
+}
+
+/** Starts a ray-traced photo of the current view. */
+export function PhotoButton({ onClick, active }: { onClick: () => void; active: boolean }) {
+  const m = useMessages();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={m.hub.photo.label}
+      title={m.hub.photo.label}
+      className={cn(
+        "glass pointer-events-auto flex items-center gap-2 rounded-xl border px-3 py-2 text-[0.8125rem] font-medium shadow-card transition-colors hover:bg-surface-2",
+        active ? "border-accent/60" : "border-border"
+      )}
+    >
+      <Camera className="h-4 w-4 text-accent" aria-hidden />
+      <span className="hidden sm:inline">{m.hub.photo.button}</span>
+    </button>
+  );
+}
+
+/** While a photo is traced: how far along, save it, close it. */
+export function PhotoPanel({
+  state,
+  onSave,
+  onClose,
+}: {
+  state: PhotoState;
+  onSave: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const m = useMessages();
+  const [saving, setSaving] = useState(false);
+  const p = m.hub.photo;
+  const pct = state.target > 0 ? Math.min(100, (state.samples / state.target) * 100) : 0;
+  const status =
+    state.phase === "preparing"
+      ? p.preparing
+      : state.phase === "compiling"
+        ? p.compiling
+        : state.phase === "failed"
+          ? state.reason === "unsupported"
+            ? p.unsupported
+            : p.failed
+          : state.phase === "done"
+            ? fill(p.done, { total: String(state.target) })
+            : fill(p.tracing, { n: String(state.samples), total: String(state.target) });
+  const busy = state.phase === "preparing" || state.phase === "compiling";
+  return (
+    <motion.div
+      role="dialog"
+      aria-label={p.title}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 12 }}
+      transition={{ duration: 0.22, ease }}
+      className="glass pointer-events-auto absolute inset-x-3 bottom-4 z-40 mx-auto max-w-md rounded-2xl border border-border p-4 shadow-lift sm:bottom-6"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Camera className="h-4 w-4 text-accent" aria-hidden />
+            {p.title}
+          </p>
+          <p className="mt-1 text-[0.8125rem] text-muted-foreground" aria-live="polite">
+            {busy && <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin align-[-2px]" aria-hidden />}
+            {status}
+          </p>
+        </div>
+        <button type="button" onClick={onClose} aria-label={p.close} className="rounded-lg p-1.5 text-muted-foreground hover:bg-surface-2 hover:text-foreground">
+          <X className="h-4 w-4" aria-hidden />
+        </button>
+      </div>
+      {state.phase !== "failed" && (
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={state.target} aria-valuenow={state.samples}>
+          <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <p className="mt-3 text-[0.72rem] leading-relaxed text-muted">{p.hint}</p>
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg border border-border px-3 py-1.5 text-[0.8125rem] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {p.close} <Kbd className="ml-1">Esc</Kbd>
+        </button>
+        <button
+          type="button"
+          disabled={busy || state.phase === "failed" || saving}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await onSave();
+            } finally {
+              setSaving(false);
+            }
+          }}
+          className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[0.8125rem] font-medium text-accent-foreground disabled:opacity-50"
+        >
+          <Download className="h-3.5 w-3.5" aria-hidden />
+          {saving ? p.saving : p.save}
+        </button>
+      </div>
+    </motion.div>
   );
 }
 

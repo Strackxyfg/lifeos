@@ -295,7 +295,8 @@ export function Furniture({ id }: { id: DistrictId }) {
   return (
     <>
       {geo.solid && <mesh geometry={geo.solid} material={mats.solid} receiveShadow />}
-      {geo.glow && <mesh geometry={geo.glow} material={mats.glow} />}
+      {/* The ray-traced photo turns these into emitters in the building's light. */}
+      {geo.glow && <mesh geometry={geo.glow} material={mats.glow} userData={{ traceEmissive: INTERIORS[id]?.light }} />}
     </>
   );
 }

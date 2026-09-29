@@ -70,5 +70,6 @@ export function windowGlass({
   // Distinct programs for distinct absorption: the uniform is baked per material.
   m.customProgramCacheKey = () => "window-glass";
   m.userData.traced = { transmission: 1, thickness: 0.01, roughness, ior, color: "#ffffff" };
+  m.userData.absorb = absorb;
   return m;
 }

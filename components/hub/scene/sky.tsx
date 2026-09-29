@@ -17,7 +17,7 @@ const skyVertex = /* glsl */ `
   }
 `;
 
-const skyFragment = /* glsl */ `
+export const skyFragment = /* glsl */ `
   uniform sampler2D uSky;
   uniform vec3 uSunDir;
   uniform vec3 uSunDisc;

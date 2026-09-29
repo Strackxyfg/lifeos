@@ -17,6 +17,8 @@ export function fill(template: string, vars: Record<string, string | number>): s
 export interface Plural {
   one: string;
   other: string;
+  /** Said differently when there are none ("No note yet"), if given. */
+  zero?: string;
 }
 
 /**
@@ -27,6 +29,7 @@ export interface Plural {
  * connections"). Hand-rolled checks get one of the two languages wrong.
  */
 export function plural(locale: Locale, n: number, forms: Plural, vars: Record<string, string | number> = {}): string {
+  if (n === 0 && forms.zero !== undefined) return fill(forms.zero, { n, ...vars });
   const rule = new Intl.PluralRules(locale === "fr" ? "fr-FR" : "en-US").select(n);
   return fill(rule === "one" ? forms.one : forms.other, { n, ...vars });
 }

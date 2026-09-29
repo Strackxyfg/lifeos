@@ -80,12 +80,15 @@ export function CameraRig({
   returnFrom,
   reducedMotion,
   onArrive,
+  still = false,
 }: {
   goal: CameraGoal;
   /** Coming back from a building: start in front of it, then pull out. */
   returnFrom: DistrictId | null;
   reducedMotion: boolean;
   onArrive: (goal: CameraGoal) => void;
+  /** Hold the camera exactly where it is (a photo is being taken). */
+  still?: boolean;
 }) {
   const controls = useRef<CameraControlsImpl>(null);
   const { size } = useThree();
@@ -213,7 +216,13 @@ export function CameraRig({
       return;
     }
 
-    // The breathing drift: only on the whole island, only when left alone.
+    // The breathing drift: only on the whole island, only when left alone —
+    // and never while a photo is being taken.
+    if (still) {
+      drift.current.on = false;
+      idleSince.current = now;
+      return;
+    }
     if (reducedMotion || goalRef.current.kind !== "overview") return;
     const d = drift.current;
     if (!d.on && now - idleSince.current > 6000) {

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { LayoutGrid } from "lucide-react";
 import { useLocale, useMessages } from "@/lib/i18n/client";
-import { plural } from "@/lib/i18n/config";
+import { fill, plural } from "@/lib/i18n/config";
 import { DISTRICTS, districtById, isDistrictId, neighbour, type DistrictId } from "@/lib/hub/districts";
 import { currentPlace, type Place } from "@/lib/hub/place";
 import { deviceHints, initialTier, lowerTier, webglAvailable, type Tier } from "@/lib/hub/perf";
@@ -17,7 +17,8 @@ import type { Alert } from "@/lib/data/alerts";
 import type { Profile } from "@/lib/user/profile";
 import type { CameraGoal } from "./scene/camera-rig";
 import type { PinLabel } from "./scene/pins";
-import { FocusPanel, HubCards, HubFallback, HubTopBar, SkyChip } from "./hub-hud";
+import type { HubSceneApi } from "./hub-scene";
+import { FocusPanel, HubCards, HubFallback, HubTopBar, PhotoButton, PhotoPanel, SkyChip, type PhotoState } from "./hub-hud";
 
 const HubScene = dynamic(() => import("./hub-scene"), { ssr: false });
 
@@ -148,6 +149,32 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
   const focused = goal.kind === "overview" ? null : goal.id;
   const entering = goal.kind === "enter";
 
+  /* ── Photo mode ────────────────────────────────────────────────── */
+
+  const [photo, setPhoto] = useState(false);
+  const [photoState, setPhotoState] = useState<PhotoState>({ phase: "preparing", samples: 0, target: 0 });
+  const sceneApi = useRef<HubSceneApi | null>(null);
+  // Path tracing needs the post pipeline (every tier but the lowest) and a drawn island.
+  const canPhoto = mounted && webgl && !lost && !!place && ready && tier !== "low";
+  const endPhoto = useCallback(() => setPhoto(false), []);
+  const savePhoto = useCallback(async () => {
+    const blob = await sceneApi.current?.snapshot();
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    a.href = url;
+    a.download = fill(m.hub.photo.file, { time: stamp });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, [m]);
+  // A lost context or a quality drop to the lowest tier ends a photo.
+  useEffect(() => {
+    if (photo && !canPhoto) setPhoto(false);
+  }, [photo, canPhoto]);
+
   /* ── Moving around ─────────────────────────────────────────────── */
 
   const focus = useCallback(
@@ -206,10 +233,23 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
     return () => clearTimeout(t);
   }, [goal, router]);
 
-  // Keyboard: arrows walk, Enter goes in, Escape steps back.
+  // Keyboard: arrows walk, Enter goes in, Escape steps back; P takes a photo.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      // A photo in progress: Escape (or any move) ends it first.
+      if (photo) {
+        if (e.key === "Escape" || e.key.startsWith("Arrow") || e.key === "Enter") {
+          e.preventDefault();
+          setPhoto(false);
+        }
+        return;
+      }
+      if ((e.key === "p" || e.key === "P") && canPhoto && !entering) {
+        e.preventDefault();
+        setPhoto(true);
+        return;
+      }
       if (document.querySelector('[role="dialog"][aria-modal="true"], [role="dialog"][aria-label]:not(#hub-panel)')) return;
       if (e.key === "ArrowRight") {
         e.preventDefault();
@@ -229,7 +269,7 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step, focused, entering, backToIsland, goal, enter]);
+  }, [step, focused, entering, backToIsland, goal, enter, photo, canPhoto]);
 
   // A pointer on a building shows it can be opened.
   useEffect(() => {
@@ -311,6 +351,10 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
             onReady={onReady}
             onTierDown={onTierDown}
             onContextLost={onContextLost}
+            photo={photo}
+            onPhotoProgress={setPhotoState}
+            onPhotoExit={endPhoto}
+            api={sceneApi}
           />
         </div>
       )}
@@ -334,7 +378,7 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
       <HubTopBar profile={profile} alerts={alerts} greeting={greeting} />
 
       {sky && place && show3d && (
-        <div className="pointer-events-none absolute left-3 top-[4.25rem] z-40 sm:left-4 sm:top-[5.25rem]">
+        <div className="pointer-events-none absolute left-3 top-[4.25rem] z-40 flex items-start gap-2 sm:left-4 sm:top-[5.25rem]">
           <SkyChip
             phase={sky.state.phase}
             times={sky.times}
@@ -343,21 +387,24 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
             nowMinutes={nowMinutes}
             onPreview={setPreviewMinutes}
           />
+          {canPhoto && !entering && <PhotoButton active={photo} onClick={() => setPhoto((on) => !on)} />}
         </div>
       )}
 
+      <AnimatePresence>{photo && <PhotoPanel key="photo" state={photoState} onSave={savePhoto} onClose={endPhoto} />}</AnimatePresence>
+
       {show3d && (
         <>
-          <HubCards facts={facts} resume={resume} onVisit={focus} hidden={goal.kind !== "overview"} />
+          <HubCards facts={facts} resume={resume} onVisit={focus} hidden={goal.kind !== "overview" || photo} />
           <FocusPanel
-            id={focused}
+            id={photo ? null : focused}
             facts={facts}
             onEnter={() => focused && enter(focused)}
             onBack={backToIsland}
             onStep={step}
             entering={entering}
           />
-          {goal.kind === "overview" && ready && (
+          {goal.kind === "overview" && ready && !photo && (
             <p className="pointer-events-none absolute inset-x-0 bottom-[8.25rem] z-20 hidden text-center text-[0.75rem] text-white/80 [text-shadow:0_1px_8px_rgba(0,0,0,0.45)] sm:block">
               {coarse ? m.hub.hintTouch : m.hub.hint}
             </p>

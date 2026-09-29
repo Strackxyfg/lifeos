@@ -15,6 +15,17 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
   },
+  webpack(config) {
+    // three-mesh-bvh's WebGPU entry re-exports two modules that both define
+    // `closestPointToTriangle`. The ES spec leaves such a name out of the
+    // star export (nothing here imports it); webpack reports it as an error.
+    // Relaxed for that folder only.
+    config.module.rules.push({
+      test: /[\\/]three-mesh-bvh[\\/]src[\\/]webgpu[\\/]/,
+      parser: { reexportExportsPresence: false },
+    });
+    return config;
+  },
   // Pages retired in the pivot. They showed fabricated data; old bookmarks
   // and muscle-memory shortcuts land on the second brain instead of a 404.
   // (/team was one of them; it is a real page again — teams and circles —

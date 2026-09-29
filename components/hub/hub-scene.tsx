@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo, useCallback, useLayoutEffect, useRef, type MutableRefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
 import * as THREE from "three";
@@ -22,6 +22,7 @@ import { Birds } from "./scene/birds";
 import { Pins, type PinLabel } from "./scene/pins";
 import { CameraRig, type CameraGoal } from "./scene/camera-rig";
 import { PostPipeline, type PostHandle } from "./scene/post";
+import { PhotoMode, type PhotoProgress, type PhotoShot } from "./scene/photo";
 
 // Nothing below depends on the hour: they read the light from its ref each
 // frame. Memoised, so scrubbing the time preview re-renders only the light.
@@ -54,6 +55,16 @@ export interface HubSceneProps {
   onReady: () => void;
   onTierDown: () => void;
   onContextLost: () => void;
+  /** Photo mode: the view, path traced. */
+  photo: boolean;
+  onPhotoProgress: (p: PhotoProgress) => void;
+  onPhotoExit: () => void;
+  /** Filled with what the page may ask of the scene (saving the picture). */
+  api: MutableRefObject<HubSceneApi | null>;
+}
+
+export interface HubSceneApi {
+  snapshot(): Promise<Blob | null>;
 }
 
 /**
@@ -107,8 +118,19 @@ export default function HubScene(p: HubSceneProps) {
       alive.current = false;
     };
   }, []);
-  const interactive = p.goal.kind !== "enter";
+  const interactive = p.goal.kind !== "enter" && !p.photo;
   const focused = p.goal.kind === "overview" ? null : p.goal.id;
+  const post = useRef<PostHandle | null>(null);
+  const shot = useRef<PhotoShot | null>(null);
+  const { api } = p;
+  const onPost = useCallback(
+    (h: PostHandle | null) => {
+      post.current = h;
+      // The photo's own picture when one is shown, else the live frame.
+      api.current = h ? { snapshot: () => (shot.current ? shot.current.snapshot() : h.snapshot()) } : null;
+    },
+    [api]
+  );
 
   return (
     <Canvas
@@ -152,12 +174,22 @@ export default function HubScene(p: HubSceneProps) {
             labels={p.pinLabels}
             badges={p.badges}
             hovered={p.hovered}
-            visible={p.goal.kind === "overview"}
+            visible={p.goal.kind === "overview" && !p.photo}
             onHover={p.onHover}
             onSelect={p.onSelect}
           />
-          <MCameraRig goal={p.goal} returnFrom={p.returnFrom} reducedMotion={p.reducedMotion} onArrive={p.onArrive} />
-          <Look tier={p.tier} />
+          <MCameraRig goal={p.goal} returnFrom={p.returnFrom} reducedMotion={p.reducedMotion} onArrive={p.onArrive} still={p.photo} />
+          <Look tier={p.tier} onPost={onPost} />
+          {p.tier !== "low" && (
+            <PhotoMode
+              active={p.photo}
+              post={post}
+              target={p.tier === "high" ? 512 : 256}
+              onProgress={p.onPhotoProgress}
+              onExit={p.onPhotoExit}
+              shot={shot}
+            />
+          )}
           <FirstFrames onReady={p.onReady} />
           <PerformanceMonitor onDecline={p.onTierDown} />
         </SkyProvider>

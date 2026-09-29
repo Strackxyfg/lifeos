@@ -200,6 +200,8 @@ class SourcePass extends Pass {
 
 export interface PostHandle {
   source: SourcePass;
+  /** The next finished frame, as a PNG — read right after it is drawn. */
+  snapshot(): Promise<Blob | null>;
 }
 
 export function PostPipeline({
@@ -248,8 +250,16 @@ export function PostPipeline({
     seen.current = -1;
   }, [pipeline]);
 
+  const pendingShot = useRef<((b: Blob | null) => void) | null>(null);
+
   useEffect(() => {
-    handle?.({ source: pipeline.source });
+    handle?.({
+      source: pipeline.source,
+      snapshot: () =>
+        new Promise((resolve) => {
+          pendingShot.current = resolve;
+        }),
+    });
     // For inspecting the pipeline from the console while developing.
     if (process.env.NODE_ENV === "development") (window as unknown as { __hubPost?: unknown }).__hubPost = pipeline;
     return () => {
@@ -295,6 +305,12 @@ export function PostPipeline({
       gtao.blendIntensity = 0.85 * (1 - Math.min(1, source.mix));
     }
     pipeline.composer.render(delta);
+    // The drawing buffer is only readable in the task that drew it.
+    const shot = pendingShot.current;
+    if (shot) {
+      pendingShot.current = null;
+      gl.domElement.toBlob((b) => shot(b), "image/png");
+    }
   }, 1);
 
   return null;

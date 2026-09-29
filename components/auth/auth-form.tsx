@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { safeNext } from "@/lib/auth/safe-next";
-import { Loader2, ArrowRight } from "lucide-react";
+import { Loader2, ArrowRight, Building2 } from "lucide-react";
 import { authenticate, type AuthState } from "@/app/actions/auth";
 import { useMessages } from "@/lib/i18n/client";
 
@@ -77,6 +77,16 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
         {state.message && <p className="text-[0.8125rem] text-danger">{state.message}</p>}
         <Submit label={isSignup ? m.auth.createAccount : m.auth.signIn} />
       </form>
+
+      {!isSignup && (
+        <Link
+          href={next ? `/login/sso?next=${encodeURIComponent(next)}` : "/login/sso"}
+          className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-border text-[0.8125rem] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+        >
+          <Building2 className="h-4 w-4" aria-hidden />
+          {m.auth.sso.link}
+        </Link>
+      )}
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         {isSignup ? (

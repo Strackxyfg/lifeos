@@ -4,8 +4,14 @@ import type { Messages } from "@/lib/i18n/dictionaries";
 import { canManageTeam, weekKey } from "./rules";
 import { checkinDraft, encounters, forYou } from "./insights";
 import { getTeamStore, memberId } from "./store";
-import type { DbTeamNote } from "./types";
-import type { TeamListItem, TeamNoteView, TeamPageView } from "./view";
+import type { DbMember, DbTeam, DbTeamNote } from "./types";
+import type { EnterpriseView, TeamListItem, TeamNoteView, TeamPageView } from "./view";
+import type { Role } from "./rules";
+import { isSupabaseConfigured } from "@/lib/db/store";
+import { getEnterpriseStore } from "@/lib/enterprise/store";
+import { challengeName, challengeValue } from "@/lib/enterprise/domains";
+import { serviceProvider } from "@/lib/enterprise/gotrue";
+import { appOrigin } from "@/lib/http/origin";
 
 /**
  * A team's week is counted in UTC, the same for everyone in it: a team spans
@@ -38,7 +44,7 @@ export async function loadTeamPage(userKey: string, teamId: string, m: Messages,
   const week = currentWeek(now);
   const manage = canManageTeam(meRow.role);
 
-  const [notes, { checkins, help }, kudos, pulseTeam, pulseMine, invites, brain] = await Promise.all([
+  const [notes, { checkins, help }, kudos, pulseTeam, pulseMine, invites, brain, enterprise] = await Promise.all([
     store.notes(userKey, teamId),
     store.checkins(userKey, teamId, week),
     store.kudos(userKey, teamId, 30),
@@ -46,6 +52,7 @@ export async function loadTeamPage(userKey: string, teamId: string, m: Messages,
     store.myPulse(userKey, teamId, week),
     manage ? store.invites(userKey, teamId) : Promise.resolve([]),
     loadBrainView(m),
+    manage && team.kind === "company" ? loadEnterprise(userKey, team, members, meRow.role) : Promise.resolve(null),
   ]);
 
   const id = (key: string) => memberId(teamId, key);
@@ -81,6 +88,7 @@ export async function loadTeamPage(userKey: string, teamId: string, m: Messages,
       role: x.role,
       joinedAt: x.joinedAt,
       me: x.userKey === userKey,
+      sso: !!x.viaSso,
     })),
     week,
     notes: notes.map(noteView),
@@ -134,7 +142,67 @@ export async function loadTeamPage(userKey: string, teamId: string, m: Messages,
       .filter((n) => !sharedSources.has(n.id))
       .slice(0, 400)
       .map((n) => ({ id: n.id, title: n.title, category: n.category })),
+    enterprise,
   };
+}
+
+/**
+ * A company's enterprise settings, for its owner and admins. Before
+ * migration 014 it says so; a failure to read them never takes the team's
+ * page down with it.
+ */
+async function loadEnterprise(userKey: string, team: DbTeam, members: DbMember[], role: Role): Promise<EnterpriseView | null> {
+  const origin = await appOrigin();
+  const base = {
+    owner: role === "owner",
+    ssoAvailable: isSupabaseConfigured(),
+    sp: isSupabaseConfigured() ? serviceProvider() : null,
+    scimUrl: `${origin}/api/scim/v2`,
+    loginUrl: `${origin}/login/sso`,
+  };
+  const empty: EnterpriseView = {
+    ...base,
+    available: false,
+    domains: [],
+    sso: null,
+    tokens: [],
+    directory: { total: 0, active: 0, linked: 0 },
+    groups: [],
+    members: { total: members.length, viaSso: 0 },
+  };
+  const store = getEnterpriseStore();
+  try {
+    if (!(await store.supportsEnterprise())) return empty;
+    const o = await store.overview(userKey, team.id);
+    if (!o) return null;
+    const nameOf = new Map(members.map((x) => [x.userKey, x.displayName]));
+    return {
+      ...base,
+      available: true,
+      owner: o.role === "owner",
+      domains: o.domains.map((d) => ({
+        id: d.id,
+        domain: d.domain,
+        verified: !!d.verifiedAt,
+        record: { name: challengeName(d.domain), value: challengeValue(d.token) },
+      })),
+      sso: o.sso ? { providerId: o.sso.providerId, metadataUrl: o.sso.metadataUrl, jit: o.sso.jit, enforce: o.sso.enforce } : null,
+      tokens: o.tokens.map((k) => ({
+        id: k.id,
+        label: k.label,
+        createdAt: k.createdAt,
+        lastUsedAt: k.lastUsedAt,
+        revoked: !!k.revokedAt,
+        createdByName: nameOf.get(k.createdBy) ?? "\u2014",
+      })),
+      directory: o.directory,
+      groups: o.groups.map((g) => ({ id: g.id, displayName: g.displayName, role: g.role, members: g.members })),
+      members: o.members,
+    };
+  } catch (err) {
+    console.error("[team] enterprise settings:", err);
+    return empty;
+  }
 }
 
 /**

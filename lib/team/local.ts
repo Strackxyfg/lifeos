@@ -23,11 +23,12 @@ import {
   type DbTeamNote,
   type TeamStore,
 } from "./types";
+import type { DirectoryEntry, DirectoryGroup, GroupMember, ScimToken, SsoConnection, TeamDomain } from "@/lib/enterprise/types";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const FILE = path.join(DATA_DIR, "teams.json");
 
-interface Shape {
+export interface Shape {
   teams: DbTeam[];
   members: DbMember[];
   invites: DbInvite[];
@@ -36,9 +37,31 @@ interface Shape {
   help: DbHelp[];
   kudos: DbKudos[];
   pulse: DbPulse[];
+  /** Enterprise (lib/enterprise/local.ts): in the same file, so a roster change and its membership are one write. */
+  domains: TeamDomain[];
+  sso: SsoConnection[];
+  scimTokens: ScimToken[];
+  directory: DirectoryEntry[];
+  groups: DirectoryGroup[];
+  groupMembers: GroupMember[];
 }
 
-const EMPTY: Shape = { teams: [], members: [], invites: [], notes: [], checkins: [], help: [], kudos: [], pulse: [] };
+const EMPTY: Shape = {
+  teams: [],
+  members: [],
+  invites: [],
+  notes: [],
+  checkins: [],
+  help: [],
+  kudos: [],
+  pulse: [],
+  domains: [],
+  sso: [],
+  scimTokens: [],
+  directory: [],
+  groups: [],
+  groupMembers: [],
+};
 
 /**
  * The same queue as the brain's file store (`local-adapter.ts`): one chain
@@ -91,6 +114,10 @@ function run<T>(fn: (data: Shape) => T | Promise<T>, write: boolean): Promise<T>
 const read = <T>(fn: (data: Shape) => T) => run(fn, false);
 const mutate = <T>(fn: (data: Shape) => T) => run(fn, true);
 
+/** The file, for the enterprise store: read, or changed and written back, in the one queue. */
+export const readTeamsFile = read;
+export const mutateTeamsFile = mutate;
+
 const now = () => new Date().toISOString();
 
 function memberOf(data: Shape, teamId: string, userKey: string): DbMember | undefined {
@@ -105,7 +132,7 @@ function need(data: Shape, teamId: string, userKey: string): DbMember {
 
 /** Everything that hangs off a team, when the team goes. */
 function dropTeam(data: Shape, teamId: string) {
-  for (const k of ["members", "invites", "notes", "checkins", "help", "kudos", "pulse"] as const) {
+  for (const k of ["members", "invites", "notes", "checkins", "help", "kudos", "pulse", "domains", "sso", "scimTokens", "directory", "groups", "groupMembers"] as const) {
     (data[k] as { teamId: string }[]) = (data[k] as { teamId: string }[]).filter((r) => r.teamId !== teamId);
   }
   data.teams = data.teams.filter((t) => t.id !== teamId);
@@ -252,7 +279,12 @@ export const localTeamStore: TeamStore = {
       if (!target) throw new TeamError("not_found");
       const change = roleChange({ key: me.userKey, role: me.role }, { key: target.userKey, role: target.role }, role);
       if (!change.ok) throw new TeamError(change.reason);
-      for (const c of change.changes) memberOf(data, teamId, c.key)!.role = c.role;
+      for (const c of change.changes) {
+        const row = memberOf(data, teamId, c.key)!;
+        row.role = c.role;
+        // A role chosen by hand is no longer the directory's to take back (as 014 does).
+        row.adminByDirectory = false;
+      }
     });
   },
 
@@ -418,6 +450,43 @@ export const localTeamStore: TeamStore = {
       data.kudos = data.kudos.filter((k) => k.fromKey !== userKey && k.toKey !== userKey);
       data.checkins = data.checkins.filter((c) => c.userKey !== userKey);
       data.notes = data.notes.filter((n) => n.userKey !== userKey);
+      // The company's roster keeps its entry; the link to this account goes.
+      for (const e of data.directory) if (e.userKey === userKey) Object.assign(e, { userKey: null, updatedAt: now() });
     });
+  },
+
+  authoredBy(userKey) {
+    return read((data) => ({
+      teams: data.members
+        .filter((m) => m.userKey === userKey)
+        .map((me) => {
+          const team = data.teams.find((t) => t.id === me.teamId);
+          const nameOf = (key: string) => data.members.find((m) => m.teamId === me.teamId && m.userKey === key)?.displayName ?? "—";
+          return {
+            name: team?.name ?? "",
+            kind: team?.kind ?? "company",
+            role: me.role,
+            displayName: me.displayName,
+            title: me.title,
+            joinedAt: me.joinedAt,
+            notes: data.notes
+              .filter((n) => n.teamId === me.teamId && n.userKey === userKey)
+              .map((n) => ({ title: n.title, detail: n.detail, category: n.category, createdAt: n.createdAt })),
+            checkins: data.checkins
+              .filter((c) => c.teamId === me.teamId && c.userKey === userKey)
+              .map((c) => ({ week: c.week, done: c.done, focus: c.focus, blocker: c.blocker, helpWanted: c.helpWanted, updatedAt: c.updatedAt })),
+            pulse: data.pulse.filter((p) => p.teamId === me.teamId && p.userKey === userKey).map((p) => ({ week: p.week, energy: p.energy, load: p.load })),
+            kudos: data.kudos
+              .filter((k) => k.teamId === me.teamId && (k.fromKey === userKey || k.toKey === userKey))
+              .map((k) => ({
+                direction: k.fromKey === userKey ? ("given" as const) : ("received" as const),
+                with: nameOf(k.fromKey === userKey ? k.toKey : k.fromKey),
+                message: k.message,
+                createdAt: k.createdAt,
+              })),
+          };
+        })
+        .filter((t) => t.name),
+    }));
   },
 };

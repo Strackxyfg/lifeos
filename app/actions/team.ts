@@ -3,7 +3,9 @@
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getAuthenticatedUserKey, getStore } from "@/lib/db/store";
+import { getAuthenticatedUserKey, getStore, isSupabaseConfigured } from "@/lib/db/store";
+import { getEnterpriseStore } from "@/lib/enterprise/store";
+import { deleteSamlProvider } from "@/lib/enterprise/gotrue";
 import { getProfile } from "@/lib/user/profile";
 import { toBrainNotes } from "@/lib/brain/load";
 import { sanitizeConcepts } from "@/lib/brain/concepts";
@@ -105,6 +107,15 @@ export async function deleteTeam(teamId: unknown, confirmName: unknown): Promise
     if (!team) return fail("not_found");
     // Typed back, like deleting all one's data: it cannot be undone.
     if (confirmName.trim() !== team.team.name) return fail("invalid");
+    // An identity provider registered for this team goes with it: Supabase
+    // Auth would otherwise keep sending its people to a team that is gone.
+    if (isSupabaseConfigured()) {
+      const o = await getEnterpriseStore().overview(a.userKey, t.data).catch(() => null);
+      if (o?.role === "owner" && o.sso) {
+        const gone = await deleteSamlProvider(o.sso.providerId);
+        if (!gone.ok) console.error("[team] the SAML provider was not removed:", gone.message);
+      }
+    }
     await store.deleteTeam(a.userKey, t.data);
     refresh();
     return { ok: true, data: null };

@@ -20,6 +20,10 @@ export interface DbMember {
   displayName: string;
   title: string | null;
   joinedAt: string;
+  /** Migration 014: signed in through the team's identity provider when they joined. */
+  viaSso?: boolean;
+  /** Migration 014: an admin because a directory group says so (the directory may take it back). */
+  adminByDirectory?: boolean;
 }
 
 export interface DbInvite {
@@ -107,6 +111,26 @@ export interface NewNote {
   concepts: Concept[];
 }
 
+/**
+ * What a person wrote in their teams, for their export: their own rows
+ * only, and the people they thanked (or who thanked them) by the name the
+ * team knows them by — never by account.
+ */
+export interface AuthoredTeamData {
+  teams: {
+    name: string;
+    kind: TeamKind;
+    role: Role;
+    displayName: string;
+    title: string | null;
+    joinedAt: string;
+    notes: { title: string; detail: string | null; category: BrainCategoryId; createdAt: string }[];
+    checkins: { week: string; done: string; focus: string; blocker: string; helpWanted: boolean; updatedAt: string }[];
+    pulse: { week: string; energy: number; load: number }[];
+    kudos: { direction: "given" | "received"; with: string; message: string; createdAt: string }[];
+  }[];
+}
+
 export interface CheckinInput {
   done: string;
   focus: string;
@@ -159,4 +183,6 @@ export interface TeamStore {
 
   /** Erases the person from every team ("delete all my data"). */
   forget(userKey: string): Promise<void>;
+  /** Everything the person wrote in their teams, for their export. */
+  authoredBy(userKey: string): Promise<AuthoredTeamData>;
 }

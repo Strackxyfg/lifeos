@@ -101,7 +101,8 @@ export interface InviteLike {
   revokedAt: string | null;
 }
 
-export type InviteState = "ok" | "invalid" | "expired" | "used_up" | "full" | "member";
+/** "sso": the team requires single sign-on, and the person is not signed in through it (migration 014). */
+export type InviteState = "ok" | "invalid" | "expired" | "used_up" | "full" | "member" | "sso";
 
 /** Whether an invitation can be used now, by someone who is (or is not) already in. */
 export function inviteState(invite: InviteLike | null, members: number, seats: number, alreadyMember: boolean, now: Date): InviteState {

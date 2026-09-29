@@ -88,7 +88,10 @@ export function TeamMembers({ view }: { view: TeamPageView }) {
                     <p className="truncate text-sm font-medium">
                       {x.name} {x.me && <span className="font-normal text-muted-foreground">({t.manage.you})</span>}
                     </p>
-                    <p className="truncate text-[0.75rem] text-muted-foreground">{[t.roles[x.role], x.title].filter(Boolean).join(" · ")}</p>
+                    <p className="truncate text-[0.75rem] text-muted-foreground">
+                      {[t.roles[x.role], x.title].filter(Boolean).join(" · ")}
+                      {x.sso && <span className="ml-1.5 rounded bg-accent/15 px-1 py-px text-[0.65rem] font-medium text-accent">{t.manage.ssoBadge}</span>}
+                    </p>
                   </div>
                   {acts.length > 0 && (
                     <div className="flex flex-wrap gap-1">

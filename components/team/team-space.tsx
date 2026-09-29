@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, Brain, Building2, CalendarCheck, CloudSun, ShieldCheck, Users, UsersRound } from "lucide-react";
+import { Activity, Brain, Building2, CalendarCheck, CloudSun, KeyRound, ShieldCheck, Users, UsersRound } from "lucide-react";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { plural } from "@/lib/i18n/config";
 import { cn } from "@/lib/utils";
@@ -10,14 +10,17 @@ import type { TeamPageView } from "@/lib/team/view";
 import { TeamBrain, TeamCheckin, TeamFeed, TeamPulse } from "./team-panels";
 import { TeamMembers } from "./team-members";
 import { FirstHire, WelcomePack } from "./first-hire";
+import { TeamEnterprise } from "./team-enterprise";
 
-type Tab = "feed" | "brain" | "checkin" | "pulse" | "members";
+type Tab = "feed" | "brain" | "checkin" | "pulse" | "members" | "enterprise";
 const TABS: { id: Tab; icon: typeof Activity }[] = [
   { id: "feed", icon: Activity },
   { id: "brain", icon: Brain },
   { id: "checkin", icon: CalendarCheck },
   { id: "pulse", icon: CloudSun },
   { id: "members", icon: Users },
+  // A company's owner and admins only (the view carries it only for them).
+  { id: "enterprise", icon: KeyRound },
 ];
 
 /**
@@ -30,16 +33,17 @@ export function TeamSpace({ view }: { view: TeamPageView }) {
   const t = m.team;
   const locale = useLocale();
   const [tab, setTab] = useState<Tab>("feed");
+  const tabs = TABS.filter((x) => x.id !== "enterprise" || view.enterprise);
 
   useEffect(() => {
     const read = () => {
       const h = window.location.hash.slice(1) as Tab;
-      if (TABS.some((x) => x.id === h)) setTab(h);
+      if (TABS.some((x) => x.id === h) && (h !== "enterprise" || view.enterprise)) setTab(h);
     };
     read();
     window.addEventListener("hashchange", read);
     return () => window.removeEventListener("hashchange", read);
-  }, []);
+  }, [view.enterprise]);
 
   const go = (id: Tab) => {
     setTab(id);
@@ -77,7 +81,7 @@ export function TeamSpace({ view }: { view: TeamPageView }) {
       </p>
 
       <nav role="tablist" aria-label={t.title} className="mt-5 flex gap-1 overflow-x-auto border-b border-border [scrollbar-width:none]">
-        {TABS.map(({ id, icon: Icon }) => (
+        {tabs.map(({ id, icon: Icon }) => (
           <button
             key={id}
             role="tab"
@@ -114,6 +118,7 @@ export function TeamSpace({ view }: { view: TeamPageView }) {
         {tab === "checkin" && <TeamCheckin view={view} />}
         {tab === "pulse" && <TeamPulse view={view} />}
         {tab === "members" && <TeamMembers view={view} />}
+        {tab === "enterprise" && <TeamEnterprise view={view} />}
       </section>
     </div>
   );

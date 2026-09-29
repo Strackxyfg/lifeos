@@ -367,6 +367,60 @@ export const supabaseTeamStore: TeamStore = {
     };
   },
 
+  async authoredBy(userKey) {
+    const db = await createRlsClient();
+    // What the person may see is what the policies let them read: their teams, their own rows.
+    const { data: mine, error } = await db.from(T.members).select("*").eq("user_key", userKey);
+    if (error && isMissingTable(`${error.code ?? ""} ${error.message}`)) return { teams: [] };
+    check(error, "my memberships");
+    const memberships = rows<DbMember>(mine);
+    const ids = memberships.map((m) => m.teamId);
+    if (ids.length === 0) return { teams: [] };
+    const [teams, members, notes, checkins, pulse, kudos] = await Promise.all([
+      db.from(T.teams).select("*").in("id", ids),
+      db.from(T.members).select("team_id, user_key, display_name").in("team_id", ids),
+      db.from(T.notes).select("*").in("team_id", ids).eq("user_key", userKey),
+      db.from(T.checkins).select("*").in("team_id", ids).eq("user_key", userKey),
+      db.from(T.pulse).select("*").in("team_id", ids).eq("user_key", userKey),
+      db.from(T.kudos).select("*").in("team_id", ids).or(`from_key.eq.${userKey},to_key.eq.${userKey}`),
+    ]);
+    for (const [r, what] of [[teams, "teams"], [members, "members"], [notes, "notes"], [checkins, "checkins"], [pulse, "pulse"], [kudos, "kudos"]] as const) {
+      check(r.error, `export ${what}`);
+    }
+    const teamById = new Map(rows<DbTeam>(teams.data).map((t) => [t.id, t]));
+    const nameOf = new Map((members.data ?? []).map((m) => [`${m.team_id}:${m.user_key}`, m.display_name as string]));
+    return {
+      teams: memberships
+        .filter((me) => teamById.has(me.teamId))
+        .map((me) => ({
+          name: teamById.get(me.teamId)!.name,
+          kind: teamById.get(me.teamId)!.kind,
+          role: me.role,
+          displayName: me.displayName,
+          title: me.title,
+          joinedAt: me.joinedAt,
+          notes: rows<DbTeamNote>(notes.data)
+            .filter((n) => n.teamId === me.teamId)
+            .map((n) => ({ title: n.title, detail: n.detail, category: n.category, createdAt: n.createdAt })),
+          checkins: rows<DbCheckin>(checkins.data)
+            .filter((c) => c.teamId === me.teamId)
+            .map((c) => ({ week: c.week, done: c.done, focus: c.focus, blocker: c.blocker, helpWanted: c.helpWanted, updatedAt: c.updatedAt })),
+          pulse: rows<DbPulse>(pulse.data).filter((p) => p.teamId === me.teamId).map((p) => ({ week: p.week, energy: p.energy, load: p.load })),
+          kudos: rows<DbKudos>(kudos.data)
+            .filter((k) => k.teamId === me.teamId)
+            .map((k) => {
+              const given = k.fromKey === userKey;
+              return {
+                direction: given ? ("given" as const) : ("received" as const),
+                with: nameOf.get(`${me.teamId}:${given ? k.toKey : k.fromKey}`) ?? "—",
+                message: k.message,
+                createdAt: k.createdAt,
+              };
+            }),
+        })),
+    };
+  },
+
   async forget() {
     const db = await createRlsClient();
     const { error } = await db.rpc("lifeos_forget_me");

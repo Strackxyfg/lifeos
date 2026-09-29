@@ -14,6 +14,8 @@ export interface MemberView {
   role: Role;
   joinedAt: string;
   me: boolean;
+  /** Signed in through the team's identity provider when they joined (migration 014). */
+  sso: boolean;
 }
 
 export interface TeamNoteView {
@@ -64,6 +66,29 @@ export interface InviteView {
   createdByName: string;
 }
 
+/**
+ * A company's enterprise settings, for its owner and admins (migration
+ * 014). No provisioning token appears here — only labels and dates — and
+ * whoever created one is named, never identified.
+ */
+export interface EnterpriseView {
+  /** Migration 014 applied. */
+  available: boolean;
+  owner: boolean;
+  /** Supabase Auth is configured, so SAML can be. */
+  ssoAvailable: boolean;
+  /** What the company's identity provider needs from LifeOS. */
+  sp: { entityId: string; acsUrl: string; metadataUrl: string } | null;
+  scimUrl: string;
+  loginUrl: string;
+  domains: { id: string; domain: string; verified: boolean; record: { name: string; value: string } }[];
+  sso: { providerId: string; metadataUrl: string | null; jit: boolean; enforce: boolean } | null;
+  tokens: { id: string; label: string; createdAt: string; lastUsedAt: string | null; revoked: boolean; createdByName: string }[];
+  directory: { total: number; active: number; linked: number };
+  groups: { id: string; displayName: string; role: "member" | "admin"; members: number }[];
+  members: { total: number; viaSso: number };
+}
+
 export interface TeamPageView {
   team: { id: string; name: string; kind: TeamKind; seats: number; members: number };
   me: { id: string; role: Role; name: string; title: string | null };
@@ -80,6 +105,8 @@ export interface TeamPageView {
   invites: InviteView[];
   /** The viewer's own brain notes not yet shared here — for the share picker. */
   shareable: { id: string; title: string; category: BrainCategoryId }[];
+  /** Company teams, for owners and admins only. */
+  enterprise: EnterpriseView | null;
 }
 
 export interface TeamListItem {

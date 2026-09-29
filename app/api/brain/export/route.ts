@@ -7,6 +7,7 @@ import { toJson, toMarkdown, type MarkdownLabels } from "@/lib/brain/export";
 import { CATEGORY_IDS } from "@/lib/data/brain";
 import { plural } from "@/lib/i18n/config";
 import { relationText } from "@/lib/brain/labels";
+import { loadWorkspaceExport } from "@/lib/export/workspace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,10 @@ export const dynamic = "force-dynamic";
  * or `?format=zip`: both, with every recording and its word-by-word
  * transcript, the Markdown linking each voice note to its audio. The archive
  * is streamed file by file, so a brain with many recordings neither fills
- * memory nor meets a serverless response's size limit.
+ * memory nor meets a serverless response's size limit. JSON and ZIP also
+ * carry the rest of what the person keeps here — profile, projects, deals,
+ * finances, reminders, reviews, and what they wrote in their teams
+ * (lib/export/workspace.ts) — so "complete" is true; Markdown is the brain.
  *
  * API routes are outside the middleware matcher, so this checks identity
  * itself, and with the strict helper: `getUserKey()` would fall back to the
@@ -41,7 +45,9 @@ export async function GET(req: Request) {
   };
 
   if (format === "json") {
-    return new Response(JSON.stringify(toJson(notes, links, now), null, 2), {
+    // "Complete" means complete: the brain, and everything else the person keeps here.
+    const complete = { ...toJson(notes, links, now), workspace: await loadWorkspaceExport(userKey) };
+    return new Response(JSON.stringify(complete, null, 2), {
       headers: {
         ...headers,
         "Content-Type": "application/json; charset=utf-8",
@@ -72,6 +78,7 @@ export async function GET(req: Request) {
     const recordings = (await store.supportsVoice()) ? await store.list(userKey, "audio") : [];
     const folder = locale === "fr" ? "enregistrements" : "recordings";
     const pathOf = new Map(recordings.map((r) => [r.id, `${folder}/${r.id}.${extensionForMime(r.mime)}`]));
+    const workspace = await loadWorkspaceExport(userKey);
     const encoder = new TextEncoder();
     const zip = new ZipWriter();
     const body = new ReadableStream<Uint8Array>({
@@ -80,6 +87,8 @@ export async function GET(req: Request) {
           const emit = (chunks: Uint8Array[]) => chunks.forEach((c) => controller.enqueue(c));
           emit(zip.file(`${stem}.md`, encoder.encode(toMarkdown(notes, links, markdownLabels, now, (id) => pathOf.get(id) ?? null)), now));
           emit(zip.file(`${stem}.json`, encoder.encode(JSON.stringify(toJson(notes, links, now), null, 2)), now));
+          // Profile, projects, deals, finances, reminders, reviews, and what was written in teams.
+          emit(zip.file(locale === "fr" ? "espace-de-travail.json" : "workspace.json", encoder.encode(JSON.stringify(workspace, null, 2)), now));
           // One recording at a time: read, written, released.
           for (const r of recordings) {
             const audio = await store.getAudio(userKey, r.path);

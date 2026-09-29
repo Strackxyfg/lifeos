@@ -220,6 +220,15 @@ export function JoinCard({
       ) : (
         <div className="mt-4 space-y-4">
           <p className="text-sm text-muted-foreground">{t.join.states[state as keyof typeof t.join.states] ?? t.join.states.invalid}</p>
+          {state === "sso" && (
+            <Link
+              href={`/login/sso?next=${encodeURIComponent(`/join/${token}`)}`}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
+            >
+              <Building2 className="h-4 w-4" aria-hidden />
+              {m.auth.sso.link}
+            </Link>
+          )}
           {state === "member" && team && (
             <Link href={`/team/${team.id}`} className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground">
               {t.join.open} <ArrowRight className="h-4 w-4" />

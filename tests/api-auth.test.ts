@@ -23,6 +23,9 @@ const MECHANISMS: { name: string; pattern: RegExp }[] = [
   { name: "Telegram secret", pattern: /\bverifyWebhookSecret\(/ },
   { name: "Stripe signature", pattern: /\bconstructEvent\(/ },
   { name: "cron secret", pattern: /\bverifyCronSecret\(/ },
+  // A company's provisioning token, checked first thing in handleScim (401
+  // without one, or with a revoked one: tests/enterprise-directory.test.ts).
+  { name: "SCIM provisioning token", pattern: /\bhandleScim\(/ },
 ];
 
 /**

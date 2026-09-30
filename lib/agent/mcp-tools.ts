@@ -91,6 +91,12 @@ const SCHEMAS: Record<string, McpTool["inputSchema"]> = {
     properties: { id: str("Id of the note, as shown in brain_read or brain_search.") },
     required: ["id"],
   },
+  "self.read": {
+    type: "object",
+    properties: {
+      section: str("Optional: portrait, checkins, advice or question — read that part only. Default: everything."),
+    },
+  },
   "brain.weave": {
     type: "object",
     properties: {

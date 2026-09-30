@@ -46,8 +46,8 @@ describe("seeding", () => {
   const userKey = "seed@test.dev";
   const data = seedDataset(userKey);
 
-  it("populates every collection except links, dismissals, recordings, reminders, balances and reviews", () => {
-    const personal = new Set(["links", "dismissals", "audio", "reminders", "balances", "reviews"]);
+  it("populates every collection except links, dismissals, recordings, reminders, balances, reviews and the double", () => {
+    const personal = new Set(["links", "dismissals", "audio", "reminders", "balances", "reviews", "traits", "checkins", "advice"]);
     for (const key of Object.keys(EMPTY_DATASET) as (keyof typeof EMPTY_DATASET)[]) {
       // Links and dismissals reference notes by id, which Supabase only assigns
       // on insert; a recording is a file in the person's own storage, a
@@ -63,6 +63,10 @@ describe("seeding", () => {
     expect(data.reminders).toEqual([]);
     expect(data.balances).toEqual([]);
     expect(data.reviews).toEqual([]);
+    // Nor a portrait, a check-in or an advice decision: nobody else's life is sample data.
+    expect(data.traits).toEqual([]);
+    expect(data.checkins).toEqual([]);
+    expect(data.advice).toEqual([]);
   });
 
   it("does not seed links, which could not survive Supabase's fresh ids", () => {

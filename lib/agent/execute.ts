@@ -13,6 +13,15 @@ import { isRelationKind, sourceOf } from "@/lib/brain/relations";
 import { computeSnapshot } from "@/lib/data/workspace";
 import { snapshotFacts } from "@/lib/ai/insights";
 import { dictionaries } from "@/lib/i18n/dictionaries";
+import { loadSelfData } from "@/lib/self/store";
+import { localDayHour, summarize } from "@/lib/self/rhythm";
+import { adviseFor } from "@/lib/self/advice";
+import { followUps, questionsFor } from "@/lib/self/questions";
+import { coverage, portraitOf } from "@/lib/self/portrait";
+import { portraitSection } from "@/lib/self/double";
+import { isBriefSection, selfBrief } from "@/lib/self/agent-view";
+import { fill } from "@/lib/i18n/config";
+import { hash } from "@/lib/brain/text";
 
 import { getCapability } from "./capabilities";
 
@@ -108,9 +117,49 @@ export async function executeCapability(
       // Reads used to answer "Read granted." with nothing attached — the agent
       // was allowed to read the brain and given no way to. They return data now.
       case "brain.read": {
-        const [{ notes, links }, about] = await Promise.all([loadBrain(), loadAbout()]);
+        const [{ notes, links }, about, self] = await Promise.all([loadBrain(), loadAbout(), loadSelfData(store, userKey)]);
         const index = brainIndex(notes, links);
-        return { ok: true, detail: `Read ${notes.length} notes.`, data: about ? `${about}\n\n${index}` : index };
+        // Who they are, as their portrait says — confirmed traits first.
+        const portrait = self.traits.some((t) => t.status !== "rejected") ? portraitSection(portraitOf(self.traits, notes)) : null;
+        const data = [about, portrait, index].filter(Boolean).join("\n\n");
+        return { ok: true, detail: `Read ${notes.length} notes.`, data };
+      }
+
+      case "self.read": {
+        const [{ notes, links }, self] = await Promise.all([loadBrain(), loadSelfData(store, userKey)]);
+        if (!self.available) return { ok: false, code: "not_implemented", error: "The double is not enabled yet (migration 015)." };
+        let reminders: { noteId: string | null; done: boolean; dueAt: string; zone: string; createdAt: string }[] = [];
+        try {
+          reminders = await store.list(userKey, "reminders");
+        } catch (e) {
+          if (!isMissingTable(e)) throw e;
+        }
+        // Their clock: the zone of their latest reminder, the only zone they have given; UTC otherwise, and said so.
+        const zone = [...reminders].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.zone ?? "UTC";
+        const now = new Date();
+        const { day } = localDayHour(now, zone);
+        const rhythm = self.checkins.length ? summarize(self.checkins, day) : null;
+        const advice = adviseFor({ notes, links, reminders, rhythm, traits: self.traits, states: self.advice, now, zone, locale: "en" });
+        const answered = new Set(self.checkins.map((c) => c.questionId).filter((q): q is string => !!q));
+        const first = questionsFor({
+          day,
+          seed: String(hash(`double:${userKey}`)),
+          coverage: coverage(self.traits),
+          answered,
+          followUps: followUps({ notes, links, now, answered }),
+          limit: 1,
+        })[0];
+        const en = dictionaries.en.self;
+        const question = !first
+          ? null
+          : first.kind === "goal"
+            ? fill(en.question.goal, { title: first.title })
+            : first.kind === "tension"
+              ? fill(en.question.tension, { a: first.a.title, b: first.b.title })
+              : (en.questions as Record<string, string>)[first.id] ?? null;
+        const section = typeof payload.section === "string" ? payload.section.trim().toLowerCase() : "";
+        const data = selfBrief({ portrait: portraitOf(self.traits, notes), rhythm, advice, question, zone, only: isBriefSection(section) ? section : undefined });
+        return { ok: true, detail: `Read the portrait (${self.traits.filter((t) => t.status !== "rejected").length} traits) and ${advice.length} suggestions.`, data };
       }
 
       case "brain.related": {

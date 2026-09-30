@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { AnimatePresence } from "framer-motion";
 import { ArrowUp, AudioLines, Brain, History, Loader2, Mic, Pause, Play, Search, Sparkles, Square, X } from "lucide-react";
@@ -111,6 +111,9 @@ export function SecondBrain({
   voiceEnabled,
   initialNoteId,
   initialDump,
+  initialDecide,
+  initialRegion,
+  double,
   nowIso,
   seed,
 }: {
@@ -132,6 +135,12 @@ export function SecondBrain({
   initialNoteId?: string | null;
   /** Opens on the brain dump — from the command menu. */
   initialDump?: boolean;
+  /** Opens on a tension's decision — from the double's advice. */
+  initialDecide?: string | null;
+  /** Opens on a region — from the double's advice. */
+  initialRegion?: BrainCategoryId | null;
+  /** The double's card, at the top of the overview. */
+  double?: ReactNode;
   /** Server time, so server and client compute the same focus and resurfacing. */
   nowIso: string;
   /** Per-user salt for today's resurfaced note. */
@@ -148,7 +157,11 @@ export function SecondBrain({
       ? { kind: "dump", text: "" }
       : initialNoteId && initialNotes.some((n) => n.id === initialNoteId)
         ? { kind: "note", id: initialNoteId }
-        : { kind: "overview" }
+        : initialDecide && initialLinks.some((l) => l.id === initialDecide && l.kind === "tension")
+          ? { kind: "decide", linkId: initialDecide }
+          : initialRegion
+            ? { kind: "region", region: initialRegion }
+            : { kind: "overview" }
   );
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
@@ -1327,6 +1340,7 @@ export function SecondBrain({
                 onReview={review}
                 onWeave={organise}
                 onDecide={decide}
+                double={double}
                 review={
                   memory ? (
                     <ReviewCard

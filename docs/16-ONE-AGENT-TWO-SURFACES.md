@@ -119,6 +119,14 @@ Three distinct mechanisms, worth not confusing:
 it looks, rather than guessing; ask it about a note and it sees what that note
 advances, supports or contradicts, and why.
 
+**Being your double.** `self_read` gives it what your double knows in the app:
+your portrait (traits you confirmed, and those you have not yet, marked so),
+your check-ins as figures with how many they rest on, what your double would
+raise now (a step that names a day with no reminder, a goal with no next step,
+a tension to decide…), and today's question. `section` narrows it to one part.
+It is a read: safe tier, no quota, and the portrait is only ever changed by you
+in the app. `brain_read` carries the portrait too. Needs migration 015.
+
 **Writing back.** When Hermes calls `brain_write`, `brain_link`, `task_write`
 or `deal_write`, the result appears in the LifeOS UI. The second brain becomes
 shared memory you can *see* and edit, not just an opaque file on a VPS. A

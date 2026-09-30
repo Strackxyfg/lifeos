@@ -242,7 +242,13 @@ describe("quota", () => {
   it("allows the limit per window, per person and per kind, then says when to retry", () => {
     let t = 0;
     const q = createQuota(
-      { transcribe: { limit: 2, windowMs: 1000 }, atomize: { limit: 1, windowMs: 1000 }, decide: { limit: 1, windowMs: 1000 } },
+      {
+        transcribe: { limit: 2, windowMs: 1000 },
+        atomize: { limit: 1, windowMs: 1000 },
+        decide: { limit: 1, windowMs: 1000 },
+        portrait: { limit: 1, windowMs: 1000 },
+        double: { limit: 1, windowMs: 1000 },
+      },
       () => t
     );
     expect(q.take("ana", "transcribe").ok).toBe(true);

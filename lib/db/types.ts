@@ -4,6 +4,7 @@ import type { Concept } from "@/lib/brain/concepts";
 import type { LinkOrigin, RelationKind } from "@/lib/brain/relations";
 import type { AudioWord } from "@/lib/voice/align";
 import type { Repeat } from "@/lib/reminders/schedule";
+import type { Dimension, Evidence, TraitOrigin, TraitStatus } from "@/lib/self/portrait";
 
 /**
  * Persisted entities. `userKey` scopes every row to its owner — it holds the
@@ -165,6 +166,44 @@ export interface DbReminder extends Owned {
   dealId?: string | null;
 }
 
+/**
+ * Migration 015: a trait of the person's portrait — what their double has
+ * understood of them, resting on their own words (see `lib/self/portrait.ts`).
+ */
+export interface DbTrait extends Owned {
+  dimension: Dimension;
+  /** One sentence, addressed to them ("Vous travaillez mieux le matin"). */
+  statement: string;
+  /** The passages of their notes it rests on. */
+  evidence: Evidence[];
+  status: TraitStatus;
+  origin: TraitOrigin;
+  /** The statement's meaningful words, normalised: how the same trait is recognised. */
+  key: string;
+  updatedAt: string;
+}
+
+/** Migration 015: how they were (mood, energy, 1–5) and the day's question they answered. */
+export interface DbCheckin extends Owned {
+  at: string;
+  /** Their own calendar day (YYYY-MM-DD) and hour when they checked in — fixed then. */
+  day: string;
+  hour: number;
+  mood: number | null;
+  energy: number | null;
+  questionId: string | null;
+  /** The note the answer became; cleared if that note is deleted. */
+  noteId: string | null;
+}
+
+/** Migration 015: what the person did with a piece of advice. */
+export interface DbAdviceState extends Owned {
+  adviceKey: string;
+  status: "dismissed" | "snoozed" | "done";
+  until: string | null;
+  updatedAt: string;
+}
+
 export interface Dataset {
   projects: DbProject[];
   deals: DbDeal[];
@@ -177,6 +216,9 @@ export interface Dataset {
   reminders: DbReminder[];
   balances: DbBalance[];
   reviews: DbReview[];
+  traits: DbTrait[];
+  checkins: DbCheckin[];
+  advice: DbAdviceState[];
 }
 
 export type Collection = keyof Dataset;
@@ -231,6 +273,8 @@ export interface Store {
    * deals' next moments and reminders about them, weekly reviews.
    */
   supportsFounder(): Promise<boolean>;
+  /** Whether migration 015 has been applied: the double — portrait, check-ins, advice. */
+  supportsSelf(): Promise<boolean>;
   /** One row by id, if it belongs to the caller. */
   get<C extends Collection>(userKey: string, collection: C, id: string): Promise<Dataset[C][number] | null>;
   /** Stores a recording in the person's own folder; returns the path to keep. `file` is "<id>.<ext>". */

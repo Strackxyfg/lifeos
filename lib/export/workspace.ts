@@ -8,14 +8,15 @@ import type { AuthoredTeamData } from "@/lib/team/types";
 /**
  * Everything a person keeps in LifeOS besides their brain — for the export
  * that says "everything": their profile, projects, deals, transactions,
- * tasks, reminders, balances and weekly reviews, and what they wrote in
- * their teams. Rows lose the account key (it is theirs, and says nothing).
+ * tasks, reminders, balances and weekly reviews, their double (portrait,
+ * check-ins, what they did with its advice), and what they wrote in their
+ * teams. Rows lose the account key (it is theirs, and says nothing).
  * A table a pending migration has not created yet is simply empty; any
  * other failure fails the export rather than handing over less than it
  * claims.
  */
 
-const COLLECTIONS = ["projects", "deals", "transactions", "tasks", "reminders", "balances", "reviews"] as const satisfies readonly Collection[];
+const COLLECTIONS = ["projects", "deals", "transactions", "tasks", "reminders", "balances", "reviews", "traits", "checkins", "advice"] as const satisfies readonly Collection[];
 type Exported = (typeof COLLECTIONS)[number];
 
 export interface WorkspaceExport {

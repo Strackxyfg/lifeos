@@ -9,6 +9,8 @@ import { canonicalPair, pairKey, sameLink, toBrainLink, type BrainLink } from "@
 import { RELATION_KINDS, isUnreviewed, sourceOf } from "@/lib/brain/relations";
 import type { DbBrainItem } from "@/lib/db/types";
 import { releaseRecording } from "@/lib/brain/recordings";
+import { reconcilePortrait } from "@/lib/self/store";
+import { noteText } from "@/lib/self/portrait";
 
 /**
  * Every mutation of the second brain.
@@ -108,7 +110,14 @@ export async function updateNote(id: unknown, patch: unknown): Promise<BrainResu
   }
 
   try {
-    await getStore().update(await getUserKey(), "brain", pid.data, update);
+    const store = getStore();
+    const userKey = await getUserKey();
+    await store.update(userKey, "brain", pid.data, update);
+    // Rewritten: the portrait keeps only the quotes the note still holds.
+    if (update.title !== undefined || update.detail !== undefined) {
+      const note = await store.get(userKey, "brain", pid.data);
+      if (note) await reconcilePortrait(store, userKey, note.id, noteText({ title: note.title ?? "", detail: note.detail }));
+    }
     refresh();
     return done(null);
   } catch (e) {
@@ -116,7 +125,10 @@ export async function updateNote(id: unknown, patch: unknown): Promise<BrainResu
   }
 }
 
-/** Deletes a note. Its links go with it — the database cascades, the file store mirrors that. */
+/**
+ * Deletes a note. Its links go with it — the database cascades, the file
+ * store mirrors that — and so do the quotes the portrait took from it.
+ */
 export async function deleteNote(id: unknown): Promise<BrainResult> {
   const pid = idSchema.safeParse(id);
   if (!pid.success) return fail("invalid", "Invalid note.");
@@ -125,6 +137,7 @@ export async function deleteNote(id: unknown): Promise<BrainResult> {
     const userKey = await getUserKey();
     const note = await store.get(userKey, "brain", pid.data);
     await store.remove(userKey, "brain", pid.data);
+    await reconcilePortrait(store, userKey, pid.data, null);
     // The last note said in a recording takes the recording with it: a voice
     // the person deleted is not kept somewhere they cannot see.
     if (note?.audioId) await releaseRecording(store, userKey, note.audioId).catch((e) => console.error("[voice] release failed", e));

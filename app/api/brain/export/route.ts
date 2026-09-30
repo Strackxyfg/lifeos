@@ -8,6 +8,9 @@ import { CATEGORY_IDS } from "@/lib/data/brain";
 import { plural } from "@/lib/i18n/config";
 import { relationText } from "@/lib/brain/labels";
 import { loadWorkspaceExport } from "@/lib/export/workspace";
+import { loadSelfData } from "@/lib/self/store";
+import { portraitOf } from "@/lib/self/portrait";
+import { portraitMarkdown } from "@/lib/self/export";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,8 +22,10 @@ export const dynamic = "force-dynamic";
  * is streamed file by file, so a brain with many recordings neither fills
  * memory nor meets a serverless response's size limit. JSON and ZIP also
  * carry the rest of what the person keeps here — profile, projects, deals,
- * finances, reminders, reviews, and what they wrote in their teams
+ * finances, reminders, reviews, their double (portrait, check-ins, what they
+ * did with its advice), and what they wrote in their teams
  * (lib/export/workspace.ts) — so "complete" is true; Markdown is the brain.
+ * The ZIP adds the portrait as a document of its own (`portrait.md`).
  *
  * API routes are outside the middleware matcher, so this checks identity
  * itself, and with the strict helper: `getUserKey()` would fall back to the
@@ -79,6 +84,23 @@ export async function GET(req: Request) {
     const folder = locale === "fr" ? "enregistrements" : "recordings";
     const pathOf = new Map(recordings.map((r) => [r.id, `${folder}/${r.id}.${extensionForMime(r.mime)}`]));
     const workspace = await loadWorkspaceExport(userKey);
+    const self = await loadSelfData(store, userKey);
+    const portrait = self.available
+      ? portraitMarkdown(
+          portraitOf(self.traits, notes),
+          {
+            title: m.self.portrait.title,
+            exportedOn: locale === "fr" ? "Exporté le" : "Exported on",
+            dimension: m.self.dimensions,
+            confirmed: m.self.portrait.confirmed,
+            proposed: m.self.portrait.proposed,
+            yours: m.self.portrait.yours,
+            empty: m.self.portrait.none,
+          },
+          now,
+          locale === "fr" ? "fr" : "en"
+        )
+      : null;
     const encoder = new TextEncoder();
     const zip = new ZipWriter();
     const body = new ReadableStream<Uint8Array>({
@@ -89,6 +111,7 @@ export async function GET(req: Request) {
           emit(zip.file(`${stem}.json`, encoder.encode(JSON.stringify(toJson(notes, links, now), null, 2)), now));
           // Profile, projects, deals, finances, reminders, reviews, and what was written in teams.
           emit(zip.file(locale === "fr" ? "espace-de-travail.json" : "workspace.json", encoder.encode(JSON.stringify(workspace, null, 2)), now));
+          if (portrait) emit(zip.file("portrait.md", encoder.encode(portrait), now));
           // One recording at a time: read, written, released.
           for (const r of recordings) {
             const audio = await store.getAudio(userKey, r.path);

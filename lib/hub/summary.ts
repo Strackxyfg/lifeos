@@ -14,6 +14,8 @@ export interface HubFacts {
   tensions: number;
   /** Connections the engine proposed, not yet looked at. */
   unreviewed: number;
+  /** Observations the double proposed about the person, waiting for their word (migration 015). */
+  toConfirm: number;
   tasksOpen: number;
   tasksDone: number;
   /** Null until reminders are available (migration 011). */
@@ -28,7 +30,7 @@ export interface HubFacts {
 /** The count a building's marker carries: what asks for attention there. */
 export function hubBadges(f: HubFacts): Partial<Record<DistrictId, number>> {
   return {
-    brain: f.reviewDue + f.tensions,
+    brain: f.reviewDue + f.tensions + f.toConfirm,
     today: f.reminders ? f.reminders.overdue + f.reminders.today : 0,
     projects: f.projects.blocked,
     team: f.team?.waiting ?? 0,
@@ -45,6 +47,7 @@ export interface HubStat {
     | "reviewDue"
     | "tensions"
     | "unreviewed"
+    | "toConfirm"
     | "tasksOpen"
     | "tasksDone"
     | "remindersOverdue"
@@ -74,7 +77,8 @@ export function hubStats(id: DistrictId, f: HubFacts): HubStat[] {
     case "brain":
       return [
         { key: "notes", value: f.notes, format: "count" },
-        { key: "links", value: f.links, format: "count" },
+        // What the double waits to hear from them, when it waits — else the connections.
+        f.toConfirm > 0 ? { key: "toConfirm", value: f.toConfirm, format: "count", alert: true } : { key: "links", value: f.links, format: "count" },
         { key: "reviewDue", value: f.reviewDue, format: "count", alert: f.reviewDue > 0 },
         { key: "tensions", value: f.tensions, format: "count", alert: f.tensions > 0 },
       ];

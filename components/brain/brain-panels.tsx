@@ -102,6 +102,7 @@ export function Overview({
   onWeave,
   onDecide,
   review,
+  double,
 }: {
   notes: BrainNote[];
   links: BrainLink[];
@@ -111,6 +112,8 @@ export function Overview({
   onDecide: (linkId: string) => void;
   /** Today's review, when the brain can remember answers; it replaces the resurfaced note. */
   review?: ReactNode;
+  /** The double's card: today's question, what waits for the person's word. */
+  double?: ReactNode;
   themes: Theme[];
   mindmap: MindMap;
   now: Date;
@@ -158,6 +161,8 @@ export function Overview({
           </Link>
         </section>
       )}
+
+      {double}
 
       <section aria-labelledby="focus-title">
         <h2 id="focus-title" className="flex items-center gap-2 text-[0.78rem] font-medium text-accent">

@@ -176,10 +176,14 @@ class LocalStore implements Store {
           set[dependent] = rows.filter((l) => l.fromId !== id && l.toId !== id) as unknown as { id: string }[];
         }
       }
-      // A reminder outlives the note it was about (ON DELETE SET NULL).
+      // A reminder outlives the note it was about (ON DELETE SET NULL), and
+      // so does a check-in the note was the answer of.
       if (collection === "brain") {
         for (const r of set.reminders as unknown as { noteId?: string | null }[]) {
           if (r.noteId === id) r.noteId = null;
+        }
+        for (const c of set.checkins as unknown as { noteId?: string | null }[]) {
+          if (c.noteId === id) c.noteId = null;
         }
       }
       // And the deal whose next action it was.
@@ -243,6 +247,10 @@ class LocalStore implements Store {
   }
 
   async supportsFounder(): Promise<boolean> {
+    return true;
+  }
+
+  async supportsSelf(): Promise<boolean> {
     return true;
   }
 

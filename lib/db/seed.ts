@@ -94,6 +94,10 @@ export function seedDataset(userKey: string): Dataset {
     // Nor are a bank balance or a week's review: figures and decisions are the person's own.
     balances: [],
     reviews: [],
+    // A portrait of someone, how they felt, what they did with advice: never sample data.
+    traits: [],
+    checkins: [],
+    advice: [],
   };
 }
 
@@ -116,4 +120,7 @@ export const EMPTY_DATASET: Dataset = {
   reminders: [],
   balances: [],
   reviews: [],
+  traits: [],
+  checkins: [],
+  advice: [],
 };

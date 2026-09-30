@@ -35,6 +35,7 @@ export const CAPABILITIES: Capability[] = [
   { id: "analyze", tier: "safe", label: "Analyse and summarise", labelFr: "Analyser et résumer", rationale: "Computation only." },
   { id: "brain.search", tier: "safe", label: "Search your second brain", labelFr: "Chercher dans votre second cerveau", rationale: "No side effects." },
   { id: "brain.related", tier: "safe", label: "See what a note is connected to", labelFr: "Voir à quoi une note est reliée", rationale: "No side effects." },
+  { id: "self.read", tier: "safe", label: "Read your portrait and what your double suggests", labelFr: "Lire votre portrait et ce que votre double suggère", rationale: "No side effects; the portrait is only ever changed by you." },
 
   // ── Internal writes ────────────────────────────────────────────────
   { id: "brain.write", tier: "low", label: "Capture notes and ideas", labelFr: "Capturer notes et idées", rationale: "Private to LifeOS, reversible." },

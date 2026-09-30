@@ -95,12 +95,14 @@ export const loadWorkspace = cache(async function loadWorkspace(): Promise<Datas
     loadFounderCollection("reviews"),
   ]);
   // Recordings are not part of a page's workspace: each carries its whole
-  // transcript, and one is read by id when a note is played.
-  return { projects, deals, transactions, tasks, brain, links, dismissals, audio: [], reminders, balances, reviews };
+  // transcript, and one is read by id when a note is played. Nor is the
+  // double (portrait, check-ins, advice): only its own pages read it
+  // (`lib/self/load.ts`), not every page's layout.
+  return { projects, deals, transactions, tasks, brain, links, dismissals, audio: [], reminders, balances, reviews, traits: [], checkins: [], advice: [] };
 });
 
 /** Single collection. Served from the cached full read to avoid a second query. */
-export async function loadCollection<C extends Exclude<keyof Dataset, "audio">>(collection: C): Promise<Dataset[C]> {
+export async function loadCollection<C extends Exclude<keyof Dataset, "audio" | "traits" | "checkins" | "advice">>(collection: C): Promise<Dataset[C]> {
   const data = await loadWorkspace();
   return data[collection];
 }

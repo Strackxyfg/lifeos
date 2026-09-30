@@ -34,7 +34,7 @@ import OpenAI from "openai";
 
 export type Provider = "groq" | "cerebras" | "mistral";
 export type Tier = "strong" | "balanced" | "fast";
-export type AITask = "chat" | "classify" | "concepts" | "judge" | "steps" | "insight" | "atomize" | "decide";
+export type AITask = "chat" | "classify" | "concepts" | "judge" | "steps" | "insight" | "atomize" | "decide" | "portrait";
 
 export interface Route {
   /** "provider:model" — unique. */
@@ -149,6 +149,7 @@ export const TASK_TIERS: Record<AITask, Tier[]> = {
   insight: ["balanced", "strong", "fast"],
   atomize: ["balanced", "strong", "fast"],
   decide: ["balanced", "strong", "fast"],
+  portrait: ["balanced", "strong", "fast"],
 };
 
 const unique = <T>(xs: T[]) => [...new Set(xs)];

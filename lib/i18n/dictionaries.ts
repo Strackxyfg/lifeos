@@ -1,4 +1,5 @@
 import type { Locale } from "./config";
+import { selfEn, selfFr } from "./self";
 
 /** Text for a seeded Second-Brain item. */
 export type ItemText = { title: string; detail?: string };
@@ -330,6 +331,7 @@ const en = {
       reviewDue: "To review today",
       tensions: "Tensions to decide",
       unreviewed: "Connections to check",
+      toConfirm: "About you, to confirm",
       tasksOpen: "Open tasks",
       tasksDone: "Tasks done",
       remindersOverdue: "Overdue reminders",
@@ -1613,6 +1615,8 @@ const en = {
     failed: "The model stopped answering. Nothing was lost — try again in a moment.",
     sources: "Based on",
   },
+  // The double's words live in their own module (`self.ts`).
+  self: selfEn,
 };
 
 export type Messages = typeof en;
@@ -1907,6 +1911,7 @@ const fr: Messages = {
       reviewDue: "À revoir aujourd'hui",
       tensions: "Tensions à trancher",
       unreviewed: "Connexions à vérifier",
+      toConfirm: "Sur vous, à confirmer",
       tasksOpen: "Tâches ouvertes",
       tasksDone: "Tâches faites",
       remindersOverdue: "Rappels en retard",
@@ -3187,6 +3192,7 @@ const fr: Messages = {
     failed: "Le modèle a cessé de répondre. Rien n'est perdu — réessayez dans un instant.",
     sources: "D'après",
   },
+  self: selfFr,
 };
 
 export const dictionaries: Record<Locale, Messages> = { en, fr };

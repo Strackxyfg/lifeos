@@ -32,6 +32,9 @@ const TABLE: Record<Collection, string> = {
   reminders: "lifeos_reminders",
   balances: "lifeos_balances",
   reviews: "lifeos_reviews",
+  traits: "lifeos_self_traits",
+  checkins: "lifeos_self_checkins",
+  advice: "lifeos_self_advice",
 };
 
 /** One row per person, keyed by `user_key` (migration 007). */
@@ -43,6 +46,9 @@ const PROFILE_TABLE = "lifeos_profiles";
  * change leaves orphans behind.
  */
 const ERASE_ORDER: string[] = [
+  TABLE.advice,
+  TABLE.checkins,
+  TABLE.traits,
   TABLE.reminders,
   TABLE.reviews,
   TABLE.balances,
@@ -98,6 +104,21 @@ class SupabaseStore implements Store {
   private voice: { value: boolean; until: number } | null = null;
   private reminders: { value: boolean; until: number } | null = null;
   private founder: { value: boolean; until: number } | null = null;
+  private self: { value: boolean; until: number } | null = null;
+
+  /** Whether migration 015 is applied: the double's three tables. */
+  async supportsSelf(): Promise<boolean> {
+    if (this.self && Date.now() < this.self.until) return this.self.value;
+    const db = await client();
+    const probes = await Promise.all([
+      db.from(TABLE.traits).select("id, evidence, key").limit(1),
+      db.from(TABLE.checkins).select("id, day, hour").limit(1),
+      db.from(TABLE.advice).select("id, advice_key").limit(1),
+    ]);
+    const value = probes.every((p) => !p.error);
+    this.self = { value, until: value ? Number.POSITIVE_INFINITY : Date.now() + 60_000 };
+    return value;
+  }
 
   /** Whether migration 013 is applied: every table and column it adds. */
   async supportsFounder(): Promise<boolean> {

@@ -1,6 +1,6 @@
 # LifeOS — description produit
 
-> État au 29 septembre 2026, **établi depuis le code**. Le produit a pivoté :
+> État au 30 septembre 2026, **établi depuis le code**. Le produit a pivoté :
 > ce n'est plus un générateur d'espaces Notion, c'est un second cerveau
 > souverain avec un agent IA. Notion devient un export facultatif. Depuis, le
 > cerveau se relie lui-même (section 2), se laisse vider à la voix (section 1),
@@ -13,6 +13,9 @@
 > du fondateur — trésorerie, relances, revue du vendredi, rapport aux
 > investisseurs (section 11) — et ce qu'une grande entreprise exige : connexion
 > unique, provisionnement automatique, accord de traitement RGPD (section 9).
+> Et maintenant **votre double** (section 1 bis) : un portrait de vous, tiré de
+> vos propres mots et validé par vous, une question par jour, vos rythmes, des
+> conseils qui mènent à une action, et une conversation avec lui.
 
 **Légende** — ✅ fonctionnel · 🟡 partiel · ⛔ pas construit
 
@@ -74,6 +77,70 @@ espace d'équipe, et les **cercles de fondateurs** qui avancent entre pairs.
   sur les connexions et les sujets, nommées par leurs concepts), avec les
   **idées maîtresses** (PageRank) et les **ponts** entre constellations.
 - **Export complet** en Markdown (liens Obsidian) et en JSON.
+
+## 1 bis. Votre double — le cerveau qui vous connaît ✅
+
+Le second cerveau garde ce que vous pensez ; **votre double** comprend qui vous
+êtes, et s'en sert pour vous aider. Onglet « Votre double » de la section
+second cerveau (`/brain/double`), et une carte en tête de la vue d'ensemble.
+
+- **Le portrait.** Huit dimensions : ce qui compte pour vous, ce qui vous
+  anime, vos forces, ce qui vous freine, votre façon de fonctionner, vos
+  principes, les personnes qui comptent, ce qui vous passionne. Le double lit
+  vos notes et propose des traits (« Vous travaillez mieux le matin »), chacun
+  appuyé sur **vos mots, cités** : chaque citation est vérifiée par le code,
+  mot pour mot, dans la note qu'elle cite — pas de citation, pas de trait.
+  Vous confirmez (« C'est moi »), corrigez (le trait devient le vôtre) ou
+  rejetez (« Pas moi ») : **un trait rejeté n'est jamais reproposé**, même
+  reformulé. Ne compte jamais comme preuve une note écrite par un modèle (une
+  action proposée, une suggestion du double), même gardée. Une note supprimée
+  ou réécrite retire les citations qu'elle ne contient plus. Aucun diagnostic,
+  aucune déduction sur la santé, la religion, les opinions, l'orientation ou
+  l'origine ; en français, jamais d'accord qui suppose votre genre (« vous
+  êtes intéressé » est écarté, « l'entrepreneuriat vous intéresse » gardé).
+- **La question du jour.** Une question par jour, posée là où le double vous
+  connaît le moins (48 questions, 6 par dimension, en français et en anglais,
+  jamais genrées), ou sur ce que vous vivez : un objectif sans prochaine action
+  depuis une semaine (« Qu'est-ce qui vous retient d'avancer sur… ? »), une
+  tension encore ouverte. Réponse écrite ou dictée ; elle devient une note,
+  rangée, avec sa question à côté (et reliée à l'objectif ou à la tension
+  concernés) ; le double la lit aussitôt et montre **ce qu'il en retient**, à
+  confirmer. Jamais la même question deux fois ; la même toute la journée.
+- **Le point du jour.** Humeur et énergie, de 1 à 5, en deux touches ; jours
+  d'affilée. **Vos rythmes** : moyennes des 7 derniers jours et tendance
+  (seulement si chaque semaine compte au moins 4 relevés), et les différences
+  selon le moment de la journée ou le jour de la semaine — dites seulement si
+  chaque groupe compte au moins 3 relevés, avec un écart d'au moins 0,7 point
+  et un effet large (d de Cohen ≥ 0,8). Chaque chiffre dit sur combien de
+  relevés il repose ; rien n'est dit des causes. Courbe sur 30 jours
+  (couleurs vérifiées pour les daltonismes et les deux thèmes, tableau pour
+  les lecteurs d'écran).
+- **Ce que votre double vous suggère.** Neuf détecteurs déterministes, testés,
+  lus dans vos notes, connexions, rappels et relevés : une action qui nomme un
+  jour à venir sans rappel (« Appeler Marc vendredi » → rappel vendredi, à
+  l'heure dite ou à 9 h), une action dont le jour est passé, un objectif sans
+  prochaine action (des actions proposées puis ajoutées **sur place**), une
+  énergie basse sur la semaine (« ce qui peut attendre » — pas un diagnostic),
+  une tension à trancher, une action qui attend depuis trois semaines, des
+  observations à confirmer, une surcharge, une idée isolée. Chacun a son
+  action en un clic ; « pas pertinent » l'écarte pour de bon, « plus tard »
+  pour une semaine. Une heure n'est jamais affichée si vous ne l'avez pas dite.
+- **Parler à votre double.** Il répond d'après votre portrait (confirmé, et le
+  reste présenté comme hypothèse), vos relevés, vos objectifs et les notes
+  liées à la question, en citant ce sur quoi il s'appuie ; environ 150 mots ;
+  « vous », jamais « tu ». Il peut proposer jusqu'à trois actions — une
+  prochaine action (reliée à l'objectif qu'elle sert), un rappel (« dimanche
+  soir » lu par les mêmes règles que tous les rappels ; un moment illisible
+  est refusé, jamais deviné), une note — que vous acceptez d'un clic ; rien
+  n'est fait sans vous. Il n'est ni médecin ni thérapeute, et le dit.
+- **Sur l'île**, le bâtiment du second cerveau compte aussi ce que le double
+  attend de vous (« Sur vous, à confirmer »). **L'agent** lit le double
+  (`self_read`) et le portrait (dans `brain_read`) : sur Telegram, c'est le
+  même double.
+- **Privé** : exporté avec vos données (un `portrait.md` lisible dans le ZIP),
+  effacé avec elles ; sécurité ligne par ligne dans la base (migration 015,
+  validée sur Postgres : 36 vérifications, idempotence comprise). Sans la migration, la page le dit
+  et le reste du cerveau fonctionne.
 
 ## 2. Les connexions — ce qui fait la différence ✅
 
@@ -209,8 +276,9 @@ journal d'audit.
 ## 7. L'île — le hub ✅
 
 LifeOS s'ouvre sur une île en 3D, comme le hub d'un jeu : chaque bâtiment est
-une partie du produit — la rotonde du **second cerveau** (sous sa coupole, un
-cœur de lumière en forme de cerveau), le beffroi du **tableau de bord** (son
+une partie du produit — la rotonde du **second cerveau** (sous sa coupole de
+verre, un **cerveau de cristal** éclairé de l'intérieur — hémisphères,
+circonvolutions, cervelet —, allumé le jour aussi, plus fort la nuit), le beffroi du **tableau de bord** (son
 horloge donne l'heure), le café de l'**assistant**, l'atelier et l'antenne de
 l'**agent**, le studio et sa grue des **projets**, la tour des **finances**, les
 pavillons reliés des **relations**, le club de l'**équipe**, le phare des
@@ -249,8 +317,8 @@ réelle ; l'image passe par un étalonnage de photographe (courbe AgX, balance d
 blancs selon l'heure, légère vignette et grain), occlusion ambiante et halo des
 lumières sur un appareil capable. Les bâtiments sont creux : à travers les
 vitres, on voit les **intérieurs meublés** (tables et chaises du café, bureaux
-de l'atelier et de la tour, salle du club), chacun éclairé **de sa couleur** la
-nuit. Des **passants** marchent (le pied d'appui reste au sol), s'assoient et
+de l'atelier et de la tour, salle du club), chacun éclairé **de sa couleur** —
+allumé le jour, plus faible que la nuit, comme de vraies pièces. Des **passants** marchent (le pied d'appui reste au sol), s'assoient et
 discutent ; les goélands tournent, les arbres bougent au vent, la lentille du
 **phare** tourne avec son faisceau.
 
@@ -372,8 +440,10 @@ sur votre ordinateur** — et qui ne peut rien faire de dangereux sans vous.
   d'audit non modifiable. Il rédige, vous envoyez.
 - **Où lui parler** : dans l'app et sur Telegram. En mode relais
   (`AGENT_BACKEND=hermes`), c'est le même agent Hermes, avec la même mémoire.
-- **Ce qu'il lit** : le second cerveau (avec votre profil) et le résumé de
-  l'activité, via MCP.
+- **Ce qu'il lit** : le second cerveau (avec votre profil et votre portrait),
+  votre double — portrait, relevés, ce qu'il suggérerait, la question du jour
+  (`self_read`, lecture seule, sans quota) — et le résumé de l'activité, via
+  MCP.
 
 | | Aujourd'hui |
 | --- | --- |
@@ -420,8 +490,10 @@ refuse au lieu de simuler.
   chaque enregistrement et sa transcription mot à mot (le Markdown relie chaque
   note vocale à son audio et à son passage). Le JSON et le ZIP contiennent
   aussi **tout le reste** : profil, projets, affaires, transactions, tâches,
-  rappels, soldes, revues, et ce que vous avez écrit dans vos équipes (les
-  collègues y sont nommés, jamais identifiés). Le Markdown reste le cerveau.
+  rappels, soldes, revues, votre double (portrait, relevés, ce que vous avez
+  fait de ses conseils ; le ZIP ajoute `portrait.md`), et ce que vous avez
+  écrit dans vos équipes (les collègues y sont nommés, jamais identifiés). Le
+  Markdown reste le cerveau.
 - **Suppression complète** depuis les Paramètres (mot à taper, vérifié côté
   serveur) : notes, connexions, projets, opportunités, transactions, tâches,
   enregistrements, rappels, profil — et la présence dans chaque équipe, avec
@@ -443,7 +515,7 @@ devenir une facturation par siège — le tarif entreprise reste à décider
 Next.js 15 · React 19 · TypeScript strict · Supabase (authentification,
 Postgres, sécurité ligne par ligne) · API Notion · agent sur VPS · PWA
 (installable, cible de partage) · three.js / React Three Fiber · interface
-intégralement bilingue · 690 tests
+intégralement bilingue · 798 tests
 automatisés, dont des gardes contre les fausses allégations, les routes non
 protégées et les caractères de contrôle dans le code.
 
@@ -497,10 +569,11 @@ de 5 s, testées.
 
 ## 16. Avant de lancer
 
-1. **Appliquer les migrations 013 puis 014** dans Supabase (007 à 012 sont
-   faites). Sans 013 : ni trésorerie datée, ni soldes, ni rappels d'affaires,
-   ni revue du vendredi, ni pack d'accueil. Sans 014 : ni domaines, ni
-   connexion unique, ni provisionnement. Toutes les migrations (007 à 014)
+1. **Appliquer les migrations 013, 014 puis 015** dans Supabase (007 à 012
+   sont faites). Sans 013 : ni trésorerie datée, ni soldes, ni rappels
+   d'affaires, ni revue du vendredi, ni pack d'accueil. Sans 014 : ni domaines,
+   ni connexion unique, ni provisionnement. Sans 015 : pas de double (portrait,
+   point du jour, suivi des conseils). Toutes les migrations (007 à 015)
    s'appliquent dans l'ordre, sont idempotentes et validées sur Postgres,
    politiques comprises. Sans 007 : pas
    de connexions, profil limité au navigateur. Sans 008 : les connexions

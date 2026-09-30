@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { useHubLight } from "./light";
 import { EQUIRECT_GLSL, useSkyMap } from "./atmosphere";
 import { horizonDip } from "./water";
+import { BUFFER_DITHER_GLSL } from "./buffer";
 
 const skyVertex = /* glsl */ `
   varying vec3 vDir;
@@ -36,6 +37,7 @@ export const skyFragment = /* glsl */ `
   varying vec3 vDir;
 
   ${EQUIRECT_GLSL}
+  ${BUFFER_DITHER_GLSL}
 
   float hash13(vec3 p) {
     p = fract(p * 0.1031);
@@ -130,7 +132,10 @@ export const skyFragment = /* glsl */ `
     float limb = 0.6 + 0.4 * smoothstep(0.99955, 0.99995, cs);
     col += uSunDisc * disc * limb;
 
+    col = bufferDither(col);
     gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }
 `;
 
@@ -228,7 +233,11 @@ export const SkyDome = memo(function SkyDome({ reducedMotion }: { reducedMotion:
   });
 
   return (
-    <mesh ref={mesh} material={material} frustumCulled={false} renderOrder={-10}>
+    // Drawn after everything opaque: at the far plane, it then shades only
+    // the pixels nothing else covers (the depth test turns the rest away
+    // before the clouds' noise is computed). Drawn first, it shaded the whole
+    // screen and was painted over.
+    <mesh ref={mesh} material={material} frustumCulled={false} renderOrder={10}>
       <sphereGeometry args={[500, 64, 32]} />
     </mesh>
   );

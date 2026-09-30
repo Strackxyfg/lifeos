@@ -11,6 +11,7 @@ import { hubMaterials, lampsNow, lightScale, signGlow, signMaterials, signTextur
 import { useHubLight } from "./light";
 import { panesGeometry, shellGeometry, type ShellSpec } from "./shell";
 import { Furniture, InteriorLights } from "./furniture";
+import { FIRST_LIFT_SLOT, LIFT } from "./lift";
 
 type V3 = [number, number, number];
 
@@ -149,11 +150,11 @@ function Hollow({ spec, outside, floor, glass }: { spec: ShellSpec; outside: THR
 }
 
 /** A building's furniture and its lamps. */
-function Inside({ id, lights }: { id: DistrictId; lights: number }) {
+function Inside({ id }: { id: DistrictId }) {
   return (
     <>
       <Furniture id={id} />
-      <InteriorLights id={id} count={lights} />
+      <InteriorLights id={id} />
     </>
   );
 }
@@ -172,6 +173,8 @@ interface BuildingProps {
 
 function Building({ district, hovered, focused, interactive, onHover, onSelect, children }: BuildingProps) {
   const lift = useRef<THREE.Group>(null);
+  // This building's slot in the shader lift (its merged parts rise there, `lift.ts`).
+  const slot = FIRST_LIFT_SLOT + DISTRICTS.findIndex((d) => d.id === district.id);
   const ring = useRef<THREE.Mesh>(null);
   const ringMaterial = useMemo(
     () =>
@@ -180,14 +183,17 @@ function Building({ district, hovered, focused, interactive, onHover, onSelect, 
         transparent: true,
         opacity: 0,
         depthWrite: false,
-        toneMapped: false,
       }),
     []
   );
 
   useFrame(({ clock }, dt) => {
     const g = lift.current;
-    if (g) g.position.y = THREE.MathUtils.damp(g.position.y, hovered && !focused ? 0.07 : 0, 10, dt);
+    if (g) {
+      g.position.y = THREE.MathUtils.damp(g.position.y, hovered && !focused ? 0.07 : 0, 10, dt);
+      // The parts merged with the whole island rise with it, in the shader.
+      LIFT.value[slot] = g.position.y;
+    }
     const target = focused ? 0.75 + 0.2 * Math.sin(clock.elapsedTime * 2.4) : hovered ? 0.5 : 0;
     ringMaterial.opacity = THREE.MathUtils.damp(ringMaterial.opacity, target, 8, dt);
     if (ring.current) ring.current.visible = ringMaterial.opacity > 0.01;
@@ -209,7 +215,7 @@ function Building({ district, hovered, focused, interactive, onHover, onSelect, 
   const r = district.radius;
   return (
     <group position={[district.at[0], 0, district.at[1]]} rotation-y={facing(district)}>
-      <group ref={lift} onPointerOver={over} onPointerOut={out} onClick={click}>
+      <group ref={lift} onPointerOver={over} onPointerOut={out} onClick={click} userData={{ liftSlot: slot }}>
         {children}
       </group>
       <mesh ref={ring} rotation-x={-Math.PI / 2} position-y={0.04} material={ringMaterial} visible={false}>
@@ -225,7 +231,7 @@ function Building({ district, hovered, focused, interactive, onHover, onSelect, 
  * The second brain: a rotunda under a glass dome, a living core of light
  * inside — and through its glass drum, a round reading room.
  */
-function BrainRotunda({ sign, lights }: { sign: string; lights: number }) {
+function BrainRotunda({ sign }: { sign: string }) {
   const m = hubMaterials();
   const mullions = 28;
   return (
@@ -243,7 +249,7 @@ function BrainRotunda({ sign, lights }: { sign: string; lights: number }) {
       <mesh position-y={2.335} rotation-x={Math.PI / 2} material={m.interior}>
         <circleGeometry args={[3.05, 72]} />
       </mesh>
-      <Inside id="brain" lights={lights} />
+      <Inside id="brain" />
       {Array.from({ length: mullions }, (_, i) => {
         const a = (i / mullions) * Math.PI * 2 + Math.PI / mullions;
         return <Bx key={i} s={[0.09, 2.1, 0.09]} p={[Math.sin(a) * 3.07, 1.29, Math.cos(a) * 3.07]} r={[0, a, 0]} m={m.trim} />;
@@ -299,6 +305,8 @@ const coreFragment = /* glsl */ `
     if (d > 0.5) discard;
     float a = pow(1.0 - d * 2.0, 1.6) * uOpacity * vPulse;
     gl_FragColor = vec4(mix(uColor, vec3(1.0), vPulse * 0.35), a);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
     #include <colorspace_fragment>
   }
 `;
@@ -337,7 +345,6 @@ function NeuralCore() {
         transparent: true,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
-        toneMapped: false,
         uniforms: {
           uTime: { value: 0 },
           uSize: { value: 26 },
@@ -353,7 +360,7 @@ function NeuralCore() {
     if (group.current) group.current.rotation.y += dt * 0.12;
   });
   return (
-    <group ref={group} position={[0, 4.95, 0]} scale={1.45}>
+    <group ref={group} position={[0, 4.95, 0]} scale={1.45} userData={{ dynamic: true }}>
       <points geometry={geometry} material={material} renderOrder={5} />
     </group>
   );
@@ -384,12 +391,12 @@ function ClockTower({ sign }: { sign: string }) {
           </mesh>
           {/* Each hand turns about the dial's centre, from one end. */}
           <group position={[0, 6.35, 0.69]}>
-            <group ref={(el) => void (hours.current[k] = el)}>
+            <group ref={(el) => void (hours.current[k] = el)} userData={{ dynamic: true }}>
               <mesh position-y={0.12} material={m.hand}>
                 <boxGeometry args={[0.06, 0.28, 0.015]} />
               </mesh>
             </group>
-            <group ref={(el) => void (minutes.current[k] = el)} position-z={0.012}>
+            <group ref={(el) => void (minutes.current[k] = el)} position-z={0.012} userData={{ dynamic: true }}>
               <mesh position-y={0.18} material={m.hand}>
                 <boxGeometry args={[0.035, 0.42, 0.015]} />
               </mesh>
@@ -417,13 +424,13 @@ const CAFE: ShellSpec = {
 };
 
 /** The assistant: a café with its terrace, where one comes to talk — its bar and tables behind the glass. */
-function Cafe({ sign, lights }: { sign: string; lights: number }) {
+function Cafe({ sign }: { sign: string }) {
   const m = hubMaterials();
   const tables = [-1.25, 0, 1.25];
   return (
     <group>
       <Hollow spec={CAFE} outside={m.white} floor={m.floorWood} />
-      <Inside id="assistant" lights={lights} />
+      <Inside id="assistant" />
       {[-1.07, 1.07].map((x) => (
         <Bx key={x} s={[0.06, 1.3, 0.07]} p={[x, 0.78, 0.7]} m={m.trim} />
       ))}
@@ -464,7 +471,7 @@ function Cafe({ sign, lights }: { sign: string; lights: number }) {
  * The agent: a workshop hangar — server racks and a workbench behind its
  * glass end — and the mast it talks to the world through.
  */
-function Atelier({ sign, lights }: { sign: string; lights: number }) {
+function Atelier({ sign }: { sign: string }) {
   const m = hubMaterials();
   const beacon = useRef<THREE.Mesh>(null);
   const shell = useMemo(() => {
@@ -489,7 +496,7 @@ function Atelier({ sign, lights }: { sign: string; lights: number }) {
       <mesh position-y={0.122} rotation-x={-Math.PI / 2} material={m.floorStone} receiveShadow>
         <planeGeometry args={[2.86, 2.98]} />
       </mesh>
-      <Inside id="agent" lights={lights} />
+      <Inside id="agent" />
       {[-0.55, 0, 0.55].map((x) => (
         <Bx key={x} s={[0.05, x === 0 ? 1.44 : 1.3, 0.05]} p={[x, 0.12 + (x === 0 ? 0.72 : 0.65), 1.52]} m={m.trim} shadow={false} />
       ))}
@@ -504,7 +511,7 @@ function Atelier({ sign, lights }: { sign: string; lights: number }) {
         <mesh position={[-0.28, 2.4, 0.05]} rotation={[0.3, 0.6, -0.9]} material={m.trim} castShadow>
           <sphereGeometry args={[0.26, 16, 8, 0, Math.PI * 2, 0, Math.PI / 3]} />
         </mesh>
-        <mesh ref={beacon} position-y={3.74} material={m.beacon}>
+        <mesh ref={beacon} position-y={3.74} material={m.beacon} userData={{ dynamic: true }}>
           <sphereGeometry args={[0.07, 10, 8]} />
         </mesh>
       </group>
@@ -536,7 +543,7 @@ const STUDIO: ShellSpec = {
  * upstairs, all behind bands of glass — with its top floor going up, and
  * the crane building it.
  */
-function Studio({ sign, reducedMotion, lights }: { sign: string; reducedMotion: boolean; lights: number }) {
+function Studio({ sign, reducedMotion }: { sign: string; reducedMotion: boolean }) {
   const m = hubMaterials();
   const slew = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
@@ -549,7 +556,7 @@ function Studio({ sign, reducedMotion, lights }: { sign: string; reducedMotion: 
   return (
     <group>
       <Hollow spec={STUDIO} outside={m.white} floor={m.floorWood} />
-      <Inside id="projects" lights={lights} />
+      <Inside id="projects" />
       <Bx s={[3.5, 0.1, 2.7]} p={[0, 2.55, 0]} m={m.trim} />
       <Bx s={[1.8, 0.36, 0.06]} p={[0, 1.4, 1.33]} m={m.navy} shadow={false} />
       <Sign id="projects" text={sign} height={0.3} maxWidth={1.74} p={[0, 1.4, 1.365]} />
@@ -564,7 +571,7 @@ function Studio({ sign, reducedMotion, lights }: { sign: string; reducedMotion: 
       {/* The tower crane. */}
       <group position={[2.15, 0, -1.05]}>
         <Bx s={[0.22, 5.5, 0.22]} p={[0, 2.75, 0]} m={m.crane} />
-        <group ref={slew} position-y={5.5}>
+        <group ref={slew} position-y={5.5} userData={{ dynamic: true }}>
           <Bx s={[0.34, 0.3, 0.34]} p={[0, 0.15, 0]} m={m.navy} shadow={false} />
           <Bx s={[0.08, 0.8, 0.08]} p={[0, 0.7, 0]} m={m.crane} shadow={false} />
           <Bx s={[4.4, 0.16, 0.18]} p={[-2.0, 0.38, 0]} m={m.crane} shadow={false} />
@@ -635,7 +642,7 @@ function mullions(): THREE.BufferGeometry {
  * Finance: a slim tower of glass and white bands — a banking hall in its
  * podium, open-plan floors up the tower round a lift core, all visible.
  */
-function Bank({ sign, lights }: { sign: string; lights: number }) {
+function Bank({ sign }: { sign: string }) {
   const m = hubMaterials();
   const glass = useMemo(curtainWall, []);
   const frame = useMemo(mullions, []);
@@ -661,7 +668,7 @@ function Bank({ sign, lights }: { sign: string; lights: number }) {
           <planeGeometry args={[2.26, 2.26]} />
         </mesh>
       ))}
-      <Inside id="finance" lights={lights} />
+      <Inside id="finance" />
       {[
         [-1.15, -1.15],
         [1.15, -1.15],
@@ -715,7 +722,7 @@ function bridgeGlass(): THREE.BufferGeometry {
  * Relations: two pavilions joined by a glass bridge — a lounge in one, a
  * meeting room in the other, a small reception between.
  */
-function Pavilions({ sign, lights }: { sign: string; lights: number }) {
+function Pavilions({ sign }: { sign: string }) {
   const m = hubMaterials();
   const bridge = useMemo(bridgeGlass, []);
   useEffect(() => () => bridge.dispose(), [bridge]);
@@ -729,7 +736,7 @@ function Pavilions({ sign, lights }: { sign: string; lights: number }) {
       <mesh geometry={bridge} material={m.shopGlass} renderOrder={1} />
       <Bx s={[1.12, 0.06, 1.02]} p={[0, 2.3, 0.3]} m={m.trim} />
       <Bx s={[1.12, 0.06, 1.02]} p={[0, 1.6, 0.3]} m={m.trim} />
-      <Inside id="relations" lights={lights} />
+      <Inside id="relations" />
       <Monument id="relations" text={sign} p={[0, 0, 1.75]} width={1.9} />
     </group>
   );
@@ -756,7 +763,7 @@ const CLUB_UPPER: ShellSpec = {
  * whiteboard behind its glass front, desks upstairs behind a band of glass —
  * with a roof terrace.
  */
-function Club({ sign, lights }: { sign: string; lights: number }) {
+function Club({ sign }: { sign: string }) {
   const m = hubMaterials();
   return (
     <group>
@@ -767,7 +774,7 @@ function Club({ sign, lights }: { sign: string; lights: number }) {
       <Bx s={[2.1, 0.36, 0.05]} p={[0, 1.74, 1.62]} m={m.navy} shadow={false} />
       <Sign id="team" text={sign} height={0.3} maxWidth={2.0} p={[0, 1.74, 1.652]} />
       <Hollow spec={CLUB_UPPER} outside={m.white} floor={m.floorWood} />
-      <Inside id="team" lights={lights} />
+      <Inside id="team" />
       <Bx s={[4.5, 0.08, 2.5]} p={[0, 3.42, -0.4]} m={m.trim} />
       {/* The terrace on the lower roof, in front of the upper floor. */}
       <Bx s={[4.9, 0.28, 0.04]} p={[0, 2.14, 1.58]} m={m.trim} />
@@ -805,7 +812,6 @@ function Lighthouse({ reducedMotion }: { reducedMotion: boolean }) {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         side: THREE.DoubleSide,
-        toneMapped: false,
         uniforms: { uOpacity: { value: 0 }, uColor: { value: new THREE.Color("#fff0c2") }, uLength: { value: 15 } },
         vertexShader: /* glsl */ `
           varying float vAlong;
@@ -832,6 +838,8 @@ function Lighthouse({ reducedMotion }: { reducedMotion: boolean }) {
             // Softer at the silhouette of the cone, like light in air.
             float rim = abs(dot(normalize(vNormalV), normalize(vViewDir)));
             gl_FragColor = vec4(uColor, fade * uOpacity * (0.35 + 0.65 * rim));
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
             #include <colorspace_fragment>
           }
         `,
@@ -881,8 +889,8 @@ function Lighthouse({ reducedMotion }: { reducedMotion: boolean }) {
         <sphereGeometry args={[0.07, 10, 8]} />
       </mesh>
       <Bx s={[0.3, 0.56, 0.06]} p={[0, 0.58, 0.72]} m={m.navy} shadow={false} />
-      <group ref={turn} position-y={5.09}>
-        <group ref={beam}>
+      <group ref={turn} position-y={5.09} userData={{ dynamic: true }}>
+        <group ref={beam} userData={{ dynamic: true }}>
           <mesh geometry={cone} material={beamMaterial} />
           <mesh geometry={cone} material={beamMaterial} rotation-y={Math.PI} />
         </group>
@@ -918,7 +926,6 @@ export function Buildings({
   onSelect,
   signs,
   reducedMotion,
-  lights,
 }: {
   hovered: DistrictId | null;
   focused: DistrictId | null;
@@ -927,27 +934,25 @@ export function Buildings({
   onSelect: (id: DistrictId) => void;
   signs: Record<DistrictId, string>;
   reducedMotion: boolean;
-  /** Real interior lights per building: 2 on capable devices, 1, or none. */
-  lights: number;
 }) {
   const model = (d: District): ReactNode => {
     switch (d.id) {
       case "brain":
-        return <BrainRotunda sign={signs.brain} lights={lights} />;
+        return <BrainRotunda sign={signs.brain} />;
       case "today":
         return <ClockTower sign={signs.today} />;
       case "assistant":
-        return <Cafe sign={signs.assistant} lights={lights} />;
+        return <Cafe sign={signs.assistant} />;
       case "agent":
-        return <Atelier sign={signs.agent} lights={lights} />;
+        return <Atelier sign={signs.agent} />;
       case "projects":
-        return <Studio sign={signs.projects} reducedMotion={reducedMotion} lights={lights} />;
+        return <Studio sign={signs.projects} reducedMotion={reducedMotion} />;
       case "finance":
-        return <Bank sign={signs.finance} lights={lights} />;
+        return <Bank sign={signs.finance} />;
       case "relations":
-        return <Pavilions sign={signs.relations} lights={lights} />;
+        return <Pavilions sign={signs.relations} />;
       case "team":
-        return <Club sign={signs.team} lights={lights} />;
+        return <Club sign={signs.team} />;
       case "settings":
         return <Lighthouse reducedMotion={reducedMotion} />;
     }

@@ -58,7 +58,6 @@ export function Boats({ reducedMotion }: { reducedMotion: boolean }) {
         transparent: true,
         opacity: 0.35,
         depthWrite: false,
-        toneMapped: false,
       }),
     []
   );

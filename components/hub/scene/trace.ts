@@ -4,6 +4,7 @@ import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
 import { PLAZA_LAMPS, shoreField, WATERFRONT_LAMPS } from "@/lib/hub/island";
 import { BEND, BEND_START, WATER_LEVEL } from "./water";
 import { skyFragment } from "./sky";
+import { localLightList, LOCAL_LIGHT_RANGE } from "./interior-lights";
 
 /**
  * The island as the path tracer sees it: a still copy of the live scene,
@@ -60,6 +61,8 @@ function bakeSky(gl: THREE.WebGLRenderer, dome: THREE.ShaderMaterial): THREE.Dat
   const rt = new THREE.WebGLRenderTarget(width, width / 2, { type: THREE.HalfFloatType, depthBuffer: false });
   const fragment = skyFragment
     .replace("varying vec3 vDir;", "varying vec2 vUv;")
+    // A map sampled by the tracer, not a buffer written once: no dither.
+    .replace("col = bufferDither(col);", "")
     .replace(
       "vec3 d = normalize(vDir);",
       "float phi = (vUv.x - 0.5) * 6.283185307; float theta = (vUv.y - 0.5) * 3.141592654; vec3 d = vec3(cos(theta) * cos(phi), sin(theta), cos(theta) * sin(phi));"
@@ -356,6 +359,14 @@ export function buildTraceScene(gl: THREE.WebGLRenderer, live: THREE.Scene, opts
   walk(live);
 
   scene.add(traceSea(disposables));
+
+  // The buildings' lamps: shaded only indoors in the live view, real lights
+  // here — the tracer's walls stop them where walls should.
+  for (const lamp of localLightList()) {
+    const l = new THREE.PointLight(lamp.color, lamp.intensity, LOCAL_LIGHT_RANGE, 2);
+    l.position.copy(lamp.position);
+    scene.add(l);
+  }
 
   // The street lamps, as real lights once the town is lit.
   if (opts.lamps > 0.05) {

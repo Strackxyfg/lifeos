@@ -124,6 +124,40 @@ describe("the water around it", () => {
     expect(near).toBeGreaterThan(0);
     expect(near).toBeLessThan(255);
   });
+
+  it("is, byte for byte, what asking every point one by one gives — only faster", () => {
+    // The field as it was first written: every point, every edge.
+    const reference = (size: number, extent: number, reach: number) => {
+      const out = new Uint8Array(size * size);
+      const polys = [MAIN_OUTLINE, ISLET_OUTLINE];
+      const all = polys.flat();
+      const minX = Math.min(...all.map((p) => p[0])) - reach;
+      const maxX = Math.max(...all.map((p) => p[0])) + reach;
+      const minZ = Math.min(...all.map((p) => p[1])) - reach;
+      const maxZ = Math.max(...all.map((p) => p[1])) + reach;
+      for (let row = 0; row < size; row++) {
+        const z = -extent + ((row + 0.5) / size) * extent * 2;
+        for (let col = 0; col < size; col++) {
+          const x = -extent + ((col + 0.5) / size) * extent * 2;
+          if (x < minX || x > maxX || z < minZ || z > maxZ) continue;
+          const p: Point = [x, z];
+          const v = polys.some((poly) => pointInPolygon(p, poly))
+            ? 1
+            : Math.max(0, 1 - Math.min(...polys.map((poly) => edgeDistance(p, poly))) / reach);
+          out[row * size + col] = Math.round(v * 255);
+        }
+      }
+      return out;
+    };
+    // The sea's (224, 36, 5), the photo's (288, 36, 5), and others: coarse, fine, a short and a long reach.
+    for (const [size, extent, reach] of [[224, 36, 5], [288, 36, 5], [64, 32, 4], [97, 20, 0.5], [150, 40, 12]]) {
+      const fast = shoreField(size, extent, reach);
+      const slow = reference(size, extent, reach);
+      let differ = 0;
+      for (let i = 0; i < fast.length; i++) if (fast[i] !== slow[i]) differ++;
+      expect(differ, `${size} ${extent} ${reach}`).toBe(0);
+    }
+  });
 });
 
 describe("the camera's views", () => {

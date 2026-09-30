@@ -9,6 +9,7 @@ import { useSkyMap } from "./atmosphere";
 import { useHubLight } from "./light";
 import { lightScale } from "./materials";
 import { buildTraceScene, type TraceScene } from "./trace";
+import { pacer } from "../pacer-store";
 
 /**
  * Photo mode: the view in front of you, path traced.
@@ -92,7 +93,6 @@ export function PhotoMode({
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
-  const setFrameloop = useThree((s) => s.setFrameloop);
   const controls = useThree((s) => s.controls) as unknown as {
     addEventListener?: (t: string, f: () => void) => void;
     removeEventListener?: (t: string, f: () => void) => void;
@@ -223,7 +223,9 @@ export function PhotoMode({
             if (frames === 6) {
               canvas.style.opacity = "1";
               // Covered: the live view can rest.
-              setTimeout(() => !cancelled && setFrameloop("never"), 650);
+              setTimeout(() => {
+                if (!cancelled) pacer.paused = true;
+              }, 650);
             }
             if (frames % 20 === 0 && !s.done) {
               tracer
@@ -290,7 +292,8 @@ export function PhotoMode({
       cancelled = true;
       clearTimeout(timer);
       cancelAnimationFrame(raf);
-      setFrameloop("always");
+      pacer.paused = false;
+      pacer.markActive(1000);
       shot.current = null;
       const src = post.current?.source;
       if (src) {
@@ -310,7 +313,7 @@ export function PhotoMode({
       s.engine = null;
       s.traced = null;
     };
-  }, [active, gl, scene, camera, skyMap, light, post, target, setFrameloop, shot]);
+  }, [active, gl, scene, camera, skyMap, light, post, target, shot]);
 
   // The WebGL engine: before the post pipeline renders (priority 1), add a
   // sample and hand over the image, which the live grade then develops.
@@ -318,6 +321,8 @@ export function PhotoMode({
     const s = state.current;
     const e = s.engine;
     if (!active || e?.kind !== "webgl") return;
+    // Samples come a frame at a time: full rate while tracing.
+    pacer.markActive(400);
     const tracer = e.tracer;
     const src = post.current?.source;
     camera.updateMatrixWorld();

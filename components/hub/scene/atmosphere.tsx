@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, type MutableRefObject, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject, type ReactNode } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
@@ -134,8 +134,7 @@ export function SkyProvider({ children }: { children: ReactNode }) {
 
   const seen = useRef(-1);
   const lastKey = useRef("");
-  // Priority −1: before anything reads the map this frame.
-  useFrame(() => {
+  const build = useCallback(() => {
     const l = light.current;
     if (l.version === seen.current) return;
     seen.current = l.version;
@@ -170,7 +169,13 @@ export function SkyProvider({ children }: { children: ReactNode }) {
     scene.environmentIntensity = 1;
     map.current.texture = res.lut.texture;
     map.current.version++;
-  }, -1);
+  }, [gl, light, res, scene]);
+
+  // Built before the first frame: materials compile with the environment
+  // they will render with (the scene waits for its shaders, `hub-scene.tsx`).
+  useLayoutEffect(() => build(), [build]);
+  // Priority −1: before anything reads the map this frame.
+  useFrame(build, -1);
 
   return <SkyMapContext.Provider value={map}>{children}</SkyMapContext.Provider>;
 }

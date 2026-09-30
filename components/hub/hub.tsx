@@ -9,7 +9,8 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
 import { fill, plural } from "@/lib/i18n/config";
 import { DISTRICTS, districtById, isDistrictId, neighbour, type DistrictId } from "@/lib/hub/districts";
 import { currentPlace, type Place } from "@/lib/hub/place";
-import { deviceHints, initialTier, lowerTier, webglAvailable, type Tier } from "@/lib/hub/perf";
+import { deviceHints, initialTier, webglAvailable, type Tier } from "@/lib/hub/perf";
+import { pacer } from "./pacer-store";
 import { sunPosition, sunTimes, moonPosition } from "@/lib/hub/solar";
 import { skyState, toHex } from "@/lib/hub/sky";
 import { hubBadges, type HubFacts } from "@/lib/hub/summary";
@@ -78,7 +79,7 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
   const [mounted, setMounted] = useState(false);
   const [place, setPlace] = useState<Place | null>(null);
   const [tier, setTier] = useState<Tier>("medium");
-  const tierPinned = useRef(false);
+  const [tierPinned, setTierPinned] = useState(false);
   const [webgl, setWebgl] = useState(true);
   const [lost, setLost] = useState(false);
   const [sceneKey, setSceneKey] = useState(0);
@@ -121,7 +122,7 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
     const quality = params.get("quality");
     if (quality === "high" || quality === "medium" || quality === "low") {
       setTier(quality);
-      tierPinned.current = true;
+      setTierPinned(true);
     }
     setMounted(true);
     return () => motionQuery.removeEventListener("change", onMotion);
@@ -237,6 +238,7 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      pacer.markActive();
       // A photo in progress: Escape (or any move) ends it first.
       if (photo) {
         if (e.key === "Escape" || e.key.startsWith("Arrow") || e.key === "Enter") {
@@ -304,11 +306,12 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
     [m, badges, locale]
   );
 
-  const onTierDown = useCallback(() => {
-    if (!tierPinned.current) setTier((t) => lowerTier(t));
-  }, []);
   const onContextLost = useCallback(() => setLost(true), []);
-  const onReady = useCallback(() => setReady(true), []);
+  const onReady = useCallback(() => {
+    // For measuring the load (navigation → an island on screen), in the field and in benches.
+    performance.mark("hub:ready");
+    setReady(true);
+  }, []);
 
   const skyGradient = sky
     ? `linear-gradient(to bottom, ${toHex(sky.state.zenith)} 0%, ${toHex(sky.state.horizon)} 62%, ${toHex(sky.state.waterDeep)} 100%)`
@@ -324,7 +327,13 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
           key={sceneKey}
           className="absolute inset-0"
           aria-hidden
-          onPointerDown={(e) => (down.current = { x: e.clientX, y: e.clientY })}
+          onPointerDown={(e) => {
+            down.current = { x: e.clientX, y: e.clientY };
+            pacer.markActive();
+          }}
+          // A pointer over the island: hovering answers at full rate.
+          onPointerMove={() => pacer.markActive(600)}
+          onWheel={() => pacer.markActive(1200)}
           onPointerUpCapture={(e) => {
             const d = down.current;
             // Remember whether this was a click, for the background handler.
@@ -347,9 +356,9 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
             pinLabels={pinLabels}
             badges={badges}
             tier={tier}
+            pinned={tierPinned}
             reducedMotion={reducedMotion}
             onReady={onReady}
-            onTierDown={onTierDown}
             onContextLost={onContextLost}
             photo={photo}
             onPhotoProgress={setPhotoState}

@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { shoreField } from "@/lib/hub/island";
 import { useHubLight } from "./light";
 import { EQUIRECT_GLSL, useSkyMap } from "./atmosphere";
+import { BUFFER_DITHER_GLSL } from "./buffer";
 
 /** The square of sea the shore field covers, centred on the island. */
 const EXTENT = 36;
@@ -91,6 +92,7 @@ const fragment = /* glsl */ `
   const vec3 SHALLOW = vec3(0.05, 0.27, 0.3);
 
   ${EQUIRECT_GLSL}
+  ${BUFFER_DITHER_GLSL}
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float noise(vec2 p) {
@@ -160,7 +162,10 @@ const fragment = /* glsl */ `
     // radiance there, so the two meet without a seam.
     col = mix(col, sky(vec3(-V.x, 0.0, -V.z)), smoothstep(uBendStart + 6.0, uBendStart + 58.0, d));
 
+    col = bufferDither(col);
     gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }
 `;
 
@@ -229,7 +234,9 @@ export function Water({ reducedMotion }: { reducedMotion: boolean }) {
   });
 
   return (
-    <mesh ref={mesh} material={material} rotation-x={-Math.PI / 2} position-y={WATER_LEVEL} receiveShadow={false}>
+    // After the island (before the sky): the sea's shader, the costliest
+    // per pixel, then runs only where the island does not stand.
+    <mesh ref={mesh} material={material} rotation-x={-Math.PI / 2} position-y={WATER_LEVEL} receiveShadow={false} renderOrder={5}>
       {/* Fine enough for the curve to be smooth; flat maths near the island. */}
       <planeGeometry args={[900, 900, 150, 150]} />
     </mesh>

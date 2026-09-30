@@ -123,6 +123,19 @@ export function onLand(p: Point): boolean {
  * falling to 0 at `reach` units out to sea. The water shader turns it into
  * shallows, a foam line, and the deep blue beyond. Row-major, `size`²,
  * covering [-extent, extent] on both axes; row 0 is z = −extent.
+ *
+ * The same bytes as asking `pointInPolygon` and `edgeDistance` at every
+ * point (the tests compare the two), in a fraction of the time — it was
+ * the heaviest work of the island's first second:
+ * - inside or out, by scanline: a row's edge crossings are computed once,
+ *   with the very expression `pointInPolygon` uses, and each point counts
+ *   those to its right;
+ * - the distance, from the segments near the point only: they are sorted
+ *   into square cells, searched ring by ring outwards from the point's own;
+ *   once the rings searched reach k cells, any segment not yet seen is at
+ *   least (k − 1) cells away — the search stops when that is no closer
+ *   than the best found, or than `reach` (beyond which every distance
+ *   gives 0).
  */
 export function shoreField(size: number, extent: number, reach: number): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(size * size);
@@ -134,16 +147,73 @@ export function shoreField(size: number, extent: number, reach: number): Uint8Ar
   const maxX = Math.max(...all.map((p) => p[0])) + reach;
   const minZ = Math.min(...all.map((p) => p[1])) - reach;
   const maxZ = Math.max(...all.map((p) => p[1])) + reach;
+
+  const segments: [Point, Point][] = [];
+  for (const poly of polys) for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) segments.push([poly[j], poly[i]]);
+  // A few segments to a cell: the coast is sampled every half unit or so.
+  const cell = Math.max(reach / 4, 1e-3);
+  const cols = Math.max(1, Math.ceil((maxX - minX) / cell));
+  const rows = Math.max(1, Math.ceil((maxZ - minZ) / cell));
+  const cellOf = (v: number, min: number, n: number) => Math.min(n - 1, Math.max(0, Math.floor((v - min) / cell)));
+  const grid: number[][] = Array.from({ length: cols * rows }, () => []);
+  segments.forEach(([a, b], k) => {
+    const c0 = cellOf(Math.min(a[0], b[0]), minX, cols), c1 = cellOf(Math.max(a[0], b[0]), minX, cols);
+    const r0 = cellOf(Math.min(a[1], b[1]), minZ, rows), r1 = cellOf(Math.max(a[1], b[1]), minZ, rows);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) grid[r * cols + c].push(k);
+  });
+  const seen = new Int32Array(segments.length).fill(-1);
+  let stamp = 0;
+
   for (let row = 0; row < size; row++) {
     const z = -extent + ((row + 0.5) / size) * extent * 2;
+    if (z < minZ || z > maxZ) continue;
+    // Each polygon's crossings of this row, as `pointInPolygon` computes them.
+    const crossings = polys.map((poly) => {
+      const xs: number[] = [];
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, zi] = poly[i];
+        const [xj, zj] = poly[j];
+        if (zi > z !== zj > z) xs.push(((xj - xi) * (z - zi)) / (zj - zi) + xi);
+      }
+      return xs.sort((a, b) => a - b);
+    });
+    const passed = crossings.map(() => 0);
+    const r = cellOf(z, minZ, rows);
     for (let col = 0; col < size; col++) {
       const x = -extent + ((col + 0.5) / size) * extent * 2;
-      if (x < minX || x > maxX || z < minZ || z > maxZ) continue;
-      const p: Point = [x, z];
+      if (x < minX || x > maxX) continue;
+      let land = false;
+      for (let k = 0; k < crossings.length; k++) {
+        const xs = crossings[k];
+        // Crossings at or left of x no longer count; those to its right flip the parity.
+        while (passed[k] < xs.length && !(x < xs[passed[k]])) passed[k]++;
+        if ((xs.length - passed[k]) % 2 === 1) land = true;
+      }
       let v: number;
-      if (polys.some((poly) => pointInPolygon(p, poly))) v = 1;
+      if (land) v = 1;
       else {
-        const d = Math.min(...polys.map((poly) => edgeDistance(p, poly)));
+        const c = cellOf(x, minX, cols);
+        const p: Point = [x, z];
+        let d = Infinity;
+        stamp++;
+        const rings = Math.max(r, rows - 1 - r, c, cols - 1 - c);
+        for (let ring = 0; ring <= rings; ring++) {
+          // Everything unseen now lies beyond ring − 1 whole cells.
+          const beyond = Math.max(0, ring - 1) * cell;
+          if (d <= beyond || beyond >= reach) break;
+          for (let rr = r - ring; rr <= r + ring; rr++) {
+            if (rr < 0 || rr >= rows) continue;
+            const edge = rr === r - ring || rr === r + ring;
+            for (let cc = c - ring; cc <= c + ring; cc += edge ? 1 : 2 * ring) {
+              if (cc < 0 || cc >= cols) continue;
+              for (const k of grid[rr * cols + cc]) {
+                if (seen[k] === stamp) continue;
+                seen[k] = stamp;
+                d = Math.min(d, segmentDistance(p, segments[k][0], segments[k][1]));
+              }
+            }
+          }
+        }
         v = Math.max(0, 1 - d / reach);
       }
       out[row * size + col] = Math.round(v * 255);

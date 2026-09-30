@@ -78,7 +78,6 @@ export function Ground({ reducedMotion }: { reducedMotion: boolean }) {
 
   const causeway = segmentBox(CAUSEWAY.from, CAUSEWAY.to);
   const dock = segmentBox(DOCK.from, DOCK.to);
-
   return (
     <group>
       {/* The island and the lighthouse rock. Group 0 = top and bottom, 1 = the sides. */}
@@ -197,6 +196,8 @@ const jetFragment = /* glsl */ `
     float d = length(c);
     if (d > 0.5) discard;
     gl_FragColor = vec4(uColor, (1.0 - d * 2.0) * vFade * uOpacity);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
     #include <colorspace_fragment>
   }
 `;
@@ -223,7 +224,6 @@ function Fountain({ reducedMotion }: { reducedMotion: boolean }) {
         fragmentShader: jetFragment,
         transparent: true,
         depthWrite: false,
-        toneMapped: false,
         uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color("#dff6ff") }, uOpacity: { value: 0.8 } },
       }),
     []

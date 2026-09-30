@@ -9,6 +9,8 @@ import { DIMENSIONS, INTERIORS, type Item } from "@/lib/hub/interiors";
 import { seeded } from "@/lib/hub/island";
 import { INDOOR_SKY, lightScale } from "./materials";
 import { useHubLight } from "./light";
+import { clearLocalLights, setLocalLights, withLocalLights } from "./interior-lights";
+import { withLift } from "./lift";
 
 /**
  * The furniture of a building, built from `lib/hub/interiors.ts`: every
@@ -267,8 +269,8 @@ let glowMaterial: THREE.MeshBasicMaterial | null = null;
 
 /** Furniture is indoors: the sky reaches it only through the windows, so it takes less of it. */
 function materials() {
-  solidMaterial ??= new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0, envMapIntensity: INDOOR_SKY * 1.2 });
-  glowMaterial ??= new THREE.MeshBasicMaterial({ vertexColors: true });
+  solidMaterial ??= withLift(withLocalLights(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0, envMapIntensity: INDOOR_SKY * 1.2 })));
+  glowMaterial ??= withLift(new THREE.MeshBasicMaterial({ vertexColors: true }));
   return { solid: solidMaterial, glow: glowMaterial };
 }
 
@@ -302,46 +304,31 @@ export function Furniture({ id }: { id: DistrictId }) {
 }
 
 /**
- * The building's own lamps: real point lights in its colour, lighting its
- * rooms and, at night, spilling through the windows onto the paving.
- * All of them on capable devices, one per building otherwise, none on the
- * lowest tier (the glowing fixtures still show).
+ * The building's own lamps, in its colour, lighting its rooms — every lamp,
+ * on every device: they are shaded only by what is indoors
+ * (`interior-lights.ts`), so the rest of the island pays nothing for them.
+ * Placed from where the building stands, so they follow it.
  */
-export function InteriorLights({ id, count }: { id: DistrictId; count: number }) {
+export function InteriorLights({ id }: { id: DistrictId }) {
   const interior = INTERIORS[id];
   const light = useHubLight();
-  const refs = useRef<(THREE.PointLight | null)[]>([]);
+  const anchor = useRef<THREE.Group>(null);
   const seen = useRef(-1);
   const color = useMemo(() => new THREE.Color(interior?.light ?? "#ffffff"), [interior]);
+  const world = useMemo(() => (interior?.lamps ?? []).map(() => new THREE.Vector3()), [interior]);
   useFrame(() => {
     const l = light.current;
-    if (l.version === seen.current) return;
+    const a = anchor.current;
+    if (!interior || !a || l.version === seen.current) return;
     seen.current = l.version;
     // On all day, as shops' are — but by day a lamp is nothing next to the
     // sun coming through the windows, and the rooms read dark behind the
     // glass's reflection, as real ones do. At night they are the light.
-    // Fewer lamps (a weaker device) light the room as much between them.
-    const lamps = interior?.lamps.length ?? 1;
-    const i = (7.5 * (interior?.power ?? 1) * (0.12 + 0.88 * l.sky.lamps) * lightScale(l.atmo.exposure) * lamps) / Math.max(1, Math.min(count, lamps));
-    for (const p of refs.current) if (p) p.intensity = i;
+    const i = 7.5 * (interior.power ?? 1) * (0.12 + 0.88 * l.sky.lamps) * lightScale(l.atmo.exposure);
+    a.updateWorldMatrix(true, false);
+    interior.lamps.forEach((at, k) => world[k].set(...at).applyMatrix4(a.matrixWorld));
+    setLocalLights(id, world, color, i);
   });
-  useEffect(() => {
-    seen.current = -1;
-  }, [count]);
-  if (!interior || count <= 0) return null;
-  return (
-    <>
-      {interior.lamps.slice(0, count).map((at, k) => (
-        <pointLight
-          key={k}
-          ref={(p) => void (refs.current[k] = p)}
-          position={at}
-          color={color}
-          intensity={0}
-          distance={4.2}
-          decay={2}
-        />
-      ))}
-    </>
-  );
+  useEffect(() => () => clearLocalLights(id), [id]);
+  return <group ref={anchor} />;
 }

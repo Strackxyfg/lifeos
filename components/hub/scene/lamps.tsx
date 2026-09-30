@@ -39,7 +39,6 @@ export function Lamps() {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         opacity: 0,
-        toneMapped: false,
       }),
     []
   );
@@ -52,7 +51,6 @@ export function Lamps() {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         opacity: 0,
-        toneMapped: false,
       }),
     []
   );

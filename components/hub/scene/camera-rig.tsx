@@ -6,6 +6,7 @@ import { CameraControls, CameraControlsImpl } from "@react-three/drei";
 import * as THREE from "three";
 import { districtById, doorwayView, type DistrictId, type View } from "@/lib/hub/districts";
 import { focusView, overview } from "@/lib/hub/framing";
+import { pacer } from "../pacer-store";
 
 export type CameraGoal = { kind: "overview" } | { kind: "focus"; id: DistrictId } | { kind: "enter"; id: DistrictId };
 
@@ -132,6 +133,7 @@ export function CameraRig({
     const c = controls.current;
     if (!c) return;
     const onStart = () => {
+      pacer.markActive(800);
       idleSince.current = performance.now();
       drift.current.on = false;
       if (tween.current && tween.current.kind !== "enter") {
@@ -141,12 +143,17 @@ export function CameraRig({
       }
     };
     const onEnd = () => {
+      // The view glides on after the hand lets go (smoothTime).
+      pacer.markActive(1500);
       idleSince.current = performance.now();
     };
+    const onControl = () => pacer.markActive(800);
     c.addEventListener("controlstart", onStart);
+    c.addEventListener("control", onControl);
     c.addEventListener("controlend", onEnd);
     return () => {
       c.removeEventListener("controlstart", onStart);
+      c.removeEventListener("control", onControl);
       c.removeEventListener("controlend", onEnd);
     };
   }, []);
@@ -173,6 +180,7 @@ export function CameraRig({
     const entering = goal.kind === "enter";
     const comingBack = firstFlight.current && !!returnFrom && goal.kind === "overview";
     firstFlight.current = false;
+    pacer.markActive(600);
     tween.current = {
       from,
       to,
@@ -193,6 +201,8 @@ export function CameraRig({
     const now = performance.now();
     const tw = tween.current;
     if (tw) {
+      // A flight is drawn at full rate, to its last frame.
+      pacer.markActive(400);
       const p = Math.min(1, Math.max(0, (now - tw.start - tw.delay) / tw.duration));
       if (now - tw.start < tw.delay) return;
       const e = tw.easing(p);

@@ -3,6 +3,8 @@ import { GLYPHS } from "@/lib/hub/glyphs";
 import { seeded } from "@/lib/hub/island";
 import type { DistrictId } from "@/lib/hub/districts";
 import { windowGlass } from "./glass";
+import { withLocalLights } from "./interior-lights";
+import { addShaderHook, withLift } from "./lift";
 
 /**
  * The island's materials and generated textures, made once and shared.
@@ -57,7 +59,16 @@ export interface HubMaterials {
 
 let shared: HubMaterials | null = null;
 
-const std = (params: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(params);
+// Every surface of the island can be part of a merged, lifting building (`lift.ts`).
+const std = (params: THREE.MeshStandardMaterialParameters) => withLift(new THREE.MeshStandardMaterial(params));
+
+/**
+ * Sharpness of generated textures seen close or at a grazing angle: sized
+ * so a wall or the plaza stays crisp when the camera flies up to a
+ * building, filtered anisotropically (three clamps this to what the GPU
+ * offers — 16 on desktops) so the paving does not smear towards the horizon.
+ */
+const ANISOTROPY = 16;
 
 /** How much of the sky's ambient light reaches indoor surfaces. */
 export const INDOOR_SKY = 0.1;
@@ -132,11 +143,14 @@ export function hubMaterials(): HubMaterials {
     hand: std({ color: "#1c2233", roughness: 0.5 }),
     // Indoors, the sky's light arrives only through the windows: a few per
     // cent of what falls outside. The rooms are lit by their own lamps.
-    interior: std({ color: "#e6e1d7", roughness: 0.85, envMapIntensity: INDOOR_SKY }),
-    interiorBack: std({ color: "#e6e1d7", roughness: 0.85, envMapIntensity: INDOOR_SKY, side: THREE.BackSide }),
-    floorWood: std({ color: "#8a6446", roughness: 0.5, envMapIntensity: INDOOR_SKY * 1.4, map: plankTexture() }),
-    floorStone: std({ color: "#b8b2a7", roughness: 0.35, envMapIntensity: INDOOR_SKY * 1.4 }),
-    officeFloor: std({ color: "#9a958c", roughness: 0.6, envMapIntensity: INDOOR_SKY * 1.4, emissive: new THREE.Color("#cdeedd"), emissiveIntensity: 0 }),
+    // Only indoor surfaces receive the buildings' lamps (`interior-lights.ts`).
+    interior: withLocalLights(std({ color: "#e6e1d7", roughness: 0.85, envMapIntensity: INDOOR_SKY })),
+    interiorBack: withLocalLights(std({ color: "#e6e1d7", roughness: 0.85, envMapIntensity: INDOOR_SKY, side: THREE.BackSide })),
+    floorWood: withLocalLights(std({ color: "#8a6446", roughness: 0.5, envMapIntensity: INDOOR_SKY * 1.4, map: plankTexture() })),
+    floorStone: withLocalLights(std({ color: "#b8b2a7", roughness: 0.35, envMapIntensity: INDOOR_SKY * 1.4 })),
+    officeFloor: withLocalLights(
+      std({ color: "#9a958c", roughness: 0.6, envMapIntensity: INDOOR_SKY * 1.4, emissive: new THREE.Color("#cdeedd"), emissiveIntensity: 0 })
+    ),
     lens: std({ color: "#fdf6e0", roughness: 0.08, metalness: 0.4, envMapIntensity: 1.6, emissive: new THREE.Color("#ffe6a3"), emissiveIntensity: 0 }),
     shopGlass: windowGlass({ tint: "#0b1215", absorb: 0.05, roughness: 0.02 }),
     // Solar-control glass lets through about half the light each way.
@@ -154,7 +168,7 @@ export const wind = { value: 0 };
  * slower gust over a quicker flutter.
  */
 function swaying(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
-  m.onBeforeCompile = (shader) => {
+  return addShaderHook(m, "swaying", (shader) => {
     shader.uniforms.uWind = wind;
     shader.vertexShader = shader.vertexShader.replace("#include <common>", "#include <common>\nuniform float uWind;").replace(
       "#include <begin_vertex>",
@@ -170,9 +184,7 @@ function swaying(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
       transformed.x += (gust + flutter) * 0.045 * bend;
       transformed.z += (cos(uWind * 1.1 + treeAt.x) * 0.5 + flutter) * 0.03 * bend;`
     );
-  };
-  m.customProgramCacheKey = () => "swaying";
-  return m;
+  });
 }
 
 /** Signs are one material each (their own texture); they register here to be lit. */
@@ -244,12 +256,13 @@ function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
  * nine in the evening. Black is "off".
  */
 function windowTexture(cols = 6, rows = 4, lit = 0.7): THREE.CanvasTexture {
-  const [c, ctx] = canvas(256, 256);
+  const S = 1024;
+  const [c, ctx] = canvas(S, S);
   const rnd = seeded(cols * 31 + rows);
   ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, 256, 256);
-  const cw = 256 / cols;
-  const ch = 256 / rows;
+  ctx.fillRect(0, 0, S, S);
+  const cw = S / cols;
+  const ch = S / rows;
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       if (rnd() > lit) continue;
@@ -261,36 +274,41 @@ function windowTexture(cols = 6, rows = 4, lit = 0.7): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 4;
+  t.anisotropy = ANISOTROPY;
   return t;
 }
 
 /** The plaza's paving: fine joints, as concentric rings would be too busy from above. */
 function pavingTexture(): THREE.CanvasTexture {
-  const [c, ctx] = canvas(256, 256);
+  // The same slabs as ever, drawn at four times the resolution (joints 4 px, not 1).
+  const K = 4;
+  const S = 256 * K;
+  const [c, ctx] = canvas(S, S);
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, 256, 256);
+  ctx.fillRect(0, 0, S, S);
   const rnd = seeded(99);
   for (let y = 0; y < 256; y += 32) {
     for (let x = 0; x < 256; x += 64) {
       const shade = 244 + Math.floor(rnd() * 10);
       ctx.fillStyle = `rgb(${shade},${shade},${shade - 2})`;
       const off = (y / 32) % 2 ? 32 : 0;
-      ctx.fillRect(x + off + 1, y + 1, 62, 30);
-      ctx.fillRect(x + off - 64 + 1, y + 1, 62, 30);
+      ctx.fillRect((x + off + 1) * K, (y + 1) * K, 62 * K, 30 * K);
+      ctx.fillRect((x + off - 64 + 1) * K, (y + 1) * K, 62 * K, 30 * K);
     }
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(6, 6);
-  t.anisotropy = 8;
+  t.anisotropy = ANISOTROPY;
   return t;
 }
 
 /** Floor planks: long boards, each a slightly different tone, staggered joints. */
 function plankTexture(): THREE.CanvasTexture {
-  const [c, ctx] = canvas(256, 256);
+  const K = 2;
+  const [c, ctx] = canvas(256 * K, 256 * K);
+  ctx.scale(K, K);
   const rnd = seeded(404);
   const rows = 8;
   const h = 256 / rows;
@@ -308,13 +326,15 @@ function plankTexture(): THREE.CanvasTexture {
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(2.5, 2.5);
-  t.anisotropy = 8;
+  t.anisotropy = ANISOTROPY;
   return t;
 }
 
 /** A clock dial: white, twelve marks, the quarters stronger. Hands are meshes. */
 function dialTexture(): THREE.CanvasTexture {
-  const [c, ctx] = canvas(256, 256);
+  const K = 2;
+  const [c, ctx] = canvas(256 * K, 256 * K);
+  ctx.scale(K, K);
   ctx.fillStyle = "#fbfaf6";
   ctx.beginPath();
   ctx.arc(128, 128, 126, 0, Math.PI * 2);
@@ -336,7 +356,7 @@ function dialTexture(): THREE.CanvasTexture {
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = ANISOTROPY;
   return t;
 }
 
@@ -363,6 +383,8 @@ export function glowTexture(): THREE.CanvasTexture {
  * backlit sign. Returns the texture and its aspect ratio (width / height).
  */
 export function signTexture(id: DistrictId, text: string, fontFamily: string): { texture: THREE.CanvasTexture; aspect: number } {
+  // Laid out at 128 px and drawn at twice that: letters stay sharp when the camera comes close.
+  const K = 2;
   const h = 128;
   const pad = 40;
   const icon = 64;
@@ -375,7 +397,8 @@ export function signTexture(id: DistrictId, text: string, fontFamily: string): {
   const spacing = 5;
   const textWidth = [...label].reduce((w, ch) => w + measure.measureText(ch).width + spacing, -spacing);
   const w = Math.ceil(pad + icon + gap + textWidth + pad);
-  const [c, ctx] = canvas(w, h);
+  const [c, ctx] = canvas(w * K, h * K);
+  ctx.scale(K, K);
 
   ctx.fillStyle = "#17243f";
   roundRect(ctx, 0, 0, w, h, 18);
@@ -407,7 +430,7 @@ export function signTexture(id: DistrictId, text: string, fontFamily: string): {
 
   const texture = new THREE.CanvasTexture(c);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
+  texture.anisotropy = ANISOTROPY;
   return { texture, aspect: w / h };
 }
 

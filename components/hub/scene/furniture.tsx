@@ -7,7 +7,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { DistrictId } from "@/lib/hub/districts";
 import { DIMENSIONS, INTERIORS, type Item } from "@/lib/hub/interiors";
 import { seeded } from "@/lib/hub/island";
-import { INDOOR_SKY, lightScale } from "./materials";
+import { INDOOR_SKY, backlight, lightScale } from "./materials";
 import { useHubLight } from "./light";
 import { clearLocalLights, setLocalLights, withLocalLights } from "./interior-lights";
 import { withLift } from "./lift";
@@ -292,7 +292,7 @@ export function Furniture({ id }: { id: DistrictId }) {
     if (l.version === seen.current) return;
     seen.current = l.version;
     // Screens and bulbs are on all day, brighter-looking at night.
-    mats.glow.color.setScalar((0.55 + 0.45 * l.sky.lamps) * lightScale(l.atmo.exposure));
+    mats.glow.color.setScalar(Math.max(0.55 + 0.45 * l.sky.lamps, backlight(l.sky.lamps)) * lightScale(l.atmo.exposure));
   });
   return (
     <>
@@ -321,10 +321,10 @@ export function InteriorLights({ id }: { id: DistrictId }) {
     const a = anchor.current;
     if (!interior || !a || l.version === seen.current) return;
     seen.current = l.version;
-    // On all day, as shops' are — but by day a lamp is nothing next to the
-    // sun coming through the windows, and the rooms read dark behind the
-    // glass's reflection, as real ones do. At night they are the light.
-    const i = 7.5 * (interior.power ?? 1) * (0.12 + 0.88 * l.sky.lamps) * lightScale(l.atmo.exposure);
+    // On all day, as shops' and offices' are: by day the rooms read lit
+    // behind the glass, weaker than at night (`backlight`); at night they
+    // are the light.
+    const i = 7.5 * (interior.power ?? 1) * backlight(l.sky.lamps) * lightScale(l.atmo.exposure);
     a.updateWorldMatrix(true, false);
     interior.lamps.forEach((at, k) => world[k].set(...at).applyMatrix4(a.matrixWorld));
     setLocalLights(id, world, color, i);

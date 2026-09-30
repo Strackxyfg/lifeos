@@ -252,7 +252,25 @@ function traceMaterial(
   if (cache.has(mat)) return cache.get(mat)!;
   let out: THREE.Material | null = mat;
   const traced = mat.userData?.traced as Traced | undefined;
-  if (traced) {
+  const crystal = mat.userData?.traceCrystal as { color: string; ior: number; roughness: number } | undefined;
+  if (mat.userData?.traceSkip) {
+    // A raster-only layer (the crystal brain's inner skin): the tracer has the real volume.
+    out = null;
+  } else if (crystal) {
+    // The crystal brain: clear, transmissive, and glowing from within.
+    const live = mat as THREE.MeshPhysicalMaterial;
+    out = new THREE.MeshPhysicalMaterial({
+      color: crystal.color,
+      transmission: 0.85,
+      thickness: 0.4,
+      roughness: crystal.roughness,
+      ior: crystal.ior,
+      emissive: live.emissive,
+      emissiveIntensity: live.emissiveIntensity * 1.4,
+      metalness: 0,
+    });
+    disposables.push(out);
+  } else if (traced) {
     // Glass: a thin pane that transmits, reflects by its index, tints what passes.
     const g = mat as THREE.MeshPhysicalMaterial;
     const absorb = (g as THREE.MeshPhysicalMaterial & { userData: { absorb?: number } }).userData.absorb ?? 0.05;

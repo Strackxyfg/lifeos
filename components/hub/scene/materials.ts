@@ -25,7 +25,8 @@ export interface HubMaterials {
   metal: THREE.MeshStandardMaterial;
   glass: THREE.MeshStandardMaterial;
   storefront: THREE.MeshStandardMaterial;
-  dome: THREE.MeshStandardMaterial;
+  /** The second brain's dome: clear glass, so the crystal brain shows through it. */
+  dome: THREE.MeshPhysicalMaterial;
   navy: THREE.MeshStandardMaterial;
   grass: THREE.MeshStandardMaterial;
   leaf: THREE.MeshStandardMaterial;
@@ -76,6 +77,23 @@ export const INDOOR_SKY = 0.1;
 /** Warm window light, the colour of a lit room seen from outside. */
 export const WINDOW_LIGHT = new THREE.Color("#ffc98a");
 
+/**
+ * How much of the night's glow a building's own lights keep by day. They are
+ * on all day, as in any office or shop — only the sun outshines them.
+ *
+ * Measured against the grade (the camera opens up at night): a lamp's
+ * perceived brightness goes as its level × 2^(0.18 × exposure), from −0.4
+ * stops at noon to 3.3 at night. At 0.12, the old day level, rooms kept 7 %
+ * of their night brightness — dark behind the glass. At 0.4 they keep about
+ * a quarter: lit, visibly weaker than at night.
+ */
+export const DAY_BACKLIGHT = 0.4;
+
+/** A building's own lights, from `SkyState.lamps` (0 by day, 1 at night): never off. */
+export function backlight(lamps: number): number {
+  return DAY_BACKLIGHT + (1 - DAY_BACKLIGHT) * Math.min(1, Math.max(0, lamps));
+}
+
 export function hubMaterials(): HubMaterials {
   if (shared) return shared;
   const windows = windowTexture();
@@ -108,16 +126,11 @@ export function hubMaterials(): HubMaterials {
       emissiveMap: shopWindows,
       emissiveIntensity: 0.12,
     }),
-    dome: std({
-      color: "#a9c8ff",
-      roughness: 0.04,
-      metalness: 0.25,
-      transparent: true,
-      opacity: 0.32,
-      depthWrite: false,
-      envMapIntensity: 1.6,
-      side: THREE.DoubleSide,
-    }),
+    // Glass as glass behaves (`glass.ts`): it reflects the sky at a grazing
+    // angle and lets the crystal brain show through straight on. It used to
+    // be a pale blue shell at a third of opacity — reflections included —
+    // which hid the brain behind the sky's reflection.
+    dome: windowGlass({ tint: "#0c1522", absorb: 0.03, roughness: 0.02 }),
     navy: std({ color: "#17243f", roughness: 0.45 }),
     grass: std({ color: "#5f8a3c", roughness: 1 }),
     leaf: swaying(std({ color: "#46743a", roughness: 0.85 })),
@@ -228,14 +241,15 @@ export function setLamps(lamps: number, exposure = 0): void {
   currentScale = k;
   for (const s of signMaterials) s.emissiveIntensity = signGlow(lamps, k);
   const m = hubMaterials();
-  m.glass.emissiveIntensity = lamps * 1.15 * k;
-  m.storefront.emissiveIntensity = (0.12 + lamps * 1.6) * k;
+  // Lit rooms seen through the facades: by day too, weaker than at night.
+  m.glass.emissiveIntensity = backlight(lamps) * 1.15 * k;
+  m.storefront.emissiveIntensity = backlight(lamps) * 1.72 * k;
   m.lampHead.emissiveIntensity = (0.1 + lamps * 3) * k;
   m.pool.emissiveIntensity = lamps * 0.55 * k;
   m.dial.emissiveIntensity = lamps * 0.6 * k;
   m.lantern.emissiveIntensity = lamps * 3.2 * k;
   m.beacon.emissiveIntensity = 0.6 * k;
-  m.officeFloor.emissiveIntensity = (0.04 + lamps * 0.3) * k;
+  m.officeFloor.emissiveIntensity = backlight(lamps) * 0.34 * k;
   m.lens.emissiveIntensity = lamps * 4.5 * k;
 }
 

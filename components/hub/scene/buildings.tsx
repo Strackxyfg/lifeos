@@ -6,12 +6,12 @@ import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { DISTRICTS, facing, type District, type DistrictId } from "@/lib/hub/districts";
-import { seeded } from "@/lib/hub/island";
 import { hubMaterials, lampsNow, lightScale, signGlow, signMaterials, signTexture } from "./materials";
 import { useHubLight } from "./light";
 import { panesGeometry, shellGeometry, type ShellSpec } from "./shell";
 import { Furniture, InteriorLights } from "./furniture";
 import { FIRST_LIFT_SLOT, LIFT } from "./lift";
+import { CrystalBrain } from "./crystal-brain";
 
 type V3 = [number, number, number];
 
@@ -228,10 +228,11 @@ function Building({ district, hovered, focused, interactive, onHover, onSelect, 
 /* ── The buildings ───────────────────────────────────────────────── */
 
 /**
- * The second brain: a rotunda under a glass dome, a living core of light
- * inside — and through its glass drum, a round reading room.
+ * The second brain: a rotunda under a glass dome, a crystal brain lit from
+ * within floating under it (`crystal-brain.tsx`) — and through its glass
+ * drum, a round reading room.
  */
-function BrainRotunda({ sign }: { sign: string }) {
+function BrainRotunda({ sign, reducedMotion }: { sign: string; reducedMotion: boolean }) {
   const m = hubMaterials();
   const mullions = 28;
   return (
@@ -267,7 +268,7 @@ function BrainRotunda({ sign }: { sign: string }) {
         </mesh>
       ))}
       <Cy rt={0.3} rb={0.36} h={0.3} p={[0, 6.52, 0]} m={m.trim} seg={24} />
-      <NeuralCore />
+      <CrystalBrain reducedMotion={reducedMotion} />
       {/* Portico. */}
       <Bx s={[2.9, 0.14, 1.3]} p={[0, 2.05, 3.4]} m={m.trim} />
       {[-1.28, 1.28].map((x) => (
@@ -279,89 +280,6 @@ function BrainRotunda({ sign }: { sign: string }) {
       ))}
       <Bx s={[1.3, 0.08, 0.08]} p={[0, 1.94, 2.99]} m={m.trim} />
       <Sign id="brain" text={sign} height={0.38} maxWidth={2.7} p={[0, 2.05, 4.06]} />
-    </group>
-  );
-}
-
-const coreVertex = /* glsl */ `
-  attribute float aPhase;
-  uniform float uTime;
-  uniform float uSize;
-  varying float vPulse;
-  void main() {
-    vPulse = 0.55 + 0.45 * sin(uTime * 1.6 + aPhase * 6.2831853);
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = uSize * (0.6 + 0.6 * vPulse) / -mv.z;
-    gl_Position = projectionMatrix * mv;
-  }
-`;
-
-const coreFragment = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uOpacity;
-  varying float vPulse;
-  void main() {
-    float d = length(gl_PointCoord - 0.5);
-    if (d > 0.5) discard;
-    float a = pow(1.0 - d * 2.0, 1.6) * uOpacity * vPulse;
-    gl_FragColor = vec4(mix(uColor, vec3(1.0), vPulse * 0.35), a);
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-    #include <colorspace_fragment>
-  }
-`;
-
-/** Points in the shape of a brain, breathing — the product's own image, under the dome. */
-function NeuralCore() {
-  const light = useHubLight();
-  const group = useRef<THREE.Group>(null);
-  const geometry = useMemo(() => {
-    const n = 900;
-    const rnd = seeded(77);
-    const pos = new Float32Array(n * 3);
-    const phase = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      const side = i % 2 ? 1 : -1;
-      const u = rnd() * 2 - 1;
-      const t = rnd() * Math.PI * 2;
-      const s = Math.sqrt(1 - u * u);
-      const r = 0.72 + 0.28 * Math.sqrt(rnd());
-      // Two hemispheres, a little apart; flatter underneath, as a brain is.
-      pos[i * 3] = side * 0.3 + s * Math.cos(t) * 0.58 * r;
-      pos[i * 3 + 1] = u * 0.62 * r * (u < 0 ? 0.75 : 1);
-      pos[i * 3 + 2] = s * Math.sin(t) * 0.86 * r;
-      phase[i] = rnd();
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    g.setAttribute("aPhase", new THREE.BufferAttribute(phase, 1));
-    return g;
-  }, []);
-  const material = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        vertexShader: coreVertex,
-        fragmentShader: coreFragment,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        uniforms: {
-          uTime: { value: 0 },
-          uSize: { value: 26 },
-          uColor: { value: new THREE.Color("#6f9bff") },
-          uOpacity: { value: 0.7 },
-        },
-      }),
-    []
-  );
-  useFrame(({ clock }, dt) => {
-    material.uniforms.uTime.value = clock.elapsedTime;
-    material.uniforms.uOpacity.value = (0.55 + light.current.sky.lamps * 0.45) * lightScale(light.current.atmo.exposure);
-    if (group.current) group.current.rotation.y += dt * 0.12;
-  });
-  return (
-    <group ref={group} position={[0, 4.95, 0]} scale={1.45} userData={{ dynamic: true }}>
-      <points geometry={geometry} material={material} renderOrder={5} />
     </group>
   );
 }
@@ -938,7 +856,7 @@ export function Buildings({
   const model = (d: District): ReactNode => {
     switch (d.id) {
       case "brain":
-        return <BrainRotunda sign={signs.brain} />;
+        return <BrainRotunda sign={signs.brain} reducedMotion={reducedMotion} />;
       case "today":
         return <ClockTower sign={signs.today} />;
       case "assistant":

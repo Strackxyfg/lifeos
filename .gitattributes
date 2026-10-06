@@ -1,0 +1,5 @@
+# The agent runner is copied to Linux servers as it is checked out: Windows
+# line ends there break the installer on its first line and the container's
+# scripts. Always LF, whatever the machine that checks it out.
+agent-runner/** text eol=lf
+*.sh text eol=lf

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getUserKey, isSupabaseConfigured } from "@/lib/db/store";
+import { getAuthenticatedUserKey, isSupabaseConfigured } from "@/lib/db/store";
 import { scoreAssessment } from "@/lib/assessment/scoring";
 import { derivePolicy } from "@/lib/agent/policy";
 import { LIKERT_MIN, LIKERT_MAX } from "@/lib/assessment/instrument";
@@ -33,7 +33,9 @@ export async function submitAssessment(responses: unknown): Promise<SubmitState>
   }
 
   try {
-    const userKey = await getUserKey();
+    // The admin client skips row-level security: the key must be the signed-in user's own.
+    const userKey = await getAuthenticatedUserKey();
+    if (!userKey) return { ok: false, error: "Not signed in." };
     const db = createAdminClient();
 
     const { error: aErr } = await db.from("agent_assessments").insert({

@@ -3,18 +3,27 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getUserKey, isSupabaseConfigured } from "@/lib/db/store";
+import { getAuthenticatedUserKey, isSupabaseConfigured } from "@/lib/db/store";
 import { generateToken } from "@/lib/agent/token";
 import { getCapability } from "@/lib/agent/capabilities";
 import { AUTONOMY_ORDER, type AutonomyLevel } from "@/lib/agent/policy";
+import type { RunnerInfo } from "@/lib/agent/runner-status";
 
 export type AgentResult = { ok: true } | { ok: false; error: string };
 const ok: AgentResult = { ok: true };
 const fail = (error: string): AgentResult => ({ ok: false, error });
 
+/**
+ * Who is acting, and the database. The admin client skips row-level
+ * security, so the key must be the signed-in user's own — never a fallback:
+ * these actions mint credentials, approve sends and change what the agent
+ * may do.
+ */
 async function ctx() {
   if (!isSupabaseConfigured()) throw new Error("Supabase is not configured.");
-  return { userKey: await getUserKey(), db: createAdminClient() };
+  const userKey = await getAuthenticatedUserKey();
+  if (!userKey) throw new Error("Not signed in.");
+  return { userKey, db: createAdminClient() };
 }
 
 /**
@@ -314,6 +323,29 @@ export async function rejectDraft(id: string): Promise<AgentResult> {
     return ok;
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Failed.");
+  }
+}
+
+/**
+ * Whether the agent has called in, for the setup guide to watch while the
+ * installer runs on the server. Read-only; the live token's last use as
+ * LifeOS recorded it (`lib/agent/runner-status.ts`).
+ */
+export async function getRunnerStatus(): Promise<{ ok: true; runner: RunnerInfo } | { ok: false; error: string }> {
+  try {
+    const { userKey, db } = await ctx();
+    const { data, error } = await db
+      .from("agent_tokens")
+      .select("last_used")
+      .eq("user_key", userKey)
+      .is("revoked_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, runner: { tokenActive: Boolean(data), lastSeen: data?.last_used ?? null } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed." };
   }
 }
 

@@ -1,9 +1,10 @@
 import "server-only";
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getUserKey, isSupabaseConfigured } from "@/lib/db/store";
+import { getAuthenticatedUserKey, isSupabaseConfigured } from "@/lib/db/store";
 import { derivePolicy, MINIMUM_POLICY, type AgentPolicy } from "./policy";
 import type { AssessmentResult } from "@/lib/assessment/scoring";
+import type { RunnerInfo } from "./runner-status";
 
 export interface AgentTask {
   id: string;
@@ -53,6 +54,8 @@ export interface AgentState {
   tasks: AgentTask[];
   approvals: PendingApproval[];
   hasToken: boolean;
+  /** The live token and when the agent last called in with it. */
+  runner: RunnerInfo;
   /** Work the agent produced that is waiting on a human. */
   drafts: AgentDraft[];
   /** The linked Telegram chat, or null. Never the chat id — just whether. */
@@ -75,6 +78,7 @@ const EMPTY: AgentState = {
   tasks: [],
   approvals: [],
   hasToken: false,
+  runner: { tokenActive: false, lastSeen: null },
   drafts: [],
   telegramLinked: false,
   telegramAvailable: false,
@@ -85,7 +89,9 @@ const EMPTY: AgentState = {
 export const loadAgentState = cache(async function loadAgentState(): Promise<AgentState> {
   if (!isSupabaseConfigured()) return EMPTY;
 
-  const userKey = await getUserKey();
+  // Read with the admin client: only ever for the signed-in user themself.
+  const userKey = await getAuthenticatedUserKey();
+  if (!userKey) return EMPTY;
   const db = createAdminClient();
 
   const [assessmentRes, policyRes, tasksRes, approvalsRes, tokenRes, messagesRes, draftsRes, channelRes] = await Promise.all([
@@ -97,8 +103,8 @@ export const loadAgentState = cache(async function loadAgentState(): Promise<Age
     db.from("agent_audit").select("*").eq("user_key", userKey)
       .eq("decision", "approve").is("approved_at", null)
       .order("created_at", { ascending: false }).limit(20),
-    db.from("agent_tokens").select("id").eq("user_key", userKey)
-      .is("revoked_at", null).limit(1).maybeSingle(),
+    db.from("agent_tokens").select("id, last_used").eq("user_key", userKey)
+      .is("revoked_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     db.from("agent_messages").select("id, role, content, status, created_at")
       .eq("user_key", userKey).order("created_at", { ascending: false }).limit(50),
     // Migration 006 may not be applied yet; these two degrade to empty rather
@@ -165,6 +171,7 @@ export const loadAgentState = cache(async function loadAgentState(): Promise<Age
       createdAt: r.created_at,
     })),
     hasToken: Boolean(tokenRes.data),
+    runner: { tokenActive: Boolean(tokenRes.data), lastSeen: tokenRes.data?.last_used ?? null },
     drafts: (draftsRes.data ?? []).map((d) => ({
       id: d.id,
       kind: d.kind,

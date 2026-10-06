@@ -32,7 +32,12 @@ const MECHANISMS: { name: string; pattern: RegExp }[] = [
  * Routes that are deliberately public, each with the reason. Adding a route
  * here should be a conscious decision that shows up in review.
  */
-const PUBLIC: Record<string, string> = {};
+const PUBLIC: Record<string, string> = {
+  // The agent runner's installer and source files (an allowlist of five, see
+  // lib/agent/runner-files.ts): fetched by a server that has no session yet.
+  // They hold no secret and no data; the token is typed on the server.
+  "agent/runner/[file]": "the runner's own installer and source, the same for everyone",
+};
 
 function routes(dir: string): string[] {
   const out: string[] = [];

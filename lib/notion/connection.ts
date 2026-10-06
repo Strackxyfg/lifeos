@@ -53,10 +53,11 @@ export async function getNotionStatus(): Promise<{
   workspaceName: string | null;
   source: "oauth" | "env" | null;
 }> {
-  const { getUserKey } = await import("@/lib/db/store");
+  const { getAuthenticatedUserKey } = await import("@/lib/db/store");
   try {
-    const userKey = await getUserKey();
-    if (isSupabaseConfigured()) {
+    // Read with the admin client: only for the signed-in user themself.
+    const userKey = await getAuthenticatedUserKey();
+    if (userKey && isSupabaseConfigured()) {
       const db = createAdminClient();
       const { data } = await db
         .from("notion_connections")

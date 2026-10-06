@@ -10,6 +10,11 @@ const nextConfig = {
   // This project is the root. Next otherwise guesses from lockfiles and can
   // settle on a parent folder that merely has one of its own.
   outputFileTracingRoot: path.dirname(fileURLToPath(import.meta.url)),
+  // The runner's files are read from disk by the route that serves them to a
+  // server installing the agent: carried into that route's bundle.
+  outputFileTracingIncludes: {
+    "/api/agent/runner/[file]": ["./agent-runner/install.sh", "./agent-runner/*.mjs", "./agent-runner/Dockerfile", "./agent-runner/docker-compose.yml"],
+  },
   reactStrictMode: true,
   poweredByHeader: false,
   experimental: {

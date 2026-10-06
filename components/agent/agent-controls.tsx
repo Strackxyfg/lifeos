@@ -4,10 +4,9 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, X, Loader2, Power, KeyRound, Copy, Plus, Trash2 } from "lucide-react";
+import { Check, X, Loader2, Power, Plus, Trash2 } from "lucide-react";
 import {
-  setKillSwitch, resolveApproval, createAgentTask, cancelAgentTask,
-  mintRunnerToken, revokeRunnerTokens, type AgentResult,
+  setKillSwitch, resolveApproval, createAgentTask, cancelAgentTask, type AgentResult,
 } from "@/app/actions/agent";
 import { CAPABILITIES, getCapability } from "@/lib/agent/capabilities";
 import type { PendingApproval, AgentTask } from "@/lib/agent/store";
@@ -255,74 +254,5 @@ export function TaskList({ tasks }: { tasks: AgentTask[] }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-/* ── Runner token ─────────────────────────────────────────────────── */
-
-export function RunnerToken({ hasToken }: { hasToken: boolean }) {
-  const m = useMessages();
-  const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-
-  const mint = () =>
-    start(async () => {
-      const res = await mintRunnerToken();
-      if (!res.ok) return toast(res.error, "error");
-      setToken(res.token);
-      router.refresh();
-    });
-
-  const revoke = () =>
-    start(async () => {
-      const res = await revokeRunnerTokens();
-      if (!res.ok) return toast(res.error, "error");
-      setToken(null);
-      toast(m.agent.revoked);
-      router.refresh();
-    });
-
-  return (
-    <div className="space-y-3 p-5">
-      <p className="text-[0.78rem] leading-relaxed text-muted-foreground">{m.agent.runnerDesc}</p>
-
-      {token && (
-        <div className="rounded-lg border border-accent/30 bg-accent/5 p-3">
-          <p className="mb-2 text-[0.72rem] text-accent">{m.agent.tokenOnce}</p>
-          <div className="flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded bg-surface-2 px-2 py-1.5 font-mono text-[0.72rem]">
-              {token}
-            </code>
-            <button
-              onClick={() => { navigator.clipboard?.writeText(token); toast("Copied"); }}
-              aria-label="Copy"
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border hover:bg-surface-2"
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2">
-        <button onClick={mint} disabled={pending} className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "gap-1.5")}>
-          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
-          {m.agent.mintToken}
-        </button>
-        {hasToken && (
-          <button
-            onClick={revoke}
-            disabled={pending}
-            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-danger hover:bg-danger/10")}
-          >
-            {m.agent.revokeToken}
-          </button>
-        )}
-        <span className="text-[0.72rem] text-muted">
-          {hasToken ? m.agent.tokenActive : m.agent.tokenNone}
-        </span>
-      </div>
-    </div>
   );
 }

@@ -26,14 +26,16 @@ export function getStore(): Store {
  *
  * With Supabase configured this is `auth.uid()` — exactly what the RLS
  * policies compare against (`user_key = auth.uid()::text`), so the database
- * enforces ownership. Without Supabase it falls back to the demo session
- * email, then to a shared demo key for signed-out rendering.
+ * enforces ownership — and, signed out, the shared demo key. Never the demo
+ * session cookie there: it is plain base64 anyone can write, and reading it
+ * let a forged cookie name any user's id. Without Supabase, the demo session
+ * email, then the shared demo key for signed-out rendering.
  */
 export const getUserKey = cache(async function getUserKey(): Promise<string> {
   if (isSupabaseConfigured()) {
     const { getSupabaseUser } = await import("@/lib/supabase/rls");
     const user = await getSupabaseUser();
-    if (user) return user.id;
+    return user ? user.id : DEMO_USER_KEY;
   }
   const session = await getSession();
   return session?.email ?? DEMO_USER_KEY;

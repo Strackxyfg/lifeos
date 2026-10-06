@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { Bot, ShieldAlert, ArrowRight, Check, ShieldX, UserCheck, MessageSquare, Send, Inbox } from "lucide-react";
 import { AgentChat } from "@/components/agent/agent-chat";
 import { AutonomyPicker } from "@/components/agent/autonomy-picker";
@@ -9,9 +10,12 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import {
-  KillSwitch, Approvals, TaskComposer, TaskList, RunnerToken,
+  KillSwitch, Approvals, TaskComposer, TaskList,
 } from "@/components/agent/agent-controls";
+import { RunnerSetup } from "@/components/agent/runner-setup";
 import { loadAgentState } from "@/lib/agent/store";
+import { originFrom } from "@/lib/agent/runner-files";
+import { isLocalOrigin, runnerState } from "@/lib/agent/runner-status";
 import { CAPABILITIES } from "@/lib/agent/capabilities";
 import { decide } from "@/lib/agent/policy";
 import { getMessages } from "@/lib/i18n/server";
@@ -76,9 +80,22 @@ export default async function AgentPage() {
     killSwitchOn: state.killSwitch,
   };
 
+  // Where a server reaches this LifeOS: the address the person is using now.
+  const origin = originFrom(await headers(), null) ?? "https://lifeos.ai";
+  const renderedAt = Date.now();
+  const online = runnerState(state.runner, renderedAt).state === "online";
+  // Until the agent runs, setting it up comes first: nothing else here works without it.
+  const setup = (
+    <Card className={online ? "mt-3" : "mb-3"}>
+      <RunnerSetup runner={state.runner} origin={origin} local={isLocalOrigin(origin)} renderedAt={renderedAt} />
+    </Card>
+  );
+
   return (
     <>
       <PageHeader title={m.agent.title} description={m.agent.desc} />
+
+      {!online && setup}
 
       {/* Messaging — the reason the agent is reachable at all */}
       <Card className="mb-3">
@@ -90,7 +107,7 @@ export default async function AgentPage() {
             </span>
           }
         />
-        <AgentChat messages={state.messages} runnerOnline={state.hasToken} />
+        <AgentChat messages={state.messages} runnerOnline={online} />
       </Card>
 
       {/* Status */}
@@ -203,24 +220,20 @@ export default async function AgentPage() {
         </ul>
       </Card>
 
-      {/* Reachability + runner credentials */}
-      <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        <Card>
-          <CardHeader
-            title={
-              <span className="flex items-center gap-2">
-                <Send className="h-4 w-4 text-accent" />
-                {m.agent.telegram}
-              </span>
-            }
-          />
-          <TelegramLink linked={state.telegramLinked} available={state.telegramAvailable} />
-        </Card>
-        <Card>
-          <CardHeader title={m.agent.runner} />
-          <RunnerToken hasToken={state.hasToken} />
-        </Card>
-      </div>
+      {/* Reachability */}
+      <Card className="mt-3">
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              <Send className="h-4 w-4 text-accent" />
+              {m.agent.telegram}
+            </span>
+          }
+        />
+        <TelegramLink linked={state.telegramLinked} available={state.telegramAvailable} />
+      </Card>
+
+      {online && setup}
 
       <p className="mt-6 text-center text-[0.72rem] text-muted">
         <Link href="/assessment" className="underline-offset-4 hover:underline">

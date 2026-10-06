@@ -13,6 +13,9 @@
 
 import { classifyModelError, isTransientNetworkError, createBackoff } from "./retry.mjs";
 
+/** Sent with every call (User-Agent), so LifeOS's logs can tell an old runner from a new one. */
+const RUNNER_VERSION = "2";
+
 const LIFEOS_URL = required("LIFEOS_URL");
 const TOKEN = required("LIFEOS_AGENT_TOKEN");
 const MODEL_KEY = process.env.MODEL_API_KEY ?? "";
@@ -124,10 +127,25 @@ const api = (path, init = {}) =>
     headers: {
       Authorization: `Bearer ${TOKEN}`,
       "Content-Type": "application/json",
+      "User-Agent": `lifeos-agent-runner/${RUNNER_VERSION}`,
       ...init.headers,
     },
     signal: AbortSignal.timeout(30_000),
   });
+
+/**
+ * Qwen 3 reasons aloud before answering unless told not to — tokens spent on
+ * thinking the person never sees, and, in JSON mode, an answer that may not
+ * fit. LifeOS's own AI router says "/no_think" to it; so does the agent.
+ */
+const isQwen3 = (model) => /qwen-?3/i.test(model);
+function withModelHints(body, model) {
+  if (!isQwen3(model)) return body;
+  const messages = body.messages.map((m) => ({ ...m }));
+  const last = [...messages].reverse().find((m) => m.role === "user");
+  if (last && !String(last.content).includes("/no_think")) last.content = `${last.content}\n\n/no_think`;
+  return { ...body, messages };
+}
 
 /** Ask LifeOS whether an action is permitted. Never assume yes. */
 async function propose(capability, payload, costCents = 0) {
@@ -191,7 +209,7 @@ async function chat(body) {
       const res = await fetch(`${p.base}/chat/completions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${p.key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, model: p.model }),
+        body: JSON.stringify({ ...withModelHints(body, p.model), model: p.model }),
         signal: AbortSignal.timeout(60_000),
       });
       if (!res.ok) throw await modelError(res);
@@ -282,11 +300,35 @@ function tagLocal(err, retryable) {
   return err;
 }
 
+/** LifeOS refused the token: an error the loop treats apart (see `refusedWait`). */
+class TokenRefused extends Error {}
+
 /** Cheap liveness probe + work check. One call, no gate round-trip. */
 async function pollInbox() {
   const res = await api("/api/agent/v1/inbox");
+  if (res.status === 401) throw new TokenRefused("LifeOS refused the token (HTTP 401)");
   if (!res.ok) throw new Error(`inbox HTTP ${res.status}`);
   return res.json();
+}
+
+/**
+ * A refused token will not be accepted on the next poll either: revoked in
+ * LifeOS, or replaced by a newer one. Polling every ten seconds only filled
+ * the log. Say what to do, once in a while, and check again every minute —
+ * the moment the token is replaced (`lifeos-agent token` restarts the agent
+ * anyway), work resumes.
+ */
+const REFUSED_WAIT_MS = 60_000;
+let refusedSaidAt = 0;
+function refusedWait() {
+  if (Date.now() - refusedSaidAt > 10 * 60_000) {
+    refusedSaidAt = Date.now();
+    console.error(
+      "[runner] LifeOS refuses this agent's token: it was revoked, or a newer one was generated. " +
+        "In LifeOS → Agent → Install on a server, generate a token, then on this server run: lifeos-agent token"
+    );
+  }
+  return REFUSED_WAIT_MS;
 }
 
 /**
@@ -523,7 +565,7 @@ if (BACKEND === "hermes" && !HERMES_KEY) {
 }
 
 console.log(
-  `[runner] starting · lifeos=${LIFEOS_URL} · ` +
+  `[runner] starting v${RUNNER_VERSION} · lifeos=${LIFEOS_URL} · ` +
     (BACKEND === "hermes"
       ? `brain=Hermes at ${HERMES_URL} (shared with Telegram)`
       : `brain=${MODEL} direct`) +
@@ -560,8 +602,13 @@ while (!stopping) {
   let wait = IDLE_POLL_MS;
   try {
     wait = await tick();
+    if (refusedSaidAt) {
+      refusedSaidAt = 0;
+      console.log("[runner] token accepted again — back to work");
+    }
   } catch (err) {
-    console.error("[runner] tick failed:", err.message);
+    if (err instanceof TokenRefused) wait = refusedWait();
+    else console.error("[runner] tick failed:", err.message);
   }
   beat();
   await new Promise((r) => setTimeout(r, wait));

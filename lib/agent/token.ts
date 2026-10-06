@@ -33,13 +33,19 @@ export function safeEqual(a: string, b: string): boolean {
 export interface AuthedRunner {
   userKey: string;
   tokenId: string;
+  /** When the token was last used before this request (null: never). */
+  lastUsed: string | null;
 }
 
 /**
  * Resolves `Authorization: Bearer …` to a user, or null.
  * Revoked tokens never authenticate.
+ *
+ * Every call stamps the token's last use — what the agent page shows as
+ * "connected" — except with `touch: false`: the installer checking a token
+ * must not make the page say the agent is running before it is.
  */
-export async function authenticateRunner(req: Request): Promise<AuthedRunner | null> {
+export async function authenticateRunner(req: Request, opts: { touch?: boolean } = {}): Promise<AuthedRunner | null> {
   const header = req.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!token.startsWith(PREFIX)) return null;
@@ -47,7 +53,7 @@ export async function authenticateRunner(req: Request): Promise<AuthedRunner | n
   const db = createAdminClient();
   const { data } = await db
     .from("agent_tokens")
-    .select("id, user_key, token_hash, revoked_at")
+    .select("id, user_key, token_hash, revoked_at, last_used")
     .eq("token_hash", hashToken(token))
     .maybeSingle();
 
@@ -55,7 +61,9 @@ export async function authenticateRunner(req: Request): Promise<AuthedRunner | n
   if (!safeEqual(data.token_hash, hashToken(token))) return null;
 
   // Best-effort last-used stamp; never blocks the request.
-  void db.from("agent_tokens").update({ last_used: new Date().toISOString() }).eq("id", data.id);
+  if (opts.touch !== false) {
+    void db.from("agent_tokens").update({ last_used: new Date().toISOString() }).eq("id", data.id);
+  }
 
-  return { userKey: data.user_key, tokenId: data.id };
+  return { userKey: data.user_key, tokenId: data.id, lastUsed: data.last_used ?? null };
 }

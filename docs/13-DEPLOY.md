@@ -94,60 +94,42 @@ Open the URL, sign in, visit `/agent`. If the page loads, LifeOS is live.
 
 ---
 
-# Step 3 — Mint the agent token
+# Step 3 — Open the guide in LifeOS
 
-LifeOS → **Agent** → **Generate token**. Copy it now; it is shown once and only
-its SHA-256 hash is stored. Revoking it stops the runner instantly, anywhere.
+LifeOS → **Agent** → **Install on a server**. Open it from the deployed
+address (not `localhost`): the command it shows carries that address. Keep the
+page open; it turns green when your server's agent calls in.
+
+You will need a model key — Groq's free tier is the simplest:
+<https://console.groq.com/keys>.
 
 ---
 
-# Step 4A — Hostinger VPS (simplest, ~$5/mo)
+# Step 4A — Hostinger VPS (simplest)
 
-**KVM 1**: 1 vCPU / 4 GB / 50 GB NVMe. The runner idles at ~40 MB, so this is
+**KVM 1**: 1 vCPU / 4 GB / 50 GB NVMe. The agent idles at ~40 MB, so this is
 generous.
 
 1. **Buy** — hostinger.com → VPS Hosting → **KVM 1**. Pick the datacentre
    closest to you.
-2. **OS template** — during setup choose **Ubuntu 24.04 with Docker**
-   (Applications → Docker). That skips installing Docker yourself.
-   Plain Ubuntu 24.04 also works; `install.sh` installs Docker for you.
+2. **OS template** — **Ubuntu 24.04** (the variant with Docker saves a minute;
+   the installer adds Docker otherwise).
 3. **Root password / SSH key** — set one when prompted, and note the server's
    IP from hPanel → VPS → Overview.
-4. **Connect**:
+4. **Connect**: `ssh root@<your-vps-ip>`
+5. In the guide, **Generate token**, then paste the guide's command on the
+   server:
 
 ```bash
-ssh root@<your-vps-ip>
+curl -fsSL "https://<your LifeOS>/api/agent/runner/install.sh?lang=fr" | sudo bash
 ```
 
-5. **Get the runner onto the box** — clone your repo (private repos will ask
-   for credentials; a public one won't):
+6. Paste the token, choose the model provider (Enter for Groq), paste the key.
+   Everything is checked before anything is installed; then it starts the agent
+   and waits until LifeOS hears it.
 
-```bash
-apt update && apt install -y git
-git clone https://github.com/<your-username>/lifeos.git
-cd lifeos/agent-runner
-bash install.sh
-```
-
-6. Answer the three prompts:
-
-```
-LifeOS public URL : https://lifeos-xyz.vercel.app
-Agent token       : lifeos_agent_…
-Model API key     : gsk_…            (your Groq key)
-Model base URL    : (Enter for Groq default)
-Model             : (Enter for default)
-```
-
-The script refuses a `localhost` URL rather than failing silently.
-
-7. **Watch it start**:
-
-```bash
-sudo docker compose -f /opt/lifeos-agent/docker-compose.yml logs -f
-```
-
-Expected: `[runner] starting · lifeos=https://… · model=qwen/qwen3.8-27b`
+No git clone, no repository access needed on the server: the agent's files
+come from your LifeOS.
 
 ---
 
@@ -175,7 +157,7 @@ step 4.**
    [halved it in 2026](https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/)
    to 2 OCPU / 12 GB and it is frequently **"Out of host capacity"** — people
    retry for days. The AMD micro is almost always available, and 1 GB is
-   ~25× what this runner needs. Take the boring shape.
+   ~25× what this agent needs. Take the boring shape.
 
 5. **Image** — Canonical Ubuntu 24.04.
 
@@ -191,24 +173,9 @@ chmod 600 ~/Downloads/ssh-key-*.key
 ssh -i ~/Downloads/ssh-key-*.key ubuntu@<public-ip>
 ```
 
-9. **Install**:
+9. **Install** — the guide's command, as on Hostinger (`sudo` is already in it).
 
-```bash
-sudo apt update && sudo apt install -y git
-git clone https://github.com/<your-username>/lifeos.git
-cd lifeos/agent-runner
-sudo bash install.sh
-```
-
-Same three prompts as Hostinger.
-
-10. **Logs**:
-
-```bash
-sudo docker compose -f /opt/lifeos-agent/docker-compose.yml logs -f
-```
-
-> **Oracle note:** the runner only makes *outbound* connections, so you do
+> **Oracle note:** the agent only makes *outbound* connections, so you do
 > **not** need to open any ingress port or touch the security list. If you ever
 > do expose a port, Oracle's Ubuntu images also have local `iptables` rules that
 > must be changed separately from the cloud security list — a classic trap.
@@ -217,31 +184,20 @@ sudo docker compose -f /opt/lifeos-agent/docker-compose.yml logs -f
 
 # Step 5 — Verify end to end
 
-1. LifeOS → **Agent** → send a message.
-2. It shows *"waiting for your runner…"*.
-3. Within one poll cycle (~30 s) the reply appears.
-
-On the VPS you should see:
-
-```
-[runner] message: <what you typed>
-[runner] replied to 4f2a1c9b
-```
-
-Container health (a real probe — the runner touches a heartbeat file each cycle):
-
-```bash
-sudo docker inspect --format '{{.State.Health.Status}}' lifeos-agent-agent-1
-```
+1. The guide in LifeOS shows **Connected · heard a few seconds ago**.
+2. LifeOS → **Agent** → **Messages** → send a message; the reply usually lands
+   in 3–5 seconds.
+3. On the server, `lifeos-agent status` shows the container, its health, when
+   LifeOS last heard it, and its last lines.
 
 ## If something is wrong
 
+`lifeos-agent doctor` runs every check without changing anything. See the
+table in [`12-RUNNER-SETUP.md`](12-RUNNER-SETUP.md#troubleshooting). Two that
+belong to the deployment itself:
+
 | Symptom | Cause |
 |---|---|
-| Message stays "waiting" | Runner not running, or wrong `LIFEOS_URL` — read its logs |
-| `HTTP 401` every cycle | Token revoked or mistyped — mint a new one |
-| `HTTP 404` on `/api/agent/v1/…` | `LIFEOS_URL` isn't your LifeOS deployment |
-| `relation "agent_messages" does not exist` | Apply `005_agent_chat.sql` |
 | Vercel build fails | Check the build log; run `npm run build` locally to reproduce |
 | Sign-in bounces to localhost | Supabase Auth URL Configuration (step 2b) |
 | Notion OAuth `redirect_uri_mismatch` | The URI in Notion ≠ `NOTION_REDIRECT_URI` |
@@ -252,7 +208,7 @@ sudo docker inspect --format '{{.State.Health.Status}}' lifeos-agent-agent-1
 |---|---|
 | Vercel Hobby | $0 |
 | Supabase Free | $0 |
-| Groq free tier | $0 (30 req/min covers a 30 s poll easily) |
+| Groq free tier | $0 (an idle agent makes no model calls; replies and the 15-minute background pass do) |
 | Oracle AMD micro | **$0** |
 | *or* Hostinger KVM 1 | ~$5/mo |
 

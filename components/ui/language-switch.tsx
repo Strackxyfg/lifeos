@@ -28,8 +28,9 @@ export function LanguageSwitch() {
           onClick={() => pick(l)}
           disabled={pending}
           aria-pressed={l === locale}
+          // Small to the eye, but 32 px under a finger.
           className={cn(
-            "rounded px-1.5 py-0.5 uppercase transition-colors",
+            "relative rounded px-1.5 py-0.5 uppercase transition-colors [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-x-0.5 [@media(pointer:coarse)]:before:-inset-y-1.5 [@media(pointer:coarse)]:before:content-['']",
             l === locale ? "bg-surface-2 text-foreground" : "text-muted-foreground hover:text-foreground"
           )}
         >

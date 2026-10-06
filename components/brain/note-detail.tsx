@@ -303,7 +303,7 @@ export function NoteDetail({
               key={c.k}
               type="button"
               onClick={() => onTheme(c.k)}
-              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-px text-[0.7rem] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-px text-[0.7rem] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground [@media(pointer:coarse)]:py-1.5"
             >
               <Hash className="h-2.5 w-2.5" /> {c.l}
             </button>
@@ -448,7 +448,7 @@ export function NoteDetail({
                               <button
                                 type="button"
                                 onClick={() => onOpen(link.resolvedBy!)}
-                                className="mt-1.5 inline-flex items-center gap-1 rounded border border-success/40 px-1.5 py-px text-[0.66rem] text-success hover:bg-success/10"
+                                className="mt-1.5 inline-flex items-center gap-1 rounded border border-success/40 px-1.5 py-px text-[0.66rem] text-success hover:bg-success/10 [@media(pointer:coarse)]:py-1.5"
                               >
                                 <Check className="h-3 w-3" /> {m.brain.decide.decided}
                               </button>
@@ -456,7 +456,7 @@ export function NoteDetail({
                               <button
                                 type="button"
                                 onClick={() => onDecide(link.id)}
-                                className="mt-1.5 inline-flex items-center gap-1 rounded border px-1.5 py-px text-[0.66rem] hover:bg-[#fb7185]/10"
+                                className="mt-1.5 inline-flex items-center gap-1 rounded border px-1.5 py-px text-[0.66rem] hover:bg-[#fb7185]/10 [@media(pointer:coarse)]:py-1.5"
                                 style={{ borderColor: "#fb718566", color: "#fb7185" }}
                               >
                                 {m.brain.decide.action}
@@ -498,7 +498,7 @@ export function NoteDetail({
                             <button
                               type="button"
                               onClick={() => onReview(link.id, "keep")}
-                              className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[0.68rem] hover:border-success/50 hover:text-success"
+                              className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-px text-[0.68rem] hover:border-success/50 hover:text-success [@media(pointer:coarse)]:py-1.5"
                             >
                               <Check className="h-3 w-3" /> {m.brain.review.keep}
                             </button>
@@ -532,7 +532,7 @@ export function NoteDetail({
                         <button
                           type="button"
                           onClick={() => onLink(note.id, s.id, "suggested", s.shared.slice(0, 3).join(", "))}
-                          className="shrink-0 rounded-md border border-accent/40 px-2 py-0.5 text-[0.72rem] text-accent hover:bg-accent/10"
+                          className="shrink-0 rounded-md border border-accent/40 px-2 py-0.5 text-[0.72rem] text-accent hover:bg-accent/10 [@media(pointer:coarse)]:py-1.5"
                         >
                           {m.brain.links.connect}
                         </button>

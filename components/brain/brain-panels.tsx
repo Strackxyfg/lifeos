@@ -206,14 +206,14 @@ export function Overview({
                     <button
                       type="button"
                       onClick={() => onReview(l.id, "keep")}
-                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[0.72rem] hover:border-success/50 hover:text-success"
+                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[0.72rem] hover:border-success/50 hover:text-success [@media(pointer:coarse)]:py-1.5"
                     >
                       <Check className="h-3 w-3" /> {m.brain.review.keep}
                     </button>
                     <button
                       type="button"
                       onClick={() => onReview(l.id, "remove")}
-                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[0.72rem] text-muted-foreground hover:border-danger/50 hover:text-danger"
+                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[0.72rem] text-muted-foreground hover:border-danger/50 hover:text-danger [@media(pointer:coarse)]:py-1.5"
                     >
                       <X className="h-3 w-3" /> {m.brain.review.remove}
                     </button>
@@ -243,7 +243,7 @@ export function Overview({
                   <button
                     type="button"
                     onClick={() => onDecide(l.id)}
-                    className="mt-2 inline-flex items-center gap-1 rounded border px-1.5 py-px text-[0.68rem] transition-colors hover:bg-[#fb7185]/10"
+                    className="mt-2 inline-flex items-center gap-1 rounded border px-1.5 py-px text-[0.68rem] transition-colors hover:bg-[#fb7185]/10 [@media(pointer:coarse)]:py-1.5"
                     style={{ borderColor: "#fb718566", color: "#fb7185" }}
                   >
                     <Zap className="h-3 w-3" /> {m.brain.decide.action}

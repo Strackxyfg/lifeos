@@ -31,8 +31,14 @@ export function Toaster() {
     return () => window.removeEventListener("lifeos:toast", onToast);
   }, []);
 
+  // On a phone, under the top bar: at the bottom the keyboard hides a toast
+  // about what was just typed, and reminders already live there.
   return (
-    <div className="pointer-events-none fixed bottom-5 right-5 z-[110] flex flex-col gap-2">
+    <div
+      role="status"
+      aria-live="polite"
+      className="pointer-events-none fixed inset-x-4 top-[4.25rem] z-[110] flex flex-col items-center gap-2 sm:inset-x-auto sm:bottom-5 sm:right-5 sm:top-auto sm:items-end"
+    >
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div
@@ -41,11 +47,11 @@ export function Toaster() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={{ duration: 0.22, ease }}
-            className="pointer-events-auto flex items-center gap-2.5 rounded-lg border border-border bg-surface-2 px-3.5 py-2.5 text-sm shadow-lift"
+            className="pointer-events-auto flex max-w-full items-center gap-2.5 rounded-lg border border-border bg-surface-2 px-3.5 py-2.5 text-sm shadow-lift sm:max-w-sm"
           >
             <span
               className={cn(
-                "grid h-5 w-5 place-items-center rounded-full",
+                "grid h-5 w-5 shrink-0 place-items-center rounded-full",
                 t.variant === "error" ? "bg-danger/15 text-danger" : "bg-success/15 text-success"
               )}
             >

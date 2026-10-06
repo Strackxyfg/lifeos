@@ -8,6 +8,9 @@ describe("the first guess", () => {
     expect(initialTier({ cores: 4, memory: 8 })).toBe("medium");
     expect(initialTier({ cores: 2 })).toBe("low");
     expect(initialTier({ cores: 16, saveData: true })).toBe("low");
+    // No float render targets (some older phones): the direct path, never a black island.
+    expect(initialTier({ cores: 8, memory: 8, coarse: true, floatTargets: false })).toBe("low");
+    expect(initialTier({ cores: 8, memory: 8, width: 1850, floatTargets: true })).toBe("high");
   });
 
   it("only the weakest tier draws without the post pipeline", () => {

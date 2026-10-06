@@ -52,6 +52,15 @@
   border-color: hsl(var(--border));
 }
 
+/* A field in a row takes the room left over, never more: by default it
+   keeps its intrinsic width (some twenty characters) and, on a phone,
+   squeezed the buttons beside it to 16 px. */
+input,
+textarea,
+select {
+  min-width: 0;
+}
+
 html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -86,6 +95,29 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover { background: hsl(240 5% 28%); }
 
+/* ── Phones and tablets ──────────────────────────────────────
+   iOS zooms the whole page into any text field set below 16px when it is
+   focused, and does not zoom back out: every capture, search and reply box
+   would jolt the layout. Under a finger, fields are set at 16px. (Measured
+   with the mobile audit: no field here is set larger.)
+   A tap flashes nothing grey (each control has its own pressed and focus
+   states), and taps on controls never wait to see if a double tap follows. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+a,
+button,
+[role="button"],
+label,
+summary {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
@@ -96,6 +128,15 @@ body {
 
 /* ── Reusable primitives ─────────────────────────────────── */
 @layer components {
+  /* A grid with no columns of its own — most layouts here stack on a phone
+     and split from a breakpoint up (`grid gap-3 lg:grid-cols-3`) — gets one
+     column the width of its box. Left implicit, that column grew to its
+     widest unbreakable line (a reminder's title, a field's placeholder) and
+     the dashboard ran 245 px past a 375 px screen. Any `grid-cols-*` wins. */
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   /* Hairline grid + aurora background used behind hero/app */
   .bg-grid {
     background-image:

@@ -49,6 +49,9 @@ export function FrameDriver({ onFrame }: { onFrame?: (f: FrameInfo) => void }) {
         b.addEventListener("chargingchange", onCharging);
       })
       .catch(() => {});
+    // Safari tells nothing about the battery. A phone or a tablet is on one
+    // most of the time: it gets the battery's rate unless it says otherwise.
+    if (!nav.getBattery && matchMedia("(pointer: coarse)").matches) pacer.onBattery = true;
 
     const tick = (t: number) => {
       raf = requestAnimationFrame(tick);

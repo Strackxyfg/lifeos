@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -19,6 +19,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { ease } from "@/lib/motion";
 import { DISTRICTS, DISTRICT_IDS, districtById, type DistrictId } from "@/lib/hub/districts";
 import { hubBadges, hubStats, type HubFacts, type HubStat } from "@/lib/hub/summary";
+import type { PageRect } from "@/lib/hub/framing";
 import type { SkyPhase } from "@/lib/hub/sky";
 import type { SunTimes } from "@/lib/hub/solar";
 import type { Alert } from "@/lib/data/alerts";
@@ -30,6 +31,12 @@ import { DISTRICT_ICONS } from "./district-icons";
 export function HubTopBar({ profile, alerts, greeting }: { profile: Profile; alerts: Alert[]; greeting: string }) {
   const m = useMessages();
   const [drawer, setDrawer] = useState(false);
+  useEffect(() => {
+    if (!drawer) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawer]);
   return (
     <>
       <header className="pointer-events-none absolute inset-x-0 top-0 z-40 flex items-start justify-between gap-3 p-3 sm:p-4">
@@ -42,7 +49,8 @@ export function HubTopBar({ profile, alerts, greeting }: { profile: Profile; ale
           >
             <Menu className="h-[1.125rem] w-[1.125rem]" />
           </button>
-          <div className="glass hidden rounded-xl border border-border px-3.5 py-2 shadow-card sm:block">
+          {/* A greeting is a nicety a phone turned sideways has no room for. */}
+          <div className="glass hidden rounded-xl border border-border px-3.5 py-2 shadow-card sm:block [@media(max-height:500px)]:!hidden">
             <p className="text-[0.8125rem] text-muted-foreground">LifeOS</p>
             {/* The server's clock is not the person's (it runs in UTC): the
                 browser's hour wins, without a hydration warning. */}
@@ -51,11 +59,12 @@ export function HubTopBar({ profile, alerts, greeting }: { profile: Profile; ale
             </p>
           </div>
         </div>
-        <div className="glass pointer-events-auto flex items-center gap-1 rounded-xl border border-border p-1 shadow-card">
+        <div data-hub-bar className="glass pointer-events-auto flex items-center gap-1 rounded-xl border border-border p-1 shadow-card">
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event("lifeos:command"))}
-            className="hidden items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground md:flex"
+            // Keyboard hints only where there is a keyboard to go with them (not a phone held sideways).
+            className="hidden items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground md:[@media(pointer:fine)]:flex"
           >
             <Command className="h-3.5 w-3.5" />
             <Kbd>⌘K</Kbd>
@@ -72,7 +81,10 @@ export function HubTopBar({ profile, alerts, greeting }: { profile: Profile; ale
           <motion.div className="fixed inset-0 z-[80]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={() => setDrawer(false)} />
             <motion.aside
-              className="absolute inset-y-0 left-0 flex w-[280px] flex-col border-r border-border bg-surface p-4 shadow-lift"
+              role="dialog"
+              aria-modal="true"
+              aria-label={m.hub.menu}
+              className="absolute inset-y-0 left-0 flex w-[280px] max-w-[85vw] flex-col overflow-y-auto overscroll-contain border-r border-border bg-surface p-4 shadow-lift"
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
@@ -81,8 +93,8 @@ export function HubTopBar({ profile, alerts, greeting }: { profile: Profile; ale
               <button
                 type="button"
                 onClick={() => setDrawer(false)}
-                aria-label={m.hub.back}
-                className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                aria-label={m.common.closeMenu}
+                className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -343,7 +355,7 @@ export function PhotoPanel({
           onClick={onClose}
           className="rounded-lg border border-border px-3 py-1.5 text-[0.8125rem] text-muted-foreground transition-colors hover:text-foreground"
         >
-          {p.close} <Kbd className="ml-1">Esc</Kbd>
+          {p.close} <Kbd className="ml-1 hidden [@media(pointer:fine)]:inline-flex">Esc</Kbd>
         </button>
         <button
           type="button"
@@ -373,11 +385,14 @@ export function HubCards({
   resume,
   onVisit,
   hidden,
+  boxRef,
 }: {
   facts: HubFacts;
   resume: DistrictId | null;
   onVisit: (id: DistrictId) => void;
   hidden: boolean;
+  /** The row, measured by the page: the island is framed above it. */
+  boxRef?: React.Ref<HTMLDivElement>;
 }) {
   const m = useMessages();
   const locale = useLocale();
@@ -399,11 +414,12 @@ export function HubCards({
 
   return (
     <motion.div
+      ref={boxRef}
       initial={false}
       animate={{ opacity: hidden ? 0 : 1, y: hidden ? 24 : 0 }}
       transition={{ duration: 0.35, ease }}
       className={cn(
-        "absolute inset-x-0 bottom-0 z-30 flex gap-2.5 overflow-x-auto p-3 sm:justify-center sm:p-4 [scrollbar-width:none]",
+        "absolute inset-x-0 bottom-0 z-30 flex snap-x snap-mandatory scroll-px-3 gap-2.5 overflow-x-auto overscroll-x-contain p-3 sm:justify-center sm:p-4 [scrollbar-width:none] [@media(max-height:500px)]:p-2",
         hidden ? "pointer-events-none" : "pointer-events-auto"
       )}
       aria-hidden={hidden}
@@ -428,13 +444,22 @@ function Card({ title, icon: Icon, lines, onClick }: { title: string; icon: type
         {title}
       </span>
       {lines.map((l, i) => (
-        <span key={i} className={cn("block truncate", i === 0 ? "mt-1.5 text-sm font-medium" : "text-[0.8125rem] text-muted-foreground")}>
+        <span
+          key={i}
+          className={cn(
+            "block truncate",
+            // A short screen (a phone sideways) keeps each card to its headline.
+            i === 0 ? "mt-1.5 text-sm font-medium [@media(max-height:500px)]:mt-0.5" : "text-[0.8125rem] text-muted-foreground [@media(max-height:500px)]:hidden"
+          )}
+        >
           {l}
         </span>
       ))}
     </>
   );
-  const cls = "glass w-[15.5rem] shrink-0 rounded-2xl border border-border px-4 py-3 text-left shadow-card";
+  // A column: a button would otherwise centre a shorter card's lines vertically.
+  const cls =
+    "glass flex w-[15.5rem] shrink-0 snap-start flex-col rounded-2xl border border-border px-4 py-3 text-left shadow-card [@media(max-height:500px)]:w-[13rem] [@media(max-height:500px)]:rounded-xl [@media(max-height:500px)]:py-2";
   return onClick ? (
     <button type="button" onClick={onClick} className={cn(cls, "transition-colors hover:bg-surface-2")}>
       {inner}
@@ -459,6 +484,7 @@ export function FocusPanel({
   onBack,
   onStep,
   entering,
+  onLayout,
 }: {
   id: DistrictId | null;
   facts: HubFacts;
@@ -466,21 +492,69 @@ export function FocusPanel({
   onBack: () => void;
   onStep: (step: 1 | -1) => void;
   entering: boolean;
+  /** Where the panel is on the page (null once closed), so the camera frames the building beside it. */
+  onLayout?: (rect: PageRect | null) => void;
 }) {
   const m = useMessages();
   const locale = useLocale();
   const enterRef = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLElement | null>(null);
+  const layout = useRef(onLayout);
+  layout.current = onLayout;
+  const open = id !== null;
+  /** The sheet is taller than the room it has: its actions get a backing so the scrolled text does not run under them. */
+  const [scrolls, setScrolls] = useState(false);
 
   // Keyboard users land on the main action when a building opens.
   useEffect(() => {
     if (id) enterRef.current?.focus({ preventScroll: true });
   }, [id]);
 
+  // Measured before the first paint and whenever it changes size. Offsets,
+  // not the on-screen box: the panel slides in, and the slide is not where it rests.
+  useLayoutEffect(() => {
+    const el = panel.current;
+    if (!open || !el) return;
+    const report = () => {
+      layout.current?.({ top: el.offsetTop, left: el.offsetLeft, width: el.offsetWidth, height: el.offsetHeight });
+      setScrolls(el.scrollHeight > el.clientHeight + 1);
+    };
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    // The content changes height without the panel changing size (another building, the same sheet).
+    for (const child of Array.from(el.children)) ro.observe(child);
+    return () => {
+      ro.disconnect();
+      layout.current?.(null);
+    };
+  }, [open]);
+
+  // On a phone the panel is a sheet: a swipe sideways goes to the next
+  // building, a swipe down (from its top) closes it. Touch events, because
+  // they still arrive when the browser scrolls the sheet.
+  const swipe = useRef<{ x: number; y: number; t: number; atTop: boolean } | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    swipe.current = e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY, t: performance.now(), atTop: (panel.current?.scrollTop ?? 0) <= 0 } : null;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const s = swipe.current;
+    swipe.current = null;
+    const t = e.changedTouches[0];
+    if (!s || !t || entering || performance.now() - s.t > 700) return;
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    if (Math.abs(dx) > 56 && Math.abs(dx) > 1.6 * Math.abs(dy)) onStep(dx < 0 ? 1 : -1);
+    else if (s.atTop && dy > 72 && dy > 1.6 * Math.abs(dx)) onBack();
+  };
+
   return (
     <AnimatePresence>
       {id && (
         <motion.section
           key="panel"
+          ref={panel}
           role="dialog"
           aria-modal="false"
           aria-labelledby="hub-panel-title"
@@ -488,10 +562,22 @@ export function FocusPanel({
           animate={{ opacity: entering ? 0 : 1, x: 0, y: 0 }}
           exit={{ opacity: 0, x: 24 }}
           transition={{ duration: 0.32, ease }}
-          className="glass pointer-events-auto absolute inset-x-3 bottom-3 z-40 max-h-[58dvh] overflow-y-auto rounded-2xl border border-border p-5 shadow-lift sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-20 sm:w-[23rem]"
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          onTouchCancel={() => (swipe.current = null)}
+          className="glass pointer-events-auto absolute inset-x-3 bottom-3 z-40 max-h-[58dvh] touch-pan-y overflow-y-auto overscroll-contain rounded-2xl border border-border p-5 pt-3 shadow-lift sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-20 sm:max-h-[calc(100dvh-6rem)] sm:w-[23rem] sm:pt-5"
         >
+          {/* The sheet's handle: it can be swiped. */}
+          <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-foreground/20 sm:hidden" aria-hidden />
           <PanelBody id={id} facts={facts} locale={locale} />
-          <div className="mt-5 flex items-center gap-2">
+          {/* The actions stay in reach: on a small phone the sheet scrolls, they do not. */}
+          <div
+            className={cn(
+              "sticky -bottom-5 z-10 -mx-5 -mb-5 mt-3 rounded-b-2xl px-5 pb-5 pt-2",
+              scrolls && "bg-surface/85 backdrop-blur-md"
+            )}
+          >
+          <div className="flex items-center gap-2">
             <button
               ref={enterRef}
               type="button"
@@ -501,32 +587,42 @@ export function FocusPanel({
             >
               {m.hub.enter}
               <ArrowRight className="h-4 w-4" aria-hidden />
-              <span className="ml-1 hidden items-center gap-0.5 rounded bg-white/15 px-1 py-0.5 text-[0.65rem] sm:flex">
+              <span className="ml-1 hidden items-center gap-0.5 rounded bg-white/15 px-1 py-0.5 text-[0.65rem] sm:[@media(pointer:fine)]:flex">
                 <CornerDownLeft className="h-3 w-3" aria-hidden />
               </span>
             </button>
             <button
               type="button"
               onClick={onBack}
+              aria-label={m.hub.back}
               className="flex items-center gap-1.5 rounded-xl border border-border bg-surface/60 px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" aria-hidden />
               <span className="hidden sm:inline">{m.hub.back}</span>
-              <Kbd className="ml-1 hidden sm:inline-flex">Esc</Kbd>
+              <Kbd className="ml-1 hidden sm:[@media(pointer:fine)]:inline-flex">Esc</Kbd>
             </button>
           </div>
-          <div className="mt-3 flex items-center justify-between text-[0.75rem] text-muted">
-            <button type="button" onClick={() => onStep(-1)} className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:text-foreground">
-              <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
-              {m.hub.districts[neighbourOf(id, -1)].name}
+          <div className="mt-2 flex items-center justify-between text-[0.75rem] text-muted">
+            <button
+              type="button"
+              onClick={() => onStep(-1)}
+              className="-ml-1.5 flex min-h-9 min-w-0 items-center gap-1 rounded-md px-1.5 hover:text-foreground"
+            >
+              <ChevronLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{m.hub.districts[neighbourOf(id, -1)].name}</span>
             </button>
-            <span className="tabular-nums">
+            <span className="shrink-0 px-2 tabular-nums">
               {DISTRICT_IDS.indexOf(id) + 1} / {DISTRICT_IDS.length}
             </span>
-            <button type="button" onClick={() => onStep(1)} className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:text-foreground">
-              {m.hub.districts[neighbourOf(id, 1)].name}
-              <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+            <button
+              type="button"
+              onClick={() => onStep(1)}
+              className="-mr-1.5 flex min-h-9 min-w-0 items-center gap-1 rounded-md px-1.5 hover:text-foreground"
+            >
+              <span className="truncate">{m.hub.districts[neighbourOf(id, 1)].name}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
             </button>
+          </div>
           </div>
         </motion.section>
       )}
@@ -558,13 +654,16 @@ function PanelBody({ id, facts, locale }: { id: DistrictId; facts: HubFacts; loc
           <p className="hidden font-mono text-[0.7rem] text-muted [@media(pointer:fine)]:block">{shortcut}</p>
         </div>
       </div>
-      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{d.desc}</p>
+      {/* A short phone keeps the building in view: the figures matter more than the sentence. */}
+      <p className="mt-3 text-[0.8125rem] leading-relaxed text-muted-foreground sm:text-sm max-sm:[@media(max-height:680px)]:hidden [@media(max-height:500px)]:hidden">
+        {d.desc}
+      </p>
       {stats.length > 0 && (
-        <dl className="mt-4 grid grid-cols-2 gap-2">
+        <dl className="mt-3 grid grid-cols-2 gap-2 sm:mt-4">
           {stats.map((s) => (
-            <div key={s.key} className="rounded-xl border border-border bg-surface/50 px-3 py-2.5">
+            <div key={s.key} className="rounded-xl border border-border bg-surface/50 px-3 py-2 sm:py-2.5">
               <dt className="truncate text-[0.72rem] text-muted-foreground">{m.hub.stats[s.key]}</dt>
-              <dd className={cn("mt-0.5 text-lg font-medium tabular-nums tracking-tight", s.alert && "text-accent")}>
+              <dd className={cn("mt-0.5 text-base font-medium tabular-nums tracking-tight sm:text-lg", s.alert && "text-accent")}>
                 {formatStat(s, locale)}
               </dd>
             </div>

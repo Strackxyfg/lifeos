@@ -394,8 +394,9 @@ function ReminderRow({
         onClick={justDone ? undefined : onComplete}
         disabled={temp || justDone}
         aria-label={r.done}
+        // An 18 px circle to the eye, 38 px under a finger.
         className={cn(
-          "grid h-[1.125rem] w-[1.125rem] shrink-0 place-items-center rounded-full border transition-colors",
+          "relative grid h-[1.125rem] w-[1.125rem] shrink-0 place-items-center rounded-full border transition-colors before:absolute before:-inset-2.5 before:rounded-full before:content-['']",
           justDone ? "border-success bg-success text-background" : "border-border-strong hover:border-accent"
         )}
       >
@@ -425,7 +426,8 @@ function ReminderRow({
         </button>
       ) : (
         !temp && (
-          <div className="relative flex items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+          // Shown on hover where there is a hover to show them on; always there under a finger.
+          <div className="relative flex items-center gap-0.5 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100">
             <button
               type="button"
               onClick={(e) => {

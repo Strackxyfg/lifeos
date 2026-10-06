@@ -16,8 +16,62 @@ export const HUB_FOV = 35;
 const RAD = Math.PI / 180;
 const PITCH = 32 * RAD;
 
+/** How wide the camera sees (vertical field, degrees) and how steeply it looks down (radians). */
+export interface Lens {
+  fov: number;
+  pitch: number;
+}
+
+/**
+ * The lens for a screen's shape.
+ *
+ * On a landscape screen: 35° of view, looking down at 32° — the island as a
+ * diorama with its band of sky. A phone held upright is half as wide as it
+ * is tall: through the same lens it would see the island 16° across, a
+ * telephoto from far away that flattens it into a thin strip in the middle
+ * of the screen, its markers crowded together. Upright, the camera widens
+ * its view and looks down more steeply, so the island's depth unfolds into
+ * the height the screen has — the buildings drawn larger and further apart,
+ * and still a band of sky. Between the two, a smooth blend: a square window
+ * or a tablet turned upright gets a lens in between.
+ */
+export const PORTRAIT_LENS = { fov: 44, pitch: 44 * RAD };
+
+export function lensFor(aspect: number): Lens {
+  const t = Math.min(1, Math.max(0, (1 - aspect) / 0.5));
+  const s = t * t * (3 - 2 * t);
+  return { fov: HUB_FOV + (PORTRAIT_LENS.fov - HUB_FOV) * s, pitch: PITCH + (PORTRAIT_LENS.pitch - PITCH) * s };
+}
+
 /** Where on screen the island may go, in normalised device coordinates. */
 export const FRAME = { side: 0.93, top: 0.62, bottom: -0.6 };
+
+/** The vertical band the whole island goes in (NDC). */
+export interface Band {
+  top: number;
+  bottom: number;
+}
+
+/**
+ * The band, narrowed where the page's own bar and cards reach into it — a
+ * phone turned sideways, a short window. Never wider than `FRAME`: on a tall
+ * screen the sky keeps its band. `barBottom` and `cardsTop` are CSS pixels
+ * from the top of the view; the markers above the roofs need `pins` pixels
+ * below the bar.
+ */
+export function overviewBand(view: { height: number }, barBottom: number, cardsTop: number | null, pins = 34): Band {
+  const h = Math.max(1, view.height);
+  const toY = (px: number) => 1 - (2 * px) / h;
+  let top = Math.min(FRAME.top, toY(barBottom + pins));
+  let bottom = cardsTop === null ? FRAME.bottom : Math.max(FRAME.bottom, toY(cardsTop - 6));
+  // Too little left: a minimum band, centred where the room was.
+  if (top - bottom < 0.5) {
+    const mid = (top + bottom) / 2;
+    top = mid + 0.25;
+    bottom = mid - 0.25;
+  }
+  return { top, bottom };
+}
 
 /** What must be seen: the coastline, every building's top corners, the jetty's end. */
 export const FRAME_POINTS: readonly Vec3[] = [
@@ -66,9 +120,9 @@ export function project(p: Vec3, view: View, aspect: number, fov = HUB_FOV): { x
   };
 }
 
-function viewAt(target: Vec3, distance: number): View {
+function viewAt(target: Vec3, distance: number, pitch: number): View {
   return {
-    position: [target[0], target[1] + Math.sin(PITCH) * distance, target[2] + Math.cos(PITCH) * distance],
+    position: [target[0], target[1] + Math.sin(pitch) * distance, target[2] + Math.cos(pitch) * distance],
     target,
   };
 }
@@ -91,23 +145,24 @@ function extent(view: View, aspect: number, fov: number) {
  * is first slid up or down so the island sits in the middle of its allowed
  * band; then the distance is bisected to the closest one where it all fits.
  */
-export function overview(aspect: number, fov = HUB_FOV): View {
-  const upY = Math.cos(PITCH);
-  const upZ = -Math.sin(PITCH);
+export function overview(aspect: number, lens: Lens = lensFor(aspect), band: Band = FRAME): View {
+  const { fov, pitch } = lens;
+  const upY = Math.cos(pitch);
+  const upZ = -Math.sin(pitch);
   const centred = (distance: number): View => {
     let target: Vec3 = [0, 0.6, -0.5];
     for (let i = 0; i < 4; i++) {
-      const e = extent(viewAt(target, distance), aspect, fov);
-      const shift = (e.maxY + e.minY) / 2 - (FRAME.top + FRAME.bottom) / 2;
+      const e = extent(viewAt(target, distance, pitch), aspect, fov);
+      const shift = (e.maxY + e.minY) / 2 - (band.top + band.bottom) / 2;
       // One unit of NDC at the target is distance·tan(fov/2) world units.
       const world = shift * distance * Math.tan((fov / 2) * RAD);
       target = [target[0], target[1] + upY * world, target[2] + upZ * world];
     }
-    return viewAt(target, distance);
+    return viewAt(target, distance, pitch);
   };
   const fits = (v: View) => {
     const e = extent(v, aspect, fov);
-    return e.maxX <= FRAME.side && e.maxY <= FRAME.top + 0.005 && e.minY >= FRAME.bottom - 0.005;
+    return e.maxX <= FRAME.side && e.maxY <= band.top + 0.005 && e.minY >= band.bottom - 0.005;
   };
   let lo = 12;
   let hi = 260;
@@ -126,15 +181,76 @@ const TURNS = [0.38, -0.38, 0.62, -0.62, 0.15, -0.15, 0.9, -0.9];
 /** A close-up looks down less than the overview: the facade matters. */
 const FOCUS_PITCH = 24 * RAD;
 
+/** A part of the screen, in normalised device coordinates (-1 to 1, y up). */
+export interface ScreenRect {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
 /**
- * Where on screen a building goes while its panel is open: the left part of
- * a wide screen (the panel is on the right), the top of a narrow one (the
- * panel is a sheet at the bottom).
+ * Where on screen a building goes while its panel is open.
+ *
+ * Measured, when the page could (`free`): the part of the screen the
+ * heads-up display and the panel leave uncovered, less a margin — a sheet
+ * that takes half of a small phone, a side panel on a narrow window, a phone
+ * turned sideways all frame the building where it can be seen. If the panel
+ * leaves too little, the building keeps a minimum share of the screen, partly
+ * behind the panel, rather than shrinking to a dot. Before anything is
+ * measured, the usual places: the left part of a wide screen (the panel is on
+ * the right), the top of a narrow one (the panel is a sheet at the bottom).
  */
-export function focusBox(aspect: number) {
-  return aspect >= 1.1
-    ? { minX: -0.9, maxX: 0.18, minY: -0.66, maxY: 0.62 }
-    : { minX: -0.86, maxX: 0.86, minY: 0.04, maxY: 0.78 };
+export function focusBox(aspect: number, free?: ScreenRect | null): ScreenRect {
+  const usual =
+    aspect >= 1.1
+      ? { minX: -0.9, maxX: 0.18, minY: -0.66, maxY: 0.62 }
+      : { minX: -0.86, maxX: 0.86, minY: 0.04, maxY: 0.78 };
+  if (!free) return usual;
+  const inside = { minX: free.minX + 0.07, maxX: free.maxX - 0.07, minY: free.minY + 0.06, maxY: free.maxY - 0.05 };
+  // A sheet across the bottom (a phone): all the height above it. A panel at
+  // the side: the usual place, narrowed where the panel reaches into it.
+  const box =
+    free.maxX - free.minX > 1.9
+      ? inside
+      : {
+          minX: Math.max(usual.minX, inside.minX),
+          maxX: Math.min(usual.maxX, inside.maxX),
+          minY: Math.max(usual.minY, inside.minY),
+          maxY: Math.min(usual.maxY, inside.maxY),
+        };
+  if (box.maxY - box.minY < 0.5) box.minY = box.maxY - 0.5;
+  if (box.maxX - box.minX < 0.6) {
+    box.minX = Math.max(-0.94, box.maxX - 0.6);
+    box.maxX = box.minX + 0.6;
+  }
+  return box;
+}
+
+/** A rectangle on the page, in CSS pixels from the top left of the island's view. */
+export interface PageRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The part of the view a building's panel and the heads-up display leave
+ * free, in normalised device coordinates: everything below `hudBottom`, and
+ * above the panel if it spans the width (a sheet), or to its left if not.
+ */
+export function freeArea(view: { width: number; height: number }, hudBottom: number, panel: PageRect | null): ScreenRect {
+  const w = Math.max(1, view.width);
+  const h = Math.max(1, view.height);
+  const toY = (px: number) => 1 - (2 * px) / h;
+  const toX = (px: number) => (2 * px) / w - 1;
+  const free = { minX: -1, maxX: 1, minY: -1, maxY: Math.min(1, toY(Math.max(0, hudBottom))) };
+  if (panel) {
+    if (panel.width >= w * 0.6) free.minY = Math.max(-1, toY(panel.top));
+    else free.maxX = Math.min(1, toX(panel.left));
+  }
+  return free;
 }
 
 /** The corners of a building's bounding box. */
@@ -193,8 +309,8 @@ const move = (v: View, by: Vec3): View => ({
  * the first turn around it that sees it unobstructed, at the distance where
  * the whole building fits the part of the screen its panel leaves free.
  */
-export function focusView(d: District, aspect: number, fov = HUB_FOV): View {
-  const box = focusBox(aspect);
+export function focusView(d: District, aspect: number, lens: Lens = lensFor(aspect), box: ScreenRect = focusBox(aspect)): View {
+  const { fov } = lens;
   const corners = cornersOf(d);
   const centre: Vec3 = [d.at[0], d.height * 0.45, d.at[1]];
   const tanV = Math.tan((fov / 2) * RAD);

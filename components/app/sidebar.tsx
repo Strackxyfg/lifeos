@@ -38,7 +38,7 @@ export function SidebarContent({ profile, onNavigate }: { profile: Profile; onNa
         className="mb-4 flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <span>{m.common.searchRun}</span>
-        <Kbd>⌘K</Kbd>
+        <Kbd className="hidden [@media(pointer:fine)]:inline-flex">⌘K</Kbd>
       </button>
 
       <NavGroup items={primaryNav} pathname={pathname} labels={m.nav} onNavigate={onNavigate} />
@@ -59,7 +59,7 @@ export function SidebarContent({ profile, onNavigate }: { profile: Profile; onNa
           <button
             type="submit"
             aria-label={m.common.signOut}
-            className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+            className="grid h-9 w-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             <LogOut className="h-4 w-4" />
           </button>

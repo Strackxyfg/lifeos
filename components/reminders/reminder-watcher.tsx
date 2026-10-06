@@ -12,7 +12,21 @@ import { completeReminder, markRemindersNotified, snoozeReminder } from "@/app/a
 
 /** This occurrence was shown in this tab already (a new occurrence has a new due time). */
 const SHOWN_KEY = "lifeos:reminders:shown";
+/** At most this many at once; on a phone, one — three stacked covered half its screen. */
 const MAX_ALERTS = 3;
+const MAX_ALERTS_PHONE = 1;
+
+function usePhone(): boolean {
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const q = matchMedia("(max-width: 639px)");
+    const on = () => setPhone(q.matches);
+    on();
+    q.addEventListener("change", on);
+    return () => q.removeEventListener("change", on);
+  }, []);
+  return phone;
+}
 
 const occurrence = (r: Pick<ClientReminder, "id" | "dueAt">) => `${r.id}@${r.dueAt}`;
 const told = (r: ClientReminder) => !!r.notifiedAt && r.notifiedAt >= r.dueAt;
@@ -129,11 +143,15 @@ export function ReminderWatcher({ initial }: { initial: ClientReminder[] }) {
     if (res.ok) updated(res.data);
   };
 
-  const shown = alerts.slice(0, MAX_ALERTS);
+  const phone = usePhone();
+  const shown = alerts.slice(0, phone ? MAX_ALERTS_PHONE : MAX_ALERTS);
   const hidden = alerts.length - shown.length;
 
   return (
-    <div className="pointer-events-none fixed bottom-4 left-4 z-[105] flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2" aria-live="polite">
+    <div
+      className="pointer-events-none fixed inset-x-3 bottom-3 z-[105] flex flex-col gap-2 sm:inset-x-auto sm:bottom-4 sm:left-4 sm:w-[min(22rem,calc(100vw-2rem))]"
+      aria-live="polite"
+    >
       <AnimatePresence initial={false}>
         {shown.map((x) => (
           <motion.div

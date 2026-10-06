@@ -8,7 +8,20 @@ import {
   isDistrictId,
   neighbour,
 } from "@/lib/hub/districts";
-import { FRAME, FRAME_POINTS, HUB_FOV, clearance, focusBox, focusView, overview, project } from "@/lib/hub/framing";
+import {
+  FRAME,
+  FRAME_POINTS,
+  HUB_FOV,
+  PORTRAIT_LENS,
+  clearance,
+  focusBox,
+  focusView,
+  freeArea,
+  lensFor,
+  overview,
+  overviewBand,
+  project,
+} from "@/lib/hub/framing";
 import {
   BENCHES,
   DOCK,
@@ -162,7 +175,7 @@ describe("the water around it", () => {
 
 describe("the camera's views", () => {
   it("frames each building whole in the space its panel leaves, clear of every other and unobstructed", () => {
-    for (const aspect of [21 / 9, 16 / 9, 4 / 3, 0.75, 0.5]) {
+    for (const aspect of [21 / 9, 16 / 9, 4 / 3, 0.75, 0.5, 0.46]) {
       const box = focusBox(aspect);
       for (const d of DISTRICTS) {
         const v = focusView(d, aspect);
@@ -170,7 +183,7 @@ describe("the camera's views", () => {
         const r = d.radius * 0.95;
         for (const y of [0, d.height]) {
           for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-            const s = project([d.at[0] + sx * r, y, d.at[1] + sz * r], v, aspect, HUB_FOV);
+            const s = project([d.at[0] + sx * r, y, d.at[1] + sz * r], v, aspect, lensFor(aspect).fov);
             expect(s.x, `${d.id} x at ${aspect.toFixed(2)}`).toBeGreaterThanOrEqual(box.minX - 0.01);
             expect(s.x).toBeLessThanOrEqual(box.maxX + 0.01);
             expect(s.y, `${d.id} y at ${aspect.toFixed(2)}`).toBeGreaterThanOrEqual(box.minY - 0.01);
@@ -195,7 +208,7 @@ describe("the camera's views", () => {
       let minY = Infinity;
       let maxY = -Infinity;
       for (const p of FRAME_POINTS) {
-        const s = project(p, v, aspect, HUB_FOV);
+        const s = project(p, v, aspect, lensFor(aspect).fov);
         expect(s.depth, `behind the camera at ${aspect}`).toBeGreaterThan(0);
         maxX = Math.max(maxX, Math.abs(s.x));
         minY = Math.min(minY, s.y);
@@ -214,6 +227,88 @@ describe("the camera's views", () => {
     expect(overview(0.5).position[2]).toBeGreaterThan(overview(16 / 9).position[2]);
     const d = districtById("brain");
     expect(focusView(d, 16 / 9).position).not.toEqual(focusView(d, 0.5).position);
+  });
+
+  it("widens and steepens its lens for a phone held upright, and only then", () => {
+    // Landscape and square-ish desktops keep the lens the island was designed with.
+    for (const aspect of [21 / 9, 16 / 9, 4 / 3, 1]) {
+      expect(lensFor(aspect).fov).toBeCloseTo(HUB_FOV, 6);
+      expect(lensFor(aspect).pitch).toBeCloseTo((32 * Math.PI) / 180, 6);
+    }
+    expect(lensFor(0.46)).toEqual(PORTRAIT_LENS);
+    expect(lensFor(0.3)).toEqual(PORTRAIT_LENS);
+    // In between, a smooth blend that never goes backwards.
+    let last = lensFor(1);
+    for (let a = 0.98; a >= 0.5; a -= 0.02) {
+      const l = lensFor(a);
+      expect(l.fov).toBeGreaterThanOrEqual(last.fov);
+      expect(l.pitch).toBeGreaterThanOrEqual(last.pitch);
+      last = l;
+    }
+    // Upright, the island fills more of the height: its markers spread apart
+    // (measured: 14 % more, from 130 to 148 px on a 375 × 812 phone).
+    const spread = (aspect: number, lens = lensFor(aspect)) => {
+      const v = overview(aspect, lens);
+      const ys = DISTRICTS.map((d) => project([d.at[0], d.height + 1.15, d.at[1]], v, aspect, lens.fov).y);
+      return Math.max(...ys) - Math.min(...ys);
+    };
+    expect(spread(0.46)).toBeGreaterThan(spread(0.46, { fov: HUB_FOV, pitch: (32 * Math.PI) / 180 }) * 1.1);
+  });
+
+  it("frames a building above a phone's sheet, as measured", () => {
+    const aspect = 375 / 812;
+    // A sheet whose top is at 386 px, the heads-up display down to 60 px.
+    const free = freeArea({ width: 375, height: 812 }, 60, { top: 386, left: 12, width: 351, height: 414 });
+    expect(free.maxX - free.minX).toBe(2);
+    expect(free.minY).toBeCloseTo(1 - (2 * 386) / 812, 6);
+    expect(free.maxY).toBeCloseTo(1 - (2 * 60) / 812, 6);
+    const box = focusBox(aspect, free);
+    expect(box.minY).toBeGreaterThan(free.minY);
+    expect(box.maxY).toBeLessThan(free.maxY);
+    for (const d of DISTRICTS) {
+      const v = focusView(d, aspect, lensFor(aspect), box);
+      const r = d.radius * 0.95;
+      for (const y of [0, d.height]) {
+        for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+          const s = project([d.at[0] + sx * r, y, d.at[1] + sz * r], v, aspect, lensFor(aspect).fov);
+          // Above the sheet and below the bar: nothing of it behind the panel.
+          expect(s.y, `${d.id}`).toBeGreaterThanOrEqual(free.minY);
+          expect(s.y, `${d.id}`).toBeLessThanOrEqual(free.maxY);
+        }
+      }
+    }
+  });
+
+  it("keeps a building a minimum share of a small phone, and narrows the usual place beside a side panel", () => {
+    // A sheet covering 70 % of the screen: the box keeps half the height.
+    const tall = focusBox(0.56, freeArea({ width: 320, height: 568 }, 60, { top: 170, left: 12, width: 296, height: 386 }));
+    expect(tall.maxY - tall.minY).toBeCloseTo(0.5, 6);
+    // A side panel reaching into the usual place: narrowed, never widened.
+    const usual = focusBox(16 / 9);
+    const side = focusBox(16 / 9, freeArea({ width: 900, height: 506 }, 120, { top: 80, left: 516, width: 368, height: 300 }));
+    expect(side.maxX).toBeLessThan(usual.maxX);
+    expect(side.minX).toBeGreaterThanOrEqual(usual.minX);
+    // A wide screen with room to spare: exactly the usual place.
+    const roomy = focusBox(16 / 9, freeArea({ width: 1920, height: 1080 }, 130, { top: 80, left: 1536, width: 368, height: 500 }));
+    expect(roomy).toEqual(usual);
+  });
+
+  it("narrows the island's band only where the bar and the cards reach into it", () => {
+    // A tall phone: the usual band, the sky keeps its room.
+    expect(overviewBand({ height: 812 }, 52, 691)).toEqual({ top: FRAME.top, bottom: FRAME.bottom });
+    // A phone on its side: below the bar and its markers, above the cards.
+    const band = overviewBand({ height: 375 }, 62, 300);
+    expect(band.top).toBeCloseTo(1 - (2 * (62 + 34)) / 375, 6);
+    expect(band.bottom).toBeCloseTo(1 - (2 * (300 - 6)) / 375, 6);
+    const v = overview(812 / 375, lensFor(812 / 375), band);
+    for (const p of FRAME_POINTS) {
+      const s = project(p, v, 812 / 375, lensFor(812 / 375).fov);
+      expect(s.y).toBeLessThanOrEqual(band.top + 0.01);
+      expect(s.y).toBeGreaterThanOrEqual(band.bottom - 0.01);
+    }
+    // No room at all: a minimum band rather than nothing.
+    const squeezed = overviewBand({ height: 200 }, 80, 110);
+    expect(squeezed.top - squeezed.bottom).toBeCloseTo(0.5, 6);
   });
 
   it("ends 'enter' in front of the door, looking in", () => {

@@ -99,7 +99,7 @@ export function TraitRow({
                 type="button"
                 onClick={() => setOpen((o) => !o)}
                 aria-expanded={open}
-                className="inline-flex items-center gap-1 text-[0.7rem] text-muted-foreground hover:text-foreground"
+                className="inline-flex items-center gap-1 text-[0.7rem] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:py-1.5"
               >
                 <Quote className="h-3 w-3" />
                 {plural(locale, new Set(quotes.map((q) => q.noteId)).size, t.quotes)}
@@ -112,14 +112,14 @@ export function TraitRow({
                 <button
                   type="button"
                   onClick={() => handlers.onJudge(trait.id, "confirmed")}
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[0.72rem] hover:border-success/50 hover:text-success"
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[0.72rem] hover:border-success/50 hover:text-success [@media(pointer:coarse)]:py-1.5"
                 >
                   <Check className="h-3 w-3" /> {t.confirm}
                 </button>
                 <button
                   type="button"
                   onClick={() => handlers.onJudge(trait.id, "rejected")}
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[0.72rem] text-muted-foreground hover:border-danger/50 hover:text-danger"
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[0.72rem] text-muted-foreground hover:border-danger/50 hover:text-danger [@media(pointer:coarse)]:py-1.5"
                 >
                   <X className="h-3 w-3" /> {t.reject}
                 </button>
@@ -135,7 +135,7 @@ export function TraitRow({
                   }}
                   aria-label={t.edit}
                   title={t.edit}
-                  className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:text-foreground"
+                  className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:w-8"
                 >
                   <Pencil className="h-3 w-3" />
                 </button>
@@ -145,7 +145,7 @@ export function TraitRow({
                     onClick={() => handlers.onRemove(trait.id)}
                     aria-label={t.remove}
                     title={t.remove}
-                    className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:text-danger"
+                    className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground hover:text-danger [@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:w-8"
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>

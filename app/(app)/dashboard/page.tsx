@@ -116,7 +116,7 @@ export default async function DashboardPage() {
                 </span>
               }
               action={
-                <Link href="/brain" className="flex items-center gap-1 text-[0.8125rem] text-muted-foreground hover:text-foreground">
+                <Link href="/brain" className="-my-1.5 flex items-center gap-1 py-1.5 text-[0.8125rem] text-muted-foreground hover:text-foreground">
                   {d.openBrain} <ArrowRight className="h-3 w-3" />
                 </Link>
               }
@@ -177,7 +177,7 @@ export default async function DashboardPage() {
           <CardHeader
             title={d.projects}
             action={
-              <Link href="/projects" className="flex items-center gap-1 text-[0.8125rem] text-muted-foreground hover:text-foreground">
+              <Link href="/projects" className="-my-1.5 flex items-center gap-1 py-1.5 text-[0.8125rem] text-muted-foreground hover:text-foreground">
                 {d.viewAll} <ArrowRight className="h-3 w-3" />
               </Link>
             }

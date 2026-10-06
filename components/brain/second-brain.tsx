@@ -921,13 +921,14 @@ export function SecondBrain({
           />
         </div>
 
-        <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+        {/* On a phone, under the title rather than over it. */}
+        <div className="absolute right-3 top-[4.5rem] z-10 flex items-center gap-2 sm:right-4 sm:top-4">
           {notes.length > 1 && !replay && (
             <button
               type="button"
               onClick={startReplay}
               title={m.brain.replay.startHint}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface/80 px-2 py-1 text-[0.7rem] text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface/80 px-2 py-1 text-[0.7rem] text-muted-foreground backdrop-blur transition-colors hover:text-foreground [@media(pointer:coarse)]:py-2"
             >
               <History className="h-3.5 w-3.5" /> {m.brain.replay.start}
             </button>
@@ -945,7 +946,7 @@ export function SecondBrain({
                   aria-pressed={colorBy === mode}
                   onClick={() => setColorBy(mode)}
                   className={cn(
-                    "rounded-md px-2 py-1 transition-colors",
+                    "rounded-md px-2 py-1 transition-colors [@media(pointer:coarse)]:py-1.5",
                     colorBy === mode ? "bg-surface-2 text-foreground" : "text-muted-foreground hover:text-foreground"
                   )}
                 >

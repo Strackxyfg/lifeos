@@ -176,7 +176,7 @@ export function DoubleChat({ aiEnabled, zone, onAccepted }: { aiEnabled: boolean
                       <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[0.7rem] text-muted-foreground">
                         {t.sources}
                         {turn.sources.map((s) => (
-                          <Link key={s.id} href={`/brain?note=${encodeURIComponent(s.id)}`} className="rounded-full border border-border px-2 py-0.5 hover:text-foreground">
+                          <Link key={s.id} href={`/brain?note=${encodeURIComponent(s.id)}`} className="rounded-full border border-border px-2 py-0.5 hover:text-foreground [@media(pointer:coarse)]:py-1.5">
                             {s.t}
                           </Link>
                         ))}

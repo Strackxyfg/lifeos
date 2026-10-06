@@ -1,5 +1,6 @@
 import type { Locale } from "./config";
 import { selfEn, selfFr } from "./self";
+import { agentSetupEn, agentSetupFr } from "./agent-setup";
 
 /** Text for a seeded Second-Brain item. */
 export type ItemText = { title: string; detail?: string };
@@ -57,6 +58,8 @@ const en = {
     newDeal: "New deal",
     addEntry: "Add entry",
     nothingHere: "Nothing here",
+    openMenu: "Open the menu",
+    closeMenu: "Close the menu",
   },
   landing: {
     meta: {
@@ -432,6 +435,8 @@ const en = {
       subtitle: "Look back at the week, decide, and set next week's focus. Ten quiet minutes.",
       week: "Week of {date}",
       thisWeek: "This week",
+      previousWeek: "Previous week",
+      nextWeek: "Next week",
       facts: "What the week holds",
       factsNote: "Counted from what you recorded, with its dates.",
       notes: { zero: "No note captured", one: "{n} note captured", other: "{n} notes captured" },
@@ -1239,7 +1244,7 @@ const en = {
     chatWaiting: "Waiting for your runner…",
     chatFailed: "Your runner couldn't handle this.",
     chatNoRunner:
-      "No runner token yet — generate one below and start the runner on your VPS, otherwise nobody is listening.",
+      "Your agent is not connected: install it on a server (below). Until then, nobody is listening.",
     unavailable: "Connect Supabase to enable the agent.",
     profile: "Your profile",
     whyThis: "Why this level",
@@ -1617,6 +1622,7 @@ const en = {
   },
   // The double's words live in their own module (`self.ts`).
   self: selfEn,
+  agentSetup: agentSetupEn,
 };
 
 export type Messages = typeof en;
@@ -1637,6 +1643,8 @@ const fr: Messages = {
     newDeal: "Nouvelle opportunité",
     addEntry: "Ajouter une écriture",
     nothingHere: "Rien ici",
+    openMenu: "Ouvrir le menu",
+    closeMenu: "Fermer le menu",
   },
   landing: {
     meta: {
@@ -2012,6 +2020,8 @@ const fr: Messages = {
       subtitle: "Regarder la semaine, décider, fixer le cap de la suivante. Dix minutes au calme.",
       week: "Semaine du {date}",
       thisWeek: "Cette semaine",
+      previousWeek: "Semaine précédente",
+      nextWeek: "Semaine suivante",
       facts: "Ce que contient la semaine",
       factsNote: "Compté à partir de ce que vous avez enregistré, avec ses dates.",
       notes: { zero: "Aucune note capturée", one: "{n} note capturée", other: "{n} notes capturées" },
@@ -2817,7 +2827,7 @@ const fr: Messages = {
     chatWaiting: "En attente de votre runner…",
     chatFailed: "Votre runner n'a pas pu traiter ceci.",
     chatNoRunner:
-      "Aucun jeton runner — générez-en un ci-dessous et lancez le runner sur votre VPS, sinon personne n'écoute.",
+      "Votre agent n'est pas connecté : installez-le sur un serveur (ci-dessous). D'ici là, personne n'écoute.",
     unavailable: "Connectez Supabase pour activer l'agent.",
     profile: "Votre profil",
     whyThis: "Pourquoi ce niveau",
@@ -3193,6 +3203,7 @@ const fr: Messages = {
     sources: "D'après",
   },
   self: selfFr,
+  agentSetup: agentSetupFr,
 };
 
 export const dictionaries: Record<Locale, Messages> = { en, fr };

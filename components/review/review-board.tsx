@@ -111,15 +111,20 @@ export function ReviewBoard({ data, enabled }: { data: ReviewData; enabled: bool
               {week === weekStartOf(today) ? r.thisWeek : fill(r.week, { date: dayLabel(week) })}
             </h2>
             <div className="flex gap-1">
-              <button type="button" onClick={() => setWeek(addDays(week, -7))} className="rounded-md px-2 py-1 text-[0.8125rem] text-muted-foreground hover:bg-surface-2" aria-label="−1">
+              <button
+                type="button"
+                onClick={() => setWeek(addDays(week, -7))}
+                className="grid h-8 w-8 place-items-center rounded-md text-[0.9375rem] text-muted-foreground hover:bg-surface-2"
+                aria-label={r.previousWeek}
+              >
                 ‹
               </button>
               <button
                 type="button"
                 disabled={week >= weekStartOf(today)}
                 onClick={() => setWeek(addDays(week, 7))}
-                className="rounded-md px-2 py-1 text-[0.8125rem] text-muted-foreground hover:bg-surface-2 disabled:opacity-30"
-                aria-label="+1"
+                className="grid h-8 w-8 place-items-center rounded-md text-[0.9375rem] text-muted-foreground hover:bg-surface-2 disabled:opacity-30"
+                aria-label={r.nextWeek}
               >
                 ›
               </button>

@@ -20,11 +20,11 @@ export function Topbar({ profile, alerts }: { profile: Profile; alerts: Alert[] 
         <button
           onClick={() => window.dispatchEvent(new Event("lifeos:command"))}
           aria-label={m.command.title}
-          className="flex items-center gap-2 rounded-md border border-border bg-surface/60 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground lg:hidden"
+          className="flex h-9 items-center gap-2 rounded-md border border-border bg-surface/60 px-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground lg:hidden"
         >
           <Command className="h-3.5 w-3.5" />
           {/* A keyboard shortcut means nothing on a phone, and it pushed the bar past a 375 px screen. */}
-          <Kbd className="hidden sm:inline-flex">⌘K</Kbd>
+          <Kbd className="hidden sm:[@media(pointer:fine)]:inline-flex">⌘K</Kbd>
         </button>
         <div className="hidden text-sm text-muted-foreground lg:block">
           <span className="text-foreground">{profile.firstName}</span> · LifeOS

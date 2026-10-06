@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { LayoutGrid } from "lucide-react";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { fill, plural } from "@/lib/i18n/config";
+import { cn } from "@/lib/utils";
 import { DISTRICTS, districtById, isDistrictId, neighbour, type DistrictId } from "@/lib/hub/districts";
 import { currentPlace, type Place } from "@/lib/hub/place";
 import { deviceHints, initialTier, webglAvailable, type Tier } from "@/lib/hub/perf";
+import { freeArea, overviewBand, type Band, type PageRect, type ScreenRect } from "@/lib/hub/framing";
 import { pacer } from "./pacer-store";
 import { sunPosition, sunTimes, moonPosition } from "@/lib/hub/solar";
 import { skyState, toHex } from "@/lib/hub/sky";
@@ -149,6 +151,26 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
 
   const focused = goal.kind === "overview" ? null : goal.id;
   const entering = goal.kind === "enter";
+
+  /* ── What the page's own panels cover ──────────────────────────── */
+
+  // A building is framed in the part of the screen its panel and the
+  // heads-up display leave free — measured, not guessed: a sheet on a small
+  // phone covers more than one on a large phone.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const hudRef = useRef<HTMLDivElement>(null);
+  const cardsRef = useRef<HTMLDivElement>(null);
+  const [free, setFree] = useState<ScreenRect | null>(null);
+  const [band, setBand] = useState<Band | null>(null);
+  const onPanelLayout = useCallback((panel: PageRect | null) => {
+    const root = rootRef.current;
+    if (!panel || !root) return setFree(null);
+    const hud = hudRef.current;
+    // The sky chip's row is the lowest part of the heads-up display; hidden
+    // (a phone, a building open), the top bar is.
+    const hudBottom = hud?.offsetParent ? hud.offsetTop + hud.offsetHeight : 60;
+    setFree(freeArea({ width: root.clientWidth, height: root.clientHeight }, hudBottom, panel));
+  }, []);
 
   /* ── Photo mode ────────────────────────────────────────────────── */
 
@@ -320,8 +342,31 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const show3d = mounted && webgl && !lost && !!place;
 
+  // The island's band: below the top bar (with room for the markers above
+  // the roofs), above the cards. Only ever narrower than the usual band — a
+  // phone turned sideways, a short window.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || !show3d) return;
+    const measure = () => {
+      const bar = root.querySelector<HTMLElement>("[data-hub-bar]");
+      const barBottom = bar ? bar.getBoundingClientRect().bottom - root.getBoundingClientRect().top : 60;
+      const cards = cardsRef.current;
+      const first = cards?.firstElementChild as HTMLElement | null | undefined;
+      const cardsTop = cards && first ? cards.offsetTop + first.offsetTop : null;
+      const next = overviewBand({ height: root.clientHeight }, barBottom, cardsTop);
+      setBand((b) => (b && Math.abs(b.top - next.top) < 0.01 && Math.abs(b.bottom - next.bottom) < 0.01 ? b : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(root);
+    if (cardsRef.current) ro.observe(cardsRef.current);
+    return () => ro.disconnect();
+  }, [show3d]);
+  const layout = useMemo(() => ({ band, free }), [band, free]);
+
   return (
-    <div className="relative h-dvh w-full overflow-hidden" style={{ background: skyGradient }}>
+    <div ref={rootRef} className="relative h-dvh w-full overflow-hidden" style={{ background: skyGradient }}>
       {show3d && (
         <div
           key={sceneKey}
@@ -364,6 +409,7 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
             onPhotoProgress={setPhotoState}
             onPhotoExit={endPhoto}
             api={sceneApi}
+            layout={layout}
           />
         </div>
       )}
@@ -387,7 +433,14 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
       <HubTopBar profile={profile} alerts={alerts} greeting={greeting} />
 
       {sky && place && show3d && (
-        <div className="pointer-events-none absolute left-3 top-[4.25rem] z-40 flex items-start gap-2 sm:left-4 sm:top-[5.25rem]">
+        // On a phone, looking at a building gives the sky's row to the view.
+        <div
+          ref={hudRef}
+          className={cn(
+            "pointer-events-none absolute left-3 top-[4.25rem] z-40 flex items-start gap-2 sm:left-4 sm:top-[5.25rem]",
+            focused && "max-sm:hidden"
+          )}
+        >
           <SkyChip
             phase={sky.state.phase}
             times={sky.times}
@@ -404,7 +457,7 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
 
       {show3d && (
         <>
-          <HubCards facts={facts} resume={resume} onVisit={focus} hidden={goal.kind !== "overview" || photo} />
+          <HubCards facts={facts} resume={resume} onVisit={focus} hidden={goal.kind !== "overview" || photo} boxRef={cardsRef} />
           <FocusPanel
             id={photo ? null : focused}
             facts={facts}
@@ -412,9 +465,10 @@ export function Hub({ facts, profile, alerts }: { facts: HubFacts; profile: Prof
             onBack={backToIsland}
             onStep={step}
             entering={entering}
+            onLayout={onPanelLayout}
           />
           {goal.kind === "overview" && ready && !photo && (
-            <p className="pointer-events-none absolute inset-x-0 bottom-[8.25rem] z-20 hidden text-center text-[0.75rem] text-white/80 [text-shadow:0_1px_8px_rgba(0,0,0,0.45)] sm:block">
+            <p className="pointer-events-none absolute inset-x-4 bottom-[8.25rem] z-20 text-center text-[0.75rem] text-white/80 [text-shadow:0_1px_8px_rgba(0,0,0,0.45)] [@media(max-height:500px)]:hidden">
               {coarse ? m.hub.hintTouch : m.hub.hint}
             </p>
           )}

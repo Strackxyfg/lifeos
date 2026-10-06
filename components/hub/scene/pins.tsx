@@ -65,7 +65,9 @@ export function Pins({
               onPointerLeave={() => onHover(null)}
               onFocus={() => onHover(d.id)}
               onBlur={() => onHover(null)}
-              className="group relative flex select-none items-center gap-1.5 whitespace-nowrap rounded-full border border-white/20 bg-[rgba(12,16,28,0.55)] py-1 pl-1 pr-1 text-[0.75rem] font-medium text-white shadow-[0_6px_24px_-6px_rgba(0,0,0,0.55)] backdrop-blur-md transition-[padding,background-color,transform] duration-200 hover:bg-[rgba(12,16,28,0.72)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white data-[open=true]:pr-3"
+              // Under a finger, the marker answers a little beyond its edge:
+              // 44 px, the size a fingertip needs, without drawing it larger.
+              className="group relative flex touch-manipulation select-none items-center gap-1.5 whitespace-nowrap rounded-full border border-white/20 bg-[rgba(12,16,28,0.55)] py-1 pl-1 pr-1 text-[0.75rem] font-medium text-white shadow-[0_6px_24px_-6px_rgba(0,0,0,0.55)] backdrop-blur-md transition-[padding,background-color,transform] duration-200 [-webkit-tap-highlight-color:transparent] hover:bg-[rgba(12,16,28,0.72)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white data-[open=true]:pr-3 [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-1.5 [@media(pointer:coarse)]:before:rounded-full [@media(pointer:coarse)]:before:content-['']"
               data-open={open}
             >
               <span className="grid h-6 w-6 place-items-center rounded-full bg-white/15">

@@ -35,7 +35,7 @@ export function VoiceSettings() {
           <label htmlFor="voice-pick" className="text-sm font-medium">{t.voice}</label>
           <p className="mt-0.5 text-[0.75rem] text-muted-foreground">{t.settingsHint}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <select
             id="voice-pick"
             value={current?.voiceURI ?? ""}
@@ -43,7 +43,7 @@ export function VoiceSettings() {
               const v = ranked.find((x) => x.voiceURI === e.target.value);
               setVoicePrefs({ voiceURI: e.target.value || null, ...(v && !v.localService ? { allowOnline: true } : {}) });
             }}
-            className="max-w-[260px] rounded-md border border-border bg-surface-2/40 px-2 py-1.5 text-[0.8rem] outline-none focus:border-border-strong"
+            className="h-9 min-w-0 flex-1 rounded-md border border-border bg-surface-2/40 px-2 text-[0.8rem] outline-none focus:border-border-strong sm:max-w-[260px] sm:flex-none"
           >
             {ranked.length === 0 && <option value="">{t.none}</option>}
             {local.length > 0 && (
@@ -64,7 +64,7 @@ export function VoiceSettings() {
           <button
             type="button"
             onClick={() => speakText("voice-settings", t.sample, locale)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[0.78rem] hover:border-border-strong"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-[0.78rem] hover:border-border-strong"
           >
             <Volume2 className="h-3.5 w-3.5" /> {t.test}
           </button>
@@ -109,7 +109,7 @@ export function VoiceSettings() {
           step={0.05}
           value={prefs.rate}
           onChange={(e) => setVoicePrefs({ rate: Number(e.target.value) })}
-          className="w-40 accent-[#22d3ee]"
+          className="h-8 w-40 accent-[#22d3ee]"
         />
         <span className="w-10 text-right font-mono text-[0.75rem] text-muted-foreground">{prefs.rate.toFixed(2)}×</span>
       </div>

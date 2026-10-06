@@ -40,7 +40,8 @@ export function ExportMenu() {
         <Download className="h-3.5 w-3.5" /> {m.brain.export}
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 z-30 mt-1.5 w-72 rounded-xl border border-border bg-surface p-1.5 shadow-lg">
+        // On a phone the button sits at the left of the page: the menu opens rightwards from it.
+        <div role="menu" className="absolute right-0 z-30 mt-1.5 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface p-1.5 shadow-lg max-sm:left-0 max-sm:right-auto">
           <p className="px-2.5 pb-2 pt-1.5 text-[0.72rem] leading-relaxed text-muted-foreground">{m.brain.exportHint}</p>
           {[
             { href: "/api/brain/export?format=md", icon: FileText, label: m.brain.exportMarkdown },

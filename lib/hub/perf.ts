@@ -26,9 +26,16 @@ export interface DeviceHints {
   saveData?: boolean;
   /** Screen width in CSS pixels. */
   width?: number;
+  /**
+   * Whether the GPU can draw into a floating-point buffer — what the post
+   * pipeline renders the scene into. Some older phones' cannot: there the
+   * island is drawn straight to the screen, or it would be black.
+   */
+  floatTargets?: boolean;
 }
 
 export function initialTier(h: DeviceHints): Tier {
+  if (h.floatTargets === false) return "low";
   if (h.saveData) return "low";
   if ((h.memory !== undefined && h.memory <= 2) || (h.cores !== undefined && h.cores <= 2)) return "low";
   if (h.coarse || (h.width !== undefined && h.width < 768)) return "medium";
@@ -143,6 +150,33 @@ export class Governor {
   }
 }
 
+/** What WebGL can do here, probed once: whether it starts at all, and whether it draws into float buffers. */
+export interface WebglSupport {
+  webgl2: boolean;
+  floatTargets: boolean;
+}
+
+let probed: WebglSupport | null = null;
+
+/**
+ * Probes WebGL 2 (three.js needs it) and float render targets
+ * (EXT_color_buffer_float, or the half-float one). The probe's context is
+ * given back at once: a phone allows only a handful of live WebGL contexts,
+ * and one left for the garbage collector counts against the island's.
+ */
+export function webglSupport(): WebglSupport {
+  if (probed) return probed;
+  try {
+    const gl = document.createElement("canvas").getContext("webgl2");
+    if (!gl) return (probed = { webgl2: false, floatTargets: false });
+    const floatTargets = !!(gl.getExtension("EXT_color_buffer_float") || gl.getExtension("EXT_color_buffer_half_float"));
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    return (probed = { webgl2: true, floatTargets });
+  } catch {
+    return (probed = { webgl2: false, floatTargets: false });
+  }
+}
+
 /** The hints of this browser. */
 export function deviceHints(): DeviceHints {
   const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
@@ -152,15 +186,11 @@ export function deviceHints(): DeviceHints {
     coarse: typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches,
     saveData: nav.connection?.saveData === true,
     width: typeof window === "undefined" ? undefined : window.innerWidth,
+    floatTargets: webglSupport().floatTargets,
   };
 }
 
 /** Whether WebGL 2 can start at all (three.js needs it). */
 export function webglAvailable(): boolean {
-  try {
-    const c = document.createElement("canvas");
-    return !!c.getContext("webgl2");
-  } catch {
-    return false;
-  }
+  return webglSupport().webgl2;
 }

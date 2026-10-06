@@ -5,7 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { CameraControls, CameraControlsImpl } from "@react-three/drei";
 import * as THREE from "three";
 import { districtById, doorwayView, type DistrictId, type View } from "@/lib/hub/districts";
-import { focusView, overview } from "@/lib/hub/framing";
+import { focusBox, focusView, lensFor, overview, type Band, type ScreenRect } from "@/lib/hub/framing";
 import { pacer } from "../pacer-store";
 
 export type CameraGoal = { kind: "overview" } | { kind: "focus"; id: DistrictId } | { kind: "enter"; id: DistrictId };
@@ -24,11 +24,23 @@ interface Tween {
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const easeIn = (t: number) => t * t * t;
 
-function viewFor(goal: CameraGoal, aspect: number): View {
-  if (goal.kind === "overview") return overview(aspect);
-  const d = districtById(goal.id);
-  return goal.kind === "focus" ? focusView(d, aspect) : doorwayView(d);
+/** What the page measured of its own panels, for the camera to frame around them. */
+export interface Layout {
+  /** The band the whole island goes in. */
+  band?: Band | null;
+  /** The part of the screen a building's panel leaves free. */
+  free?: ScreenRect | null;
 }
+
+function viewFor(goal: CameraGoal, aspect: number, layout: Layout): View {
+  const lens = lensFor(aspect);
+  if (goal.kind === "overview") return overview(aspect, lens, layout.band ?? undefined);
+  const d = districtById(goal.id);
+  return goal.kind === "focus" ? focusView(d, aspect, lens, focusBox(aspect, layout.free)) : doorwayView(d);
+}
+
+/** A measurement, rounded so a pixel's change does not move the camera. */
+const keyOf = (values: number[] | null) => (values ? values.map((v) => Math.round(v * 25)).join(",") : "");
 
 const distanceOf = (v: View) =>
   Math.hypot(v.position[0] - v.target[0], v.position[1] - v.target[1], v.position[2] - v.target[2]);
@@ -82,6 +94,7 @@ export function CameraRig({
   reducedMotion,
   onArrive,
   still = false,
+  layout = {},
 }: {
   goal: CameraGoal;
   /** Coming back from a building: start in front of it, then pull out. */
@@ -90,10 +103,26 @@ export function CameraRig({
   onArrive: (goal: CameraGoal) => void;
   /** Hold the camera exactly where it is (a photo is being taken). */
   still?: boolean;
+  /** What the page's panels cover, when measured. */
+  layout?: Layout;
 }) {
   const controls = useRef<CameraControlsImpl>(null);
-  const { size } = useThree();
+  const { size, camera } = useThree();
   const aspect = size.width / Math.max(1, size.height);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+
+  // The lens follows the screen's shape (`lensFor`): wider and steeper on a
+  // phone held upright. Set before the first frame and on every resize.
+  useLayoutEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    if (!cam.isPerspectiveCamera) return;
+    const fov = lensFor(aspect).fov;
+    if (Math.abs(cam.fov - fov) > 1e-3) {
+      cam.fov = fov;
+      cam.updateProjectionMatrix();
+    }
+  }, [camera, aspect]);
   const tween = useRef<Tween | null>(null);
   const idleSince = useRef(performance.now());
   const drift = useRef({ on: false, base: 0, t: 0 });
@@ -103,13 +132,15 @@ export function CameraRig({
   arrive.current = onArrive;
   const placed = useRef(false);
   const firstFlight = useRef(true);
+  /** The person has moved the view by hand since the camera last set off. */
+  const handled = useRef(false);
 
   // First placement, before the first frame: no flash of a default camera.
   useLayoutEffect(() => {
     const c = controls.current;
     if (!c || placed.current) return;
     placed.current = true;
-    const start = returnFrom ? focusView(districtById(returnFrom), aspect) : viewFor(goal, aspect);
+    const start = returnFrom ? focusView(districtById(returnFrom), aspect) : viewFor(goal, aspect, layoutRef.current);
     relax(c);
     c.setLookAt(...start.position, ...start.target, false);
     c.mouseButtons.right = CameraControlsImpl.ACTION.NONE;
@@ -136,6 +167,7 @@ export function CameraRig({
       pacer.markActive(800);
       idleSince.current = performance.now();
       drift.current.on = false;
+      handled.current = true;
       if (tween.current && tween.current.kind !== "enter") {
         const view = tween.current.to;
         tween.current = null;
@@ -159,17 +191,56 @@ export function CameraRig({
   }, []);
 
   // A new goal, or a new screen shape: fly there.
+  //
+  // A building's panel opens with the flight and is measured a moment later:
+  // the flight then simply ends elsewhere (still near its start, the change
+  // does not show). Measured again once there — the panel resized, the
+  // island's band narrowed — the camera glides to the new framing, unless
+  // the person has taken the view in hand since.
   const goalKey = goal.kind === "overview" ? "overview" : `${goal.kind}:${goal.id}`;
+  const { band, free } = layout;
+  const frameKey =
+    goal.kind === "focus"
+      ? keyOf(free ? [free.minX, free.maxX, free.minY, free.maxY] : null)
+      : goal.kind === "overview"
+        ? keyOf(band ? [band.top, band.bottom] : null)
+        : "";
+  const flown = useRef({ goalKey: "", aspect: 0 });
   useEffect(() => {
     const c = controls.current;
     if (!c) return;
-    const to = viewFor(goal, aspect);
+    const sameFlight = flown.current.goalKey === goalKey && flown.current.aspect === aspect;
+    flown.current = { goalKey, aspect };
+    if (!sameFlight) handled.current = false;
+    const to = viewFor(goal, aspect, layoutRef.current);
+    if (sameFlight) {
+      if (goal.kind === "enter" || handled.current) return;
+      if (tween.current) {
+        tween.current.to = to;
+        return;
+      }
+    }
     const pos = c.getPosition(new THREE.Vector3());
     const tgt = c.getTarget(new THREE.Vector3());
     const from: View = { position: [pos.x, pos.y, pos.z], target: [tgt.x, tgt.y, tgt.z] };
     const travel = Math.hypot(to.position[0] - pos.x, to.position[1] - pos.y, to.position[2] - pos.z);
     drift.current.on = false;
     relax(c);
+    if (sameFlight) {
+      // Only the framing changed, after arriving: a short glide, no arc.
+      tween.current = {
+        from,
+        to,
+        start: performance.now(),
+        delay: 0,
+        duration: reducedMotion ? 1 : 520,
+        arc: 0,
+        kind: goal.kind,
+        easing: easeInOut,
+      };
+      pacer.markActive(600);
+      return;
+    }
     if (reducedMotion && goal.kind !== "enter") {
       c.setLookAt(...to.position, ...to.target, false);
       tween.current = null;
@@ -193,7 +264,7 @@ export function CameraRig({
       easing: entering ? easeIn : easeInOut,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goalKey, aspect]);
+  }, [goalKey, aspect, frameKey]);
 
   useFrame((_, dt) => {
     const c = controls.current;

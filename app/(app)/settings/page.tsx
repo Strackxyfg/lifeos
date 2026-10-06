@@ -58,7 +58,7 @@ export default async function SettingsPage() {
                 <p className="text-sm">{t.dataBody}</p>
                 <p className="mt-1 text-[0.75rem] text-muted-foreground">{t.exportHint}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {(["md", "json", "zip"] as const).map((f) => (
                   <a
                     key={f}

@@ -63,7 +63,9 @@ export function Notifications({ alerts }: { alerts: Alert[] }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.18, ease }}
-            className="glass absolute right-0 top-11 z-50 w-80 overflow-hidden rounded-xl border border-border-strong shadow-lift"
+            // On a phone the bell is not at the screen's edge (on the island it sits mid-bar):
+            // the list spans the screen instead of hanging off its left side.
+            className="glass absolute right-0 top-11 z-50 w-80 overflow-hidden rounded-xl border border-border-strong shadow-lift max-sm:fixed max-sm:inset-x-3 max-sm:top-16 max-sm:w-auto"
           >
             <div className="border-b border-border px-4 py-2.5 text-[0.8125rem] font-medium">
               {m.notifications.title}

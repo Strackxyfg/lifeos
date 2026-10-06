@@ -19,7 +19,7 @@ import { Boats } from "./scene/life";
 import { People } from "./scene/people";
 import { Birds } from "./scene/birds";
 import { Pins, type PinLabel } from "./scene/pins";
-import { CameraRig, type CameraGoal } from "./scene/camera-rig";
+import { CameraRig, type CameraGoal, type Layout } from "./scene/camera-rig";
 import { PostPipeline, type PostHandle } from "./scene/post";
 import { PhotoMode, type PhotoProgress, type PhotoShot } from "./scene/photo";
 import { FrameDriver, pacer, type FrameInfo } from "./scene/pacer";
@@ -64,6 +64,8 @@ export interface HubSceneProps {
   onPhotoExit: () => void;
   /** Filled with what the page may ask of the scene (saving the picture). */
   api: MutableRefObject<HubSceneApi | null>;
+  /** What the page's own panels cover, once measured: the camera frames around it. */
+  layout?: Layout;
 }
 
 export interface HubSceneApi {
@@ -315,7 +317,14 @@ export default function HubScene(p: HubSceneProps) {
             onHover={p.onHover}
             onSelect={p.onSelect}
           />
-          <MCameraRig goal={p.goal} returnFrom={p.returnFrom} reducedMotion={p.reducedMotion} onArrive={p.onArrive} still={p.photo} />
+          <MCameraRig
+            goal={p.goal}
+            returnFrom={p.returnFrom}
+            reducedMotion={p.reducedMotion}
+            onArrive={p.onArrive}
+            still={p.photo}
+            layout={p.layout}
+          />
           <Look level={rung} onPost={onPost} />
           {rung && (
             <PhotoMode

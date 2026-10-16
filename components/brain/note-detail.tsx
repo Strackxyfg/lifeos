@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft, Check, GitMerge, Hash, Link2, Loader2, Plus, RotateCcw, Sparkles, Trash2, Wand2, X,
+  ArrowLeft, Check, GitMerge, Hash, Link2, Loader2, Plus, RotateCcw, Sparkles, Trash2, Wand2, Waypoints, X,
 } from "lucide-react";
 import { categories, categoryById, type BrainCategoryId } from "@/lib/data/brain";
 import { buildSimilarityIndex, neighborsOf, suggestLinks, type BrainLink, type BrainNote } from "@/lib/brain/graph";
 import { RELATION_KINDS, isUnreviewed, perspective, type RelationKind } from "@/lib/brain/relations";
 import { searchNotes } from "@/lib/brain/search";
 import { proposeNextSteps } from "@/app/actions/weave";
+import { createMapFromNote } from "@/app/actions/maps";
+import { useRouter } from "next/navigation";
 import { toast } from "@/components/ui/toaster";
 import { fill, plural } from "@/lib/i18n/config";
 import { useLocale, useMessages } from "@/lib/i18n/client";
@@ -133,6 +135,20 @@ export function NoteDetail({
   const saveDetail = () => {
     const d = detail.trim();
     if (d !== (note.detail ?? "").trim()) onUpdate(note.id, { detail: d || null });
+  };
+
+  // The note in the middle of a mind map, its connections around it.
+  const router = useRouter();
+  const [mapping, setMapping] = useState(false);
+  const openAsMap = async () => {
+    setMapping(true);
+    const res = await createMapFromNote(note.id).catch(() => null);
+    if (res?.ok) {
+      router.push(`/brain/maps/${res.id}`);
+      return;
+    }
+    setMapping(false);
+    toast(fill(m.maps.editor.failed, { reason: m.maps.errors[res ? res.code : "network"] }), "error");
   };
 
   // Deletion takes two deliberate clicks within four seconds — a stray click
@@ -331,6 +347,15 @@ export function NoteDetail({
             <Wand2 className="h-3.5 w-3.5" /> {developLabel}
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => void openAsMap()}
+          disabled={mapping}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[0.75rem] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground disabled:opacity-60"
+        >
+          {mapping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Waypoints className="h-3.5 w-3.5" />}
+          {m.maps.create.fromThisNote}
+        </button>
         <button
           type="button"
           onClick={askDelete}

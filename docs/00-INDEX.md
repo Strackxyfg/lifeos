@@ -25,3 +25,4 @@ The 17 requested deliverables and where each lives.
 | + | Autonomous agent: market study, architecture, guardrails | [`11-AGENT.md`](11-AGENT.md) |
 | + | VPS runner setup | [`12-RUNNER-SETUP.md`](12-RUNNER-SETUP.md) |
 | + | Deploy: GitHub → Vercel → VPS | [`13-DEPLOY.md`](13-DEPLOY.md) |
+| + | Mind maps: editor, formats, migration 016 | [`18-MIND-MAPS.md`](18-MIND-MAPS.md) |

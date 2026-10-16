@@ -11,9 +11,13 @@ import { loadWorkspaceExport } from "@/lib/export/workspace";
 import { loadSelfData } from "@/lib/self/store";
 import { portraitOf } from "@/lib/self/portrait";
 import { portraitMarkdown } from "@/lib/self/export";
+import { getMapStore, imagesUsed } from "@/lib/maps/store";
+import { fileStem, toNative } from "@/lib/maps/formats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const IMAGE_MIME: Record<string, string> = { webp: "image/webp", png: "image/png", jpg: "image/jpeg", gif: "image/gif" };
 
 /**
  * Downloads the whole second brain — `?format=md` (default), `?format=json`,
@@ -25,7 +29,9 @@ export const dynamic = "force-dynamic";
  * finances, reminders, reviews, their double (portrait, check-ins, what they
  * did with its advice), and what they wrote in their teams
  * (lib/export/workspace.ts) — so "complete" is true; Markdown is the brain.
- * The ZIP adds the portrait as a document of its own (`portrait.md`).
+ * The ZIP adds the portrait as a document of its own (`portrait.md`), and
+ * each mind map as a LifeOS map file, its images inside, ready to import
+ * again (`mind-maps/` or `cartes-mentales/`).
  *
  * API routes are outside the middleware matcher, so this checks identity
  * itself, and with the strict helper: `getUserKey()` would fall back to the
@@ -112,6 +118,18 @@ export async function GET(req: Request) {
           // Profile, projects, deals, finances, reminders, reviews, and what was written in teams.
           emit(zip.file(locale === "fr" ? "espace-de-travail.json" : "workspace.json", encoder.encode(JSON.stringify(workspace, null, 2)), now));
           if (portrait) emit(zip.file("portrait.md", encoder.encode(portrait), now));
+          // Each mind map as a file LifeOS imports again, with its images inside.
+          const mapStore = getMapStore();
+          const mapFolder = locale === "fr" ? "cartes-mentales" : "mind-maps";
+          for (const map of workspace.maps) {
+            const assets: Record<string, string> = {};
+            for (const file of imagesUsed([map.doc])) {
+              const bytes = await mapStore.getImage(userKey, file);
+              if (bytes) assets[file] = `data:${IMAGE_MIME[file.split(".").pop() ?? ""] ?? "application/octet-stream"};base64,${Buffer.from(bytes).toString("base64")}`;
+            }
+            const native = toNative(map.doc, map.title, assets, now);
+            emit(zip.file(`${mapFolder}/${fileStem(map.title)}-${map.id.slice(0, 8)}.lifeosmap.json`, encoder.encode(JSON.stringify(native)), new Date(map.updatedAt)));
+          }
           // One recording at a time: read, written, released.
           for (const r of recordings) {
             const audio = await store.getAudio(userKey, r.path);

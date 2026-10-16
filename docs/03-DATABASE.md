@@ -33,6 +33,7 @@ waitlist                    pre-auth email capture (public insert, service-role 
 | `integrations` | `provider`, tokens, `scopes[]` | One row per provider per user |
 | `subscriptions` | `plan`, `status`, `current_period_end` | Source of truth is Stripe; this is a read-mirror |
 | `ai_reviews` | `kind`, `content`, `metrics jsonb` | Indexed `(user_id, created_at desc)` |
+| `lifeos_mind_maps` | `user_key`, `doc jsonb`, `preview`, `revision` | Migration 016. Owner-only RLS; a save names the revision it started from (no silent overwrite); images in the private `lifeos-map-images` bucket, one folder per person. See [`18-MIND-MAPS.md`](18-MIND-MAPS.md) |
 | `waitlist` | `email text unique` + `check (email = lower(email))`, `utm jsonb` | Insert-only for anon; read via service-role. Lower-cased storage gives case-insensitive uniqueness without `citext`, and keeps PostgREST `on_conflict=email` upserts working |
 
 ### Security model

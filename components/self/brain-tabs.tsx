@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Brain, UserRound } from "lucide-react";
+import { Brain, UserRound, Waypoints } from "lucide-react";
 import { useMessages } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 
-/** The brain and its double: two faces of the same section. */
-export function BrainTabs({ active, badge }: { active: "brain" | "double"; badge?: number }) {
+/** The brain, its double and its maps: three faces of the same section. */
+export function BrainTabs({ active, badge }: { active: "brain" | "double" | "maps"; badge?: number }) {
   const m = useMessages();
-  const tab = (id: "brain" | "double", href: string, label: string, Icon: typeof Brain) => (
+  const tab = (id: "brain" | "double" | "maps", href: string, label: string, Icon: typeof Brain) => (
     <Link
       href={href}
       aria-current={active === id ? "page" : undefined}
@@ -28,6 +28,7 @@ export function BrainTabs({ active, badge }: { active: "brain" | "double"; badge
     <nav aria-label={m.self.title} className="mb-5 inline-flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
       {tab("brain", "/brain", m.self.tabs.brain, Brain)}
       {tab("double", "/brain/double", m.self.tabs.double, UserRound)}
+      {tab("maps", "/brain/maps", m.maps.tab, Waypoints)}
     </nav>
   );
 }

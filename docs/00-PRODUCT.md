@@ -142,6 +142,49 @@ second cerveau (`/brain/double`), et une carte en tête de la vue d'ensemble.
   validée sur Postgres : 36 vérifications, idempotence comprise). Sans la migration, la page le dit
   et le reste du cerveau fonctionne.
 
+## 1 ter. Les cartes mentales — vos idées en arbres ✅
+
+Onglet « Cartes » de la section second cerveau (`/brain/maps`) ; une carte
+s'ouvre en plein écran (`/brain/maps/<id>`). Détails techniques :
+[`18-MIND-MAPS.md`](18-MIND-MAPS.md).
+
+- **Organiser en arbre.** Une idée au centre, des branches autour : carte
+  équilibrée des deux côtés, schéma logique vers la droite ou organigramme
+  vers le bas. Les branches ne se chevauchent jamais, quelle que soit la
+  taille des idées. Au clavier comme dans un tableur : Tab ajoute une idée
+  dessous, Entrée une idée à côté, on tape pour écrire ; glisser-déposer pour
+  déplacer (sur une idée pour la mettre dessous, au-dessus ou en dessous pour
+  la placer) ; replier, déplier, n'afficher que les premiers niveaux.
+  Au doigt : toucher, toucher deux fois pour écrire, maintenir pour déplacer,
+  pincer pour zoomer. Une **vue Plan** édite la même carte comme une liste.
+- **Enrichir chaque idée** : emoji (repères, priorités, humeurs… ou n'importe
+  lequel), note, lien (web ou e-mail seulement), image (déposée, collée ou
+  choisie ; réduite sur l'appareil, vérifiée par ses octets sur le serveur,
+  jamais un SVG), couleur, lien vers une note du cerveau — ou l'idée gardée
+  comme nouvelle note.
+- **Thèmes et apparence** : huit thèmes (Lumière, Minuit, Papier, Océan,
+  Forêt, Aurore, Encre, Pastel), branches courbes, droites ou en équerre,
+  trois polices, trois espacements, fond uni, à points ou quadrillé, une
+  couleur par branche ou une seule. Le texte reste lisible sur toute couleur
+  (contraste WCAG vérifié pour chaque thème).
+- **Importer** : XMind, FreeMind/Freeplane, OPML, Markdown, Mermaid, fichier
+  LifeOS — par bouton ou en déposant le fichier ; lu dans le navigateur,
+  images comprises. Coller une liste indentée l'ajoute à la carte.
+- **Exporter** : PNG (jusqu'à 4×, fond ou transparent), SVG (polices et images
+  incluses), PDF, Markdown, XMind, FreeMind, OPML, Mermaid, fichier LifeOS ;
+  toute la carte ou une branche ; copier en image ou en texte.
+- **Partir de** : une page blanche, huit modèles (remue-méninges, plan de
+  projet, SWOT, décision, semaine, lecture, réunion, objectifs et résultats
+  clés — des structures, aucun contenu inventé), ou **une note du cerveau** :
+  la note au centre, ses connexions autour, regroupées par sens.
+- **Suggestions de l'IA** (si un modèle est configuré) : quelques idées sous
+  l'idée choisie, en pointillés, marquées comme venant de l'IA, jusqu'à ce que
+  vous les gardiez ou les écartiez.
+- **Rien ne se perd** : enregistrement automatique en moins d'une seconde ;
+  hors ligne, la carte reste sur l'appareil et part dès que LifeOS répond ;
+  modifiée dans deux onglets, rien n'est écrasé sans vous demander ; 200 pas
+  d'annulation.
+
 ## 2. Les connexions — ce qui fait la différence ✅
 
 Un second cerveau ne vaut que par ce qu'il relie. Le nôtre comprend ses notes
@@ -491,12 +534,14 @@ refuse au lieu de simuler.
   note vocale à son audio et à son passage). Le JSON et le ZIP contiennent
   aussi **tout le reste** : profil, projets, affaires, transactions, tâches,
   rappels, soldes, revues, votre double (portrait, relevés, ce que vous avez
-  fait de ses conseils ; le ZIP ajoute `portrait.md`), et ce que vous avez
-  écrit dans vos équipes (les collègues y sont nommés, jamais identifiés). Le
-  Markdown reste le cerveau.
+  fait de ses conseils ; le ZIP ajoute `portrait.md`), vos cartes mentales (le
+  ZIP ajoute chacune en fichier LifeOS, images comprises, prêt à réimporter),
+  et ce que vous avez écrit dans vos équipes (les collègues y sont nommés,
+  jamais identifiés). Le Markdown reste le cerveau.
 - **Suppression complète** depuis les Paramètres (mot à taper, vérifié côté
   serveur) : notes, connexions, projets, opportunités, transactions, tâches,
-  enregistrements, rappels, profil — et la présence dans chaque équipe, avec
+  enregistrements, rappels, cartes mentales et leurs images, profil — et la
+  présence dans chaque équipe, avec
   ce qui y a été partagé (une équipe dont on est propriétaire passe à
   l'admin le plus ancien, ou disparaît si l'on y était seul). Le compte et le
   contenu Notion restent.
@@ -515,7 +560,7 @@ devenir une facturation par siège — le tarif entreprise reste à décider
 Next.js 15 · React 19 · TypeScript strict · Supabase (authentification,
 Postgres, sécurité ligne par ligne) · API Notion · agent sur VPS · PWA
 (installable, cible de partage) · three.js / React Three Fiber · interface
-intégralement bilingue · 798 tests
+intégralement bilingue · 878 tests
 automatisés, dont des gardes contre les fausses allégations, les routes non
 protégées et les caractères de contrôle dans le code.
 
@@ -557,6 +602,12 @@ tel qu'Entra ID et Okta l'écrivent), testé de bout en bout ; SAML par l'API
 d'administration de Supabase Auth ; l'appartenance suit l'annuaire par des
 déclencheurs Postgres, quel que soit l'écrivain.
 
+**Cartes mentales.** Mise en page par bandes (aucun chevauchement, testé sur
+des arbres aléatoires dans les trois dispositions), une seule géométrie pour
+l'éditeur, le SVG et le PNG ; déplacement et zoom sans re-rendu ; formats lus
+dans le navigateur avec un lecteur XML qui n'étend aucune entité et un lecteur
+ZIP borné ; PDF écrit à la main ; sauvegarde par numéro de révision.
+
 **Rendu.** Atmosphère calculée sur GPU dans une table de ciel, qui sert aussi
 d'éclairage ambiant (IBL) ; post-traitement en demi-flottants ; mode photo par
 three-gpu-pathtracer sur WebGPU.
@@ -569,11 +620,12 @@ de 5 s, testées.
 
 ## 16. Avant de lancer
 
-1. **Appliquer les migrations 013, 014 puis 015** dans Supabase (007 à 012
-   sont faites). Sans 013 : ni trésorerie datée, ni soldes, ni rappels
+1. **Appliquer les migrations 013, 014, 015 puis 016** dans Supabase (007 à
+   012 sont faites). Sans 013 : ni trésorerie datée, ni soldes, ni rappels
    d'affaires, ni revue du vendredi, ni pack d'accueil. Sans 014 : ni domaines,
    ni connexion unique, ni provisionnement. Sans 015 : pas de double (portrait,
-   point du jour, suivi des conseils). Toutes les migrations (007 à 015)
+   point du jour, suivi des conseils). Sans 016 : pas de cartes mentales
+   (l'onglet le dit). Toutes les migrations (007 à 016)
    s'appliquent dans l'ordre, sont idempotentes et validées sur Postgres,
    politiques comprises. Sans 007 : pas
    de connexions, profil limité au navigateur. Sans 008 : les connexions

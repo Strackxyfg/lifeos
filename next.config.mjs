@@ -19,6 +19,10 @@ const nextConfig = {
   poweredByHeader: false,
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
+    // A mind map is saved whole (up to 4 MB of ideas and notes), and an image
+    // is uploaded scaled down but can still weigh a few megabytes. Below
+    // Vercel's 4.5 MB request limit.
+    serverActions: { bodySizeLimit: "4.4mb" },
   },
   webpack(config) {
     // three-mesh-bvh's WebGPU entry re-exports two modules that both define

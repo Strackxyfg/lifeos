@@ -1,6 +1,7 @@
 import type { Locale } from "./config";
 import { selfEn, selfFr } from "./self";
 import { agentSetupEn, agentSetupFr } from "./agent-setup";
+import { mapsEn, mapsFr } from "./maps";
 
 /** Text for a seeded Second-Brain item. */
 export type ItemText = { title: string; detail?: string };
@@ -1623,6 +1624,7 @@ const en = {
   // The double's words live in their own module (`self.ts`).
   self: selfEn,
   agentSetup: agentSetupEn,
+  maps: mapsEn,
 };
 
 export type Messages = typeof en;
@@ -3204,6 +3206,7 @@ const fr: Messages = {
   },
   self: selfFr,
   agentSetup: agentSetupFr,
+  maps: mapsFr,
 };
 
 export const dictionaries: Record<Locale, Messages> = { en, fr };

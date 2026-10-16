@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getAuthenticatedUserKey, getStore } from "@/lib/db/store";
 import { forgetProfileCookie } from "@/lib/user/profile";
 import { getTeamStore } from "@/lib/team/store";
+import { getMapStore } from "@/lib/maps/store";
 
 export type DeleteResult = { ok: true } | { ok: false; code: "unauthorized" | "invalid" | "failed" };
 
@@ -12,9 +13,10 @@ const CONFIRM_WORDS = new Set(["DELETE", "SUPPRIMER"]);
 
 /**
  * Erases everything the person has in LifeOS: notes and their connections,
- * projects, deals, transactions, tasks, reminders, the profile — and their
- * place in every team, with what they shared there (a team they own passes
- * to its longest-standing admin, or is deleted if they were alone in it).
+ * projects, deals, transactions, tasks, reminders, mind maps and their
+ * images, the profile — and their place in every team, with what they
+ * shared there (a team they own passes to its longest-standing admin, or is
+ * deleted if they were alone in it).
  *
  * The typed confirmation is checked here, not only in the form: a server
  * action is a public endpoint, and a destructive one must not depend on the
@@ -35,6 +37,9 @@ export async function deleteMyData(confirmation: unknown): Promise<DeleteResult>
     // Teams first: they only reference the person, nothing depends on them.
     const teams = getTeamStore();
     if (await teams.supportsTeams()) await teams.forget(userKey);
+    // Mind maps and their images (migration 016; nothing to clear before it).
+    const maps = getMapStore();
+    if (await maps.supports()) await maps.clear(userKey);
     await getStore().clear(userKey);
     await forgetProfileCookie();
     revalidatePath("/", "layout");

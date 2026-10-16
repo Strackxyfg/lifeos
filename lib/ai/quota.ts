@@ -24,6 +24,8 @@ export const ALLOWANCES = {
   // The double: reading notes for the portrait, and talking with it.
   portrait: { limit: 20, windowMs: 60 * 60_000 },
   double: { limit: 60, windowMs: 60 * 60_000 },
+  // Ideas suggested on a mind map.
+  maps: { limit: 60, windowMs: 60 * 60_000 },
 } as const satisfies Record<string, Allowance>;
 
 export type QuotaKind = keyof typeof ALLOWANCES;

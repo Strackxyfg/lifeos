@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
  * Raycast/Linear-style "G then key" navigation chords.
  * G H → Hub, G R → Second brain, G A → Assistant, G G → Agent, G D → Dashboard,
  * G P → Projects, G C → CRM, G F → Finance, G W → the week's review,
- * G I → the investor update, G S → Settings, G B → Billing.
+ * G I → the investor update, G M → mind maps, G S → Settings, G B → Billing.
  * Ignored while typing in inputs; the second key must land within 1s.
  */
 const MAP: Record<string, string> = {
@@ -21,6 +21,7 @@ const MAP: Record<string, string> = {
   i: "/reports/investor",
   a: "/assistant",
   r: "/brain",
+  m: "/brain/maps",
   g: "/agent",
   s: "/settings",
   b: "/billing",
@@ -39,7 +40,8 @@ export function Shortcuts() {
     };
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      // A key a page already used (a letter typed on a mind map) is not a chord.
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
       const key = e.key.toLowerCase();
 
       if (armed && Date.now() - at < 1000) {

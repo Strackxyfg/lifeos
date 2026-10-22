@@ -295,9 +295,18 @@ Sept questions construisent le cerveau sur-le-champ :
 Relancer l'accueil ne duplique rien : une note dont le titre existe déjà est
 réutilisée. Le brouillon survit à un rechargement et à une reconnexion.
 
-## 5. L'assistant et la trace de pensée ✅
+## 5. L'agent, l'assistant et la trace de pensée ✅
 
-Il répond **à partir du second cerveau** : qui vous êtes (profil), vos
+**L'agent** (page Assistant, dès qu'un modèle est configuré) cherche dans le
+cerveau, puis **agit** : notes, liens, tâches, rappels à l'heure de la
+personne, lecture d'une page web ; en Solo, projets, opportunités, brouillons
+d'e-mails et de propositions, envoi d'e-mail. Plusieurs étapes par demande,
+chacune visible ; **tout ce qui sort de LifeOS attend l'accord** de la
+personne, sur une carte qui montre l'action exacte. Les résultats d'outils sont
+des données, jamais des ordres : un texte qui s'adresse à une IA est signalé.
+Détails : `docs/20-AGENT-IN-APP.md`.
+
+Sans modèle, l'assistant répond **à partir du second cerveau** : qui vous êtes (profil), vos
 objectifs, votre focus, les notes liées à la question **et ce à quoi ces notes
 sont reliées** — le fait derrière une décision, l'action derrière un objectif,
 la note qu'elle contredit. Il **cite ses sources** : les notes utilisées
@@ -575,27 +584,34 @@ refuse au lieu de simuler.
   l'admin le plus ancien, ou disparaît si l'on y était seul). Le compte et le
   contenu Notion restent.
 
-## 14. Tarifs — accès anticipé
+## 14. Éditions et tarifs — accès anticipé
 
-Gratuit, sans carte. Prix affichés pour après l'accès anticipé :
-**Essentiel 19 $**, **Pro 49 $**, **Souverain 99 $** par mois. Chaque promesse
-de la grille correspond à une fonction qui existe. Rien n'est facturé : le
-paiement n'est pas branché. Les équipes gèrent des **sièges**, prêts à
-devenir une facturation par siège — le tarif entreprise reste à décider
-(voir « Avant de lancer »).
+Trois éditions, chacune contient la précédente : **Personnel** (la vie : second
+cerveau, double, cartes, voix, rappels, l'île, l'agent, les cercles), **Solo**
+(+ l'activité : projets, clients, trésorerie, revue du vendredi, rapport
+investisseurs, Notion, l'agent sur un serveur), **Équipe** (+ l'entreprise :
+équipes, domaines, SSO, SCIM, DPA). Le contrôle se fait **sur le serveur**, à
+chaque écriture. Gratuit, sans carte, et l'édition se change en un clic ; un
+compte d'avant les éditions a tout. Prix affichés pour après l'accès anticipé :
+**Personnel 19 $**, **Solo 49 $**, **Équipe par siège, tarif fixé au
+lancement**. Rien n'est facturé. Détails : `docs/19-EDITIONS.md`.
 
 ## 15. Technique
 
 Next.js 15 · React 19 · TypeScript strict · Supabase (authentification,
 Postgres, sécurité ligne par ligne) · API Notion · agent sur VPS · PWA
 (installable, cible de partage) · three.js / React Three Fiber · interface
-intégralement bilingue · 935 tests
+intégralement bilingue · application Windows (Electron) · 1 034 tests
 automatisés, dont des gardes contre les fausses allégations, les routes non
 protégées et les caractères de contrôle dans le code.
 
 **IA — un routeur, pas un fournisseur.** Chaque tâche (classer, relier,
 découper, décider, répondre…) a un ordre de modèles mesuré (Groq : Qwen3 27B,
-GPT-OSS 120B/20B ; Mistral en option pour l'UE). Bascule automatique vers le
+GPT-OSS 120B/20B ; Mistral en option pour l'UE). L'agent prend d'abord le
+**niveau « frontière »** quel que soit le fournisseur — Claude (Anthropic),
+GPT (OpenAI, API Responses), DeepSeek V4 Pro, Kimi ou GLM (OpenRouter) —
+avec appels d'outils, raisonnement renvoyé au même modèle d'une étape à
+l'autre, et bascule tant que rien n'est affiché. Bascule automatique vers le
 modèle suivant, **disjoncteurs** par modèle (quota, erreur, délai — avec le
 temps de repos que le fournisseur indique), réponses inutilisables rejetées et
 rejouées ailleurs, streaming qui bascule avant le premier mot. Mode souverain :
@@ -640,6 +656,12 @@ ZIP borné ; PDF écrit à la main ; sauvegarde par numéro de révision.
 **Rendu.** Atmosphère calculée sur GPU dans une table de ciel, qui sert aussi
 d'éclairage ambiant (IBL) ; post-traitement en demi-flottants ; mode photo par
 three-gpu-pathtracer sur WebGPU.
+
+**Windows.** Un installateur par utilisateur : LifeOS tourne sur l'ordinateur
+(serveur embarqué sur 127.0.0.1, données dans le dossier Windows de la
+personne, clés d'IA chiffrées par Windows) ou ouvre LifeOS en ligne. Fenêtres
+isolées sans Node, navigation verrouillée, serveur local qui ne répond qu'à sa
+fenêtre (secret par lancement, hôte vérifié). Détails : `docs/21-DESKTOP.md`.
 
 **Échelle.** Similarité par index inversé (tous les couples d'un cerveau de
 4 000 notes en ~1,3 s au lieu de 107 s), carte mentale de 3 000 notes en moins
@@ -705,6 +727,15 @@ de 5 s, testées.
 12. **« Continuer avec Google »** sur la page de connexion n'est relié à rien.
     Le brancher (fournisseur Google dans Supabase ; `/auth/callback` existe
     désormais) ou le retirer.
+13. **Modèles de l'agent** : ajouter au moins une clé `ANTHROPIC_API_KEY`,
+    `OPENAI_API_KEY` (l'actuelle est refusée), `DEEPSEEK_API_KEY` ou
+    `OPENROUTER_API_KEY` pour que l'agent utilise un modèle de premier plan ;
+    sans elles il tourne sur Groq. Seul Groq a été essayé en réel ici.
+14. **Éditions** : décider si Personnel reste gratuit une fois la facturation
+    active (`resolveEdition`), le prix par siège d'Équipe, et brancher le
+    paiement depuis Facturation ; puis `BILLING_ENFORCED=1`.
+15. **Application Windows** : la signer (certificat de signature de code) pour
+    éviter l'alerte SmartScreen, puis prévoir les mises à jour automatiques.
 
 ## Ce qui a été retiré parce que c'était faux
 

@@ -108,6 +108,17 @@ const SCHEMAS: Record<string, McpTool["inputSchema"]> = {
     properties: { label: str("What needs doing, phrased as an action.") },
     required: ["label"],
   },
+  "reminder.write": {
+    type: "object",
+    properties: {
+      title: str("What to be reminded of, phrased as the reminder itself."),
+      when: str("Local date and time on the owner's clock: YYYY-MM-DDTHH:mm."),
+      zone: str("IANA time zone of that clock, e.g. Europe/Paris. Default: the zone of their latest reminder."),
+      repeat: str("One of: none, daily, weekdays, weekly, monthly. Default: none."),
+      note: str("Optional id of the note it is about."),
+    },
+    required: ["title", "when"],
+  },
   "project.write": {
     type: "object",
     properties: {

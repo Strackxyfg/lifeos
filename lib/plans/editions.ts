@@ -87,13 +87,14 @@ export const featuresOf = (edition: Edition): Feature[] => FEATURES.filter((f) =
 export const addedBy = (edition: Edition): Feature[] => FEATURES.filter((f) => HOME[f] === edition);
 
 /**
- * How much the agent may do in a day, and how many steps one request may
- * take. Bounds on cost and on runaway loops, not on what it can reach.
+ * How many requests the agent takes in a day (a decision on an approval is
+ * one), and how many model turns one request may take. Bounds on cost and on
+ * runaway loops, not on what it can reach.
  */
 export const LIMITS: Record<Edition, { agentRunsPerDay: number; agentSteps: number }> = {
-  personal: { agentRunsPerDay: 25, agentSteps: 8 },
-  solo: { agentRunsPerDay: 100, agentSteps: 16 },
-  team: { agentRunsPerDay: 300, agentSteps: 24 },
+  personal: { agentRunsPerDay: 40, agentSteps: 8 },
+  solo: { agentRunsPerDay: 150, agentSteps: 16 },
+  team: { agentRunsPerDay: 400, agentSteps: 24 },
 };
 
 /** Which navigation entries belong to which feature. */

@@ -1,3 +1,7 @@
+import { LIMITS } from "@/lib/plans/editions";
+
+const DAY = 24 * 60 * 60_000;
+
 /**
  * A per-person allowance for the calls that spend the operator's model budget
  * in bulk: transcribing a memo, splitting a dump.
@@ -29,6 +33,10 @@ export const ALLOWANCES = {
   // The double answering someone who may be in danger: apart from "double", so it never runs out with it. Past it, they
   // get the answer written in advance (and the page shows who to call) — never silence, and no unbounded model calls.
   care: { limit: 30, windowMs: 60 * 60_000 },
+  // Requests to the agent in the app, per edition (lib/plans/editions.ts).
+  agent_personal: { limit: LIMITS.personal.agentRunsPerDay, windowMs: DAY },
+  agent_solo: { limit: LIMITS.solo.agentRunsPerDay, windowMs: DAY },
+  agent_team: { limit: LIMITS.team.agentRunsPerDay, windowMs: DAY },
 } as const satisfies Record<string, Allowance>;
 
 export type QuotaKind = keyof typeof ALLOWANCES;

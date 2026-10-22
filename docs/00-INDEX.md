@@ -27,3 +27,4 @@ The 17 requested deliverables and where each lives.
 | + | Deploy: GitHub → Vercel → VPS | [`13-DEPLOY.md`](13-DEPLOY.md) |
 | + | Mind maps: editor, formats, migration 016 | [`18-MIND-MAPS.md`](18-MIND-MAPS.md) |
 | + | Editions (Personnel, Solo, Équipe): matrix, enforcement, billing | [`19-EDITIONS.md`](19-EDITIONS.md) |
+| + | The agent in the app: loop, tools, approvals, safety | [`20-AGENT-IN-APP.md`](20-AGENT-IN-APP.md) |

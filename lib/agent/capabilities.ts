@@ -42,6 +42,7 @@ export const CAPABILITIES: Capability[] = [
   { id: "brain.link", tier: "low", label: "Connect notes", labelFr: "Relier des notes", rationale: "Private to LifeOS, reversible — a connection can be removed, and it is marked for your review." },
   { id: "brain.weave", tier: "low", label: "Let LifeOS connect your notes", labelFr: "Laisser LifeOS relier vos notes", rationale: "Private to LifeOS; every connection drawn is marked for your review and can be removed." },
   { id: "task.write", tier: "low", label: "Create and update tasks", labelFr: "Créer et modifier des tâches", rationale: "Private to LifeOS, reversible." },
+  { id: "reminder.write", tier: "low", label: "Set reminders", labelFr: "Programmer des rappels", rationale: "Private to LifeOS; a reminder can be edited, snoozed or deleted." },
   { id: "project.write", tier: "low", label: "Create and update projects", labelFr: "Créer et modifier des projets", rationale: "Private to LifeOS, reversible." },
   { id: "deal.write", tier: "low", label: "Update the sales pipeline", labelFr: "Mettre à jour le pipeline commercial", rationale: "Private to LifeOS, reversible." },
 

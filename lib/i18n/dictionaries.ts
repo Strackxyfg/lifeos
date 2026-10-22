@@ -2,6 +2,7 @@ import type { Locale } from "./config";
 import { selfEn, selfFr } from "./self";
 import { agentSetupEn, agentSetupFr } from "./agent-setup";
 import { mapsEn, mapsFr } from "./maps";
+import { agentChatEn, agentChatFr } from "./agent-chat";
 
 /** Text for a seeded Second-Brain item. */
 export type ItemText = { title: string; detail?: string };
@@ -848,7 +849,7 @@ const en = {
     projects: { title: "Projects", desc: "Everything in flight, grouped by status." },
     crm: { title: "CRM", desc: "Contacts and deals, from first touch to closed-won." },
     finance: { title: "Finance", desc: "Income, expenses, and runway — rolled up from your ledger." },
-    assistant: { title: "Assistant", desc: "Answers from your second brain: your goals, your focus, your notes." },
+    assistant: { title: "Assistant", desc: "Your agent: it answers from your second brain, acts on it, and asks before anything leaves LifeOS." },
     billing: { title: "Billing", desc: "Your edition, your access, and the prices at launch." },
     settings: { title: "Settings", desc: "Profile, your data, and connections." },
     brain: { title: "Second Brain", desc: "Your goals, ideas and next steps — connected, and mapped in an interactive space." },
@@ -1683,6 +1684,7 @@ const en = {
   self: selfEn,
   agentSetup: agentSetupEn,
   maps: mapsEn,
+  agentChat: agentChatEn,
 };
 
 export type Messages = typeof en;
@@ -2492,7 +2494,7 @@ const fr: Messages = {
     projects: { title: "Projets", desc: "Tout ce qui est en cours, regroupé par statut." },
     crm: { title: "CRM", desc: "Contacts et opportunités, du premier contact à la signature." },
     finance: { title: "Finances", desc: "Revenus, dépenses et trésorerie — consolidés depuis votre grand livre." },
-    assistant: { title: "Assistant", desc: "Répond à partir de votre second cerveau : vos objectifs, votre focus, vos notes." },
+    assistant: { title: "Assistant", desc: "Votre agent : il répond à partir de votre second cerveau, agit dessus, et demande avant que quoi que ce soit ne sorte de LifeOS." },
     billing: { title: "Facturation", desc: "Votre édition, votre accès, et les tarifs au lancement." },
     settings: { title: "Paramètres", desc: "Profil, vos données et connexions." },
     brain: { title: "Second cerveau", desc: "Vos objectifs, idées et prochaines actions — reliés, et cartographiés dans un espace interactif." },
@@ -3323,6 +3325,7 @@ const fr: Messages = {
   self: selfFr,
   agentSetup: agentSetupFr,
   maps: mapsFr,
+  agentChat: agentChatFr,
 };
 
 export const dictionaries: Record<Locale, Messages> = { en, fr };

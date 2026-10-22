@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const origin = (process.env.NEXT_PUBLIC_APP_URL ?? url.origin).replace(/\/+$/, "");
+  const origin = (process.env.NEXT_PUBLIC_APP_URL || url.origin).replace(/\/+$/, "");
   const to = (path: string) => NextResponse.redirect(`${origin}${path}`);
   const next = safeNext(url.searchParams.get("next"), "/team");
 

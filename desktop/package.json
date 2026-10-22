@@ -1,0 +1,77 @@
+{
+  "name": "lifeos-desktop",
+  "productName": "LifeOS",
+  "version": "0.1.0",
+  "description": "LifeOS for Windows: your second brain and your agent, on your computer.",
+  "private": true,
+  "main": "main.cjs",
+  "author": "LifeOS",
+  "license": "UNLICENSED",
+  "scripts": {
+    "server": "node scripts/build-server.mjs",
+    "start": "electron .",
+    "pack": "electron-builder --win dir --x64",
+    "dist": "node scripts/build-server.mjs && electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "ai.lifeos.desktop",
+    "productName": "LifeOS",
+    "copyright": "LifeOS",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "lib/**",
+      "ui/**",
+      "assets/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/server",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!**/.env*"
+        ]
+      },
+      {
+        "from": "build/server/node_modules",
+        "to": "server/node_modules",
+        "filter": [
+          "**/*",
+          "!**/.env*"
+        ]
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "artifactName": "LifeOS-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "LifeOS",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

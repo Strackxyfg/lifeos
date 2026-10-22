@@ -25,7 +25,7 @@ function reply(status: number, body?: unknown, headers?: Record<string, string>)
 async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
   const url = new URL(req.url);
-  const origin = (process.env.NEXT_PUBLIC_APP_URL ?? url.origin).replace(/\/+$/, "");
+  const origin = (process.env.NEXT_PUBLIC_APP_URL || url.origin).replace(/\/+$/, "");
 
   let body: unknown;
   if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {

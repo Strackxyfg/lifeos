@@ -2,6 +2,7 @@ import "server-only";
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { isSupabaseConfigured } from "@/lib/db/store";
+import { dataDir } from "@/lib/db/data-dir";
 import type { JournalEntry } from "./loop";
 
 /**
@@ -42,7 +43,7 @@ export async function journal(userKey: string, entry: JournalEntry): Promise<voi
       if (error) throw new Error(error.message);
       return;
     }
-    const dir = path.join(process.cwd(), ".data");
+    const dir = dataDir();
     await mkdir(dir, { recursive: true });
     await appendFile(path.join(dir, "agent-audit.jsonl"), `${JSON.stringify({ ...row, created_at: at })}\n`, "utf8");
   } catch (err) {

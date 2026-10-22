@@ -104,7 +104,9 @@ export const getProfile = cache(async function getProfile(): Promise<Profile> {
   const { getEdition } = await import("@/lib/plans/server");
   const [stored, cookie, email, edition] = await Promise.all([loadStoredProfile(), readCookie(userKey), currentEmail(), getEdition()]);
 
-  let name = stored?.name?.trim() || cookie.name?.trim() || (email ? deriveNameFromEmail(email) : "");
+  // The desktop app's local identity (me@lifeos.local) is an address, not a name to greet.
+  const derived = email && !email.endsWith("@lifeos.local") ? deriveNameFromEmail(email) : "";
+  let name = stored?.name?.trim() || cookie.name?.trim() || derived;
   if (!name) name = "there";
 
   return {

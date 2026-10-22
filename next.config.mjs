@@ -7,6 +7,8 @@ const nextConfig = {
   // is using (they share the directory otherwise, which corrupts the dev
   // server's RSC payloads). Defaults to the normal location.
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // The desktop app ships the server it runs (desktop/scripts/build-server.mjs).
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" } : {}),
   // This project is the root. Next otherwise guesses from lockfiles and can
   // settle on a parent folder that merely has one of its own.
   outputFileTracingRoot: path.dirname(fileURLToPath(import.meta.url)),

@@ -4,8 +4,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { assertAudioFile, fileInFolder } from "./audio-files";
 import type { Collection, Dataset, DbProfile, ProfilePatch, Store } from "./types";
 import { seedDataset, shouldSeed, EMPTY_DATASET } from "./seed";
+import { dataDir } from "./data-dir";
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+const DATA_DIR = dataDir();
 const DATA_FILE = path.join(DATA_DIR, "lifeos.json");
 const AUDIO_DIR = path.join(DATA_DIR, "audio");
 

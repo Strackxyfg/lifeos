@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { dataDir } from "@/lib/db/data-dir";
 import { randomUUID } from "node:crypto";
 import {
   canInvite,
@@ -25,7 +26,7 @@ import {
 } from "./types";
 import type { DirectoryEntry, DirectoryGroup, GroupMember, ScimToken, SsoConnection, TeamDomain } from "@/lib/enterprise/types";
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+const DATA_DIR = dataDir();
 const FILE = path.join(DATA_DIR, "teams.json");
 
 export interface Shape {

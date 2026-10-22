@@ -37,7 +37,7 @@ export async function createCheckoutSession(opts: {
 }): Promise<string> {
   const priceId = process.env[PRICE_ENV[opts.plan]];
   if (!priceId) throw new Error(`${PRICE_ENV[opts.plan]} is not set`);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
   const session = await getStripe().checkout.sessions.create({
     mode: "subscription",
@@ -59,7 +59,7 @@ export async function createCheckoutSession(opts: {
 
 /** Create a Billing Portal session for self-serve management. */
 export async function createPortalSession(customerId: string): Promise<string> {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const session = await getStripe().billingPortal.sessions.create({
     customer: customerId,
     return_url: `${appUrl}/billing`,

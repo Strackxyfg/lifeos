@@ -6,7 +6,7 @@ import { getLocale } from "@/lib/i18n/server";
 import { ServiceWorker } from "@/components/app/service-worker";
 import "./globals.css";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://lifeos.ai";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://lifeos.ai";
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),

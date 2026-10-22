@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { dataDir } from "@/lib/db/data-dir";
 import { createHash, randomUUID } from "node:crypto";
 import { IMAGE_FILE, type MapDoc } from "./model";
 import type { MapMeta, MapRecord, MapStore, MapWrite, SaveResult, StoredImage } from "./store";
@@ -11,7 +12,7 @@ import type { MapMeta, MapRecord, MapStore, MapWrite, SaveResult, StoredImage } 
  * old one — never seen half-written.
  */
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+const DATA_DIR = dataDir();
 const FILE = path.join(DATA_DIR, "maps.json");
 const IMAGES = path.join(DATA_DIR, "map-images");
 

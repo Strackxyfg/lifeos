@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LifeOS</title>
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <main>
+      <h1 data-t="title"></h1>
+      <p class="muted" data-t="intro"></p>
+
+      <form id="form" novalidate>
+        <fieldset>
+          <legend data-t="where"></legend>
+          <label class="choice">
+            <input type="radio" name="mode" value="local" />
+            <span>
+              <strong data-t="local"></strong>
+              <span class="muted" data-t="localHelp"></span>
+            </span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="mode" value="cloud" />
+            <span>
+              <strong data-t="cloud"></strong>
+              <span class="muted" data-t="cloudHelp"></span>
+            </span>
+          </label>
+          <label class="field" id="cloud-field">
+            <span data-t="cloudUrl"></span>
+            <input type="url" id="cloudUrl" placeholder="https://" autocomplete="off" spellcheck="false" />
+          </label>
+        </fieldset>
+
+        <fieldset id="keys">
+          <legend data-t="keys"></legend>
+          <p class="muted" data-t="keysHelp"></p>
+          <p class="warn" id="no-encryption" hidden data-t="noEncryption"></p>
+          <div id="key-list"></div>
+        </fieldset>
+
+        <p class="error" id="error" role="alert" hidden></p>
+        <div class="actions">
+          <button type="submit" id="save" data-t="save"></button>
+        </div>
+        <p class="muted small" id="version"></p>
+      </form>
+    </main>
+    <script src="settings.js"></script>
+  </body>
+</html>

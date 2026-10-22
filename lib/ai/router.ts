@@ -1,83 +1,52 @@
-import OpenAI from "openai";
+import {
+  RouteError,
+  type AITask,
+  type Api,
+  type CompletionRequest,
+  type Provider,
+  type Route,
+  type Tier,
+  type Transport,
+  type TurnRequest,
+  type TurnResult,
+} from "./types";
+import { chatTransport } from "./providers/chat";
+import { anthropicTransport } from "./providers/anthropic";
+import { responsesTransport } from "./providers/responses";
+
+export { RouteError } from "./types";
+export type { AITask, Api, ChatMessage, CompletionRequest, Provider, Route, Tier, Transport } from "./types";
+export { REASONING_HEADROOM, bodyFor, clientFor, parseRetryAfter, toRouteError } from "./providers/chat";
 
 /**
  * The AI router: every model call in LifeOS goes through here.
  *
- * Why it exists. On Groq's free tier each model has its own quota — about
- * 1,000 requests a day and 8,000 tokens a minute, measured on 2026-09-22 —
- * and one exhausted quota used to mean "the AI is down" for everyone. The
- * router treats the configured models as a pool:
+ * Why it exists. Each provider, each model, has its own quota and its own
+ * bad days. One exhausted quota used to mean "the AI is down" for everyone.
+ * The router treats the configured models as a pool:
  *
- *  - Routing by task. Judging whether two notes are connected wants the
- *    strongest model; filing a thought wants a fast one; the chat wants the
- *    one that writes the language best. Each task ranks the routes by tier.
+ *  - Routing by task and by tier. Filing a thought wants a fast model; the
+ *    agent, which plans and calls tools, wants the strongest reasoning model
+ *    available — the "frontier" tier (Claude Opus/Sonnet, GPT-6 Sol/Astra,
+ *    DeepSeek V4 Pro, Kimi K3…). Everyday features keep the pool they were
+ *    measured on.
  *  - Failover. A route that fails is skipped and the next one answers; the
  *    person sees one answer, not an error.
  *  - Circuit breakers. A route that said "too many requests" is left alone
- *    until the time it gave (`retry-after`, or Groq's "try again in 1m26s");
- *    a provider that refused the key or asked for payment is left alone for
- *    an hour; a timeout or a 5xx for twenty seconds. Nothing hammers a quota
- *    that is already spent.
- *  - Model families. Qwen 3 reasons aloud unless told `/no_think`; gpt-oss
- *    spends part of `max_tokens` on reasoning it returns separately, and a
- *    ceiling sized only for the answer truncates the JSON (Groq then answers
- *    400 "Failed to generate JSON"). Both are handled here, once.
+ *    until the time it gave; a provider that refused the key or asked for
+ *    payment is left alone for an hour; a timeout or a 5xx for twenty
+ *    seconds. Nothing hammers a quota that is already spent.
+ *  - Three protocols behind one interface (`lib/ai/providers/`): Chat
+ *    Completions (Groq, Mistral, Cerebras, DeepSeek, OpenRouter), Anthropic
+ *    Messages, OpenAI Responses — each with tool calling.
  *
  * Sovereignty. `AI_PROVIDER` picks the provider tried first; `AI_FALLBACK=0`
  * forbids leaving it. With `AI_PROVIDER=mistral AI_FALLBACK=0`, no text ever
- * reaches a model hosted outside the EU — failover then happens between that
- * provider's own models only.
+ * reaches a model hosted outside the EU.
  *
  * Breaker state lives in memory, per server instance. On serverless hosting
  * each instance learns on its own; that is the honest limit of it.
  */
-
-export type Provider = "groq" | "cerebras" | "mistral";
-export type Tier = "strong" | "balanced" | "fast";
-export type AITask = "chat" | "classify" | "concepts" | "judge" | "steps" | "insight" | "atomize" | "decide" | "portrait" | "maps";
-
-export interface Route {
-  /** "provider:model" — unique. */
-  id: string;
-  provider: Provider;
-  model: string;
-  baseURL: string;
-  apiKey: string;
-  tier: Tier;
-}
-
-export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
-export interface CompletionRequest {
-  task: AITask;
-  messages: ChatMessage[];
-  /** Tokens for the answer itself; reasoning headroom is added per family. */
-  maxTokens: number;
-  temperature: number;
-  json?: boolean;
-  timeoutMs?: number;
-  /**
-   * Whether an answer is usable. One that is not — valid JSON of the wrong
-   * shape, an empty list where one was required — is passed on to the next
-   * model rather than returned as "nothing found". Not held against the route.
-   */
-  validate?: (text: string) => boolean;
-}
-
-/** A failure as the router sees it, whatever the transport. */
-export class RouteError extends Error {
-  constructor(
-    message: string,
-    public readonly status?: number,
-    /** From `retry-after`, or parsed from the provider's own wording. */
-    public readonly retryAfterMs?: number
-  ) {
-    super(message);
-  }
-}
 
 /** What callers catch: every route was tried, or none exists. */
 export class AIError extends Error {
@@ -89,22 +58,30 @@ export class AIError extends Error {
   }
 }
 
-/** How requests actually reach a provider. Swapped for a fake in tests. */
-export interface Transport {
-  complete(route: Route, body: Record<string, unknown>, timeoutMs: number): Promise<string>;
-  /** Resolves once the stream is open; tokens then come through the iterable. */
-  stream(route: Route, body: Record<string, unknown>, timeoutMs: number): Promise<AsyncIterable<string>>;
-}
-
 /* ── Configuration ────────────────────────────────────────────────── */
 
-const PROVIDERS: Record<Provider, { baseURL: string; key: string; model: string; models: string; defaults: string[] }> = {
+interface ProviderConfig {
+  baseURL: string;
+  /** Environment variable holding the key, the preferred model, the model list. */
+  key: string;
+  model: string;
+  models: string;
+  defaults: string[];
+  api: Api;
+  /** Hosted in the EU. */
+  eu?: boolean;
+  label: string;
+}
+
+export const PROVIDERS: Record<Provider, ProviderConfig> = {
   groq: {
     baseURL: "https://api.groq.com/openai/v1",
     key: "GROQ_API_KEY",
     model: "GROQ_MODEL",
     models: "GROQ_MODELS",
     defaults: ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"],
+    api: "chat",
+    label: "Groq",
   },
   mistral: {
     // Mistral AI — Paris, hosted in the EU.
@@ -113,6 +90,9 @@ const PROVIDERS: Record<Provider, { baseURL: string; key: string; model: string;
     model: "MISTRAL_MODEL",
     models: "MISTRAL_MODELS",
     defaults: ["mistral-small-latest", "mistral-medium-latest"],
+    api: "chat",
+    eu: true,
+    label: "Mistral AI",
   },
   cerebras: {
     baseURL: "https://api.cerebras.ai/v1",
@@ -121,13 +101,64 @@ const PROVIDERS: Record<Provider, { baseURL: string; key: string; model: string;
     models: "CEREBRAS_MODELS",
     // "llama-3.3-70b", the old default, is no longer served (checked 2026-09-22).
     defaults: ["qwen-3.8-27b", "gpt-oss-120b"],
+    api: "chat",
+    label: "Cerebras",
+  },
+  deepseek: {
+    // Model names from the official docs, 2026-10-22: `deepseek-flash` is V4.1-Flash, `deepseek-v4-pro` the Pro model.
+    baseURL: "https://api.deepseek.com",
+    key: "DEEPSEEK_API_KEY",
+    model: "DEEPSEEK_MODEL",
+    models: "DEEPSEEK_MODELS",
+    defaults: ["deepseek-v4-pro", "deepseek-flash"],
+    api: "chat",
+    label: "DeepSeek",
+  },
+  openrouter: {
+    // One key, many models. Ids checked against openrouter.ai/api/v1/models on 2026-10-22, all with tool calling.
+    baseURL: "https://openrouter.ai/api/v1",
+    key: "OPENROUTER_API_KEY",
+    model: "OPENROUTER_MODEL",
+    models: "OPENROUTER_MODELS",
+    defaults: ["moonshotai/kimi-k3", "deepseek/deepseek-v4-pro", "z-ai/glm-5.3"],
+    api: "chat",
+    label: "OpenRouter",
+  },
+  anthropic: {
+    baseURL: "https://api.anthropic.com",
+    key: "ANTHROPIC_API_KEY",
+    model: "ANTHROPIC_MODEL",
+    models: "ANTHROPIC_MODELS",
+    defaults: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+    api: "anthropic",
+    label: "Anthropic",
+  },
+  openai: {
+    // Ids from OpenAI's model pages, 2026-10-22. Tool calling needs the Responses API.
+    baseURL: "https://api.openai.com/v1",
+    key: "OPENAI_API_KEY",
+    model: "OPENAI_MODEL",
+    models: "OPENAI_MODELS",
+    defaults: ["gpt-6.1-sol", "gpt-6-luna"],
+    api: "responses",
+    label: "OpenAI",
   },
 };
 
-const PROVIDER_ORDER: Provider[] = ["groq", "mistral", "cerebras"];
+export const PROVIDER_ORDER: Provider[] = ["groq", "mistral", "cerebras", "deepseek", "openrouter", "anthropic", "openai"];
+
+/** Every tier, strongest first — how unlisted tiers are ordered after a task's own. */
+const TIER_ORDER: Tier[] = ["frontier", "strong", "balanced", "fast"];
 
 export function tierOf(model: string): Tier {
-  if (/gpt-oss-120b|large|medium/i.test(model)) return "strong";
+  const m = model.toLowerCase();
+  if (
+    /claude-(opus|fable|mythos|sonnet)|gpt-6(\.\d+)?-(astra|sol)|gpt-5\.\d+-sol|deepseek-v4-pro|kimi-k3|kimi-k2\.[6-9]|glm-5\.\d+-prime|qwen3\.\d+-max/.test(m)
+  ) {
+    return "frontier";
+  }
+  if (/gpt-oss-120b|large|medium|deepseek-flash|deepseek-v4(\.\d)?-flash|glm-5|kimi|qwen3\.\d+-plus/.test(m)) return "strong";
+  if (/haiku|luna/.test(m)) return "balanced";
   if (/gpt-oss-20b|\b\d{1,2}b\b|mini|nano|tiny|small-3b/i.test(model) && !/27b|32b|70b/i.test(model)) return "fast";
   return "balanced";
 }
@@ -135,10 +166,10 @@ export function tierOf(model: string): Tier {
 /**
  * Tiers each task prefers, best first — set from measurement, not from
  * parameter counts. On ten hand-labelled pairs of bilingual notes (2026-09-22)
- * qwen3.8-27b judged 9/10 correctly and gpt-oss-120b 8/10: the larger model
- * rated a real "moves forward" at 0.7, under the drawing threshold, which was
- * calibrated on qwen. So the balanced tier leads everywhere; the others are
- * the pool that keeps the brain answering when its quota is spent.
+ * qwen3.8-27b judged 9/10 correctly and gpt-oss-120b 8/10, so the balanced
+ * tier leads the everyday features. The agent is different work: planning
+ * and calling tools over many steps, where the frontier models lead every
+ * agent benchmark by a wide margin.
  */
 export const TASK_TIERS: Record<AITask, Tier[]> = {
   chat: ["balanced", "strong", "fast"],
@@ -151,6 +182,7 @@ export const TASK_TIERS: Record<AITask, Tier[]> = {
   decide: ["balanced", "strong", "fast"],
   portrait: ["balanced", "strong", "fast"],
   maps: ["balanced", "fast", "strong"],
+  agent: ["frontier", "strong", "balanced", "fast"],
 };
 
 const unique = <T>(xs: T[]) => [...new Set(xs)];
@@ -160,9 +192,7 @@ const list = (v: string | undefined) => (v ?? "").split(",").map((s) => s.trim()
 export function routesFromEnv(env: Record<string, string | undefined>): Route[] {
   const preferred = PROVIDER_ORDER.includes(env.AI_PROVIDER as Provider) ? (env.AI_PROVIDER as Provider) : "groq";
   const fallback = !/^(0|false|off|no)$/i.test(env.AI_FALLBACK ?? "");
-  const providers = [preferred, ...PROVIDER_ORDER.filter((p) => p !== preferred)].filter(
-    (p) => p === preferred || fallback
-  );
+  const providers = [preferred, ...PROVIDER_ORDER.filter((p) => p !== preferred)].filter((p) => p === preferred || fallback);
 
   const routes: Route[] = [];
   for (const provider of providers) {
@@ -172,52 +202,13 @@ export function routesFromEnv(env: Record<string, string | undefined>): Route[] 
     const explicit = list(env[cfg.models]);
     const models = unique([...(env[cfg.model] ? [env[cfg.model] as string] : []), ...(explicit.length ? explicit : cfg.defaults)]);
     for (const model of models) {
-      routes.push({ id: `${provider}:${model}`, provider, model, baseURL: cfg.baseURL, apiKey, tier: tierOf(model) });
+      routes.push({ id: `${provider}:${model}`, provider, model, baseURL: cfg.baseURL, apiKey, tier: tierOf(model), api: cfg.api });
     }
   }
   return routes;
 }
 
-/* ── Model families ───────────────────────────────────────────────── */
-
-const isQwen3 = (model: string) => /qwen-?3/i.test(model);
-const isGptOss = (model: string) => /gpt-oss/i.test(model);
-
-/** Reasoning tokens gpt-oss spends at low effort, measured with room to spare. */
-export const REASONING_HEADROOM = 400;
-
-export function bodyFor(route: Route, req: CompletionRequest, stream: boolean): Record<string, unknown> {
-  const messages = req.messages.map((m) => ({ ...m }));
-  if (isQwen3(route.model)) {
-    const last = [...messages].reverse().find((m) => m.role === "user");
-    if (last && !last.content.includes("/no_think")) last.content = `${last.content}\n\n/no_think`;
-  }
-  const body: Record<string, unknown> = {
-    model: route.model,
-    messages,
-    temperature: req.temperature,
-    max_tokens: req.maxTokens + (isGptOss(route.model) ? REASONING_HEADROOM : 0),
-    stream,
-  };
-  if (req.json) body.response_format = { type: "json_object" };
-  if (isGptOss(route.model)) body.reasoning_effort = "low";
-  return body;
-}
-
 /* ── Breakers ─────────────────────────────────────────────────────── */
-
-/** "try again in 1m26.4s", "in 7.66s", "in 2h3m" → milliseconds. */
-export function parseRetryAfter(text: string): number | undefined {
-  const m = /try again in\s+((?:\d+h)?(?:\d+m(?!s))?(?:[\d.]+s)?(?:[\d.]+ms)?)/i.exec(text);
-  if (!m || !m[1]) return undefined;
-  const part = (re: RegExp) => Number.parseFloat(re.exec(m[1])?.[1] ?? "0");
-  const ms =
-    part(/(\d+)h/) * 3_600_000 +
-    part(/(\d+)m(?!s)/) * 60_000 +
-    part(/([\d.]+)s/) * 1000 +
-    part(/([\d.]+)ms/);
-  return ms > 0 ? Math.ceil(ms) : undefined;
-}
 
 const MINUTE = 60_000;
 
@@ -239,6 +230,8 @@ export function breakerFor(err: RouteError): { ms: number; scope: "route" | "pro
 
 export interface RouteHealth {
   id: string;
+  provider: Provider;
+  model: string;
   tier: Tier;
   /** Epoch ms until which the route is skipped; 0 when available. */
   openUntil: number;
@@ -261,17 +254,27 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
     for (const t of targets) openUntil.set(t.id, Math.max(openUntil.get(t.id) ?? 0, until));
   };
 
-  /** Routes for a task, best first; those with an open breaker last-resort only. */
-  const routesFor = (task: AITask): Route[] => {
-    const tiers = TASK_TIERS[task];
+  /**
+   * Routes for a task, best first. Everyday tasks keep the preferred
+   * provider's models together (the sovereignty preference, and the order
+   * they were measured in); a task that wants the frontier tier gets the
+   * strongest models first, from whichever provider has them.
+   */
+  const routesFor = (task: AITask, prefer?: Tier[]): Route[] => {
+    const tiers = prefer?.length ? prefer : TASK_TIERS[task];
+    const tierRank = (t: Tier) => {
+      const i = tiers.indexOf(t);
+      return i >= 0 ? i : tiers.length + TIER_ORDER.indexOf(t);
+    };
     const providerRank = new Map(unique(deps.routes.map((r) => r.provider)).map((p, i) => [p, i]));
     const index = new Map(deps.routes.map((r, i) => [r.id, i]));
-    return [...deps.routes].sort(
-      (a, b) =>
-        (providerRank.get(a.provider) ?? 0) - (providerRank.get(b.provider) ?? 0) ||
-        tiers.indexOf(a.tier) - tiers.indexOf(b.tier) ||
-        (index.get(a.id) ?? 0) - (index.get(b.id) ?? 0)
-    );
+    const capabilityFirst = tiers[0] === "frontier";
+    return [...deps.routes].sort((a, b) => {
+      const byTier = tierRank(a.tier) - tierRank(b.tier);
+      const byProvider = (providerRank.get(a.provider) ?? 0) - (providerRank.get(b.provider) ?? 0);
+      const byIndex = (index.get(a.id) ?? 0) - (index.get(b.id) ?? 0);
+      return capabilityFirst ? byTier || byProvider || byIndex : byProvider || byTier || byIndex;
+    });
   };
 
   const toError = (failures: RouteError[], skipped: number): AIError => {
@@ -285,10 +288,12 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
     return new AIError("failed", last ? last.message : "Every model is resting after errors.");
   };
 
-  async function attempt<T>(req: CompletionRequest, call: (route: Route) => Promise<T>): Promise<{ value: T; route: Route }> {
+  const asRouteError = (e: unknown) => (e instanceof RouteError ? e : new RouteError(e instanceof Error ? e.message : String(e)));
+
+  async function attempt<T>(order: Route[], call: (route: Route) => Promise<T>): Promise<{ value: T; route: Route }> {
     const failures: RouteError[] = [];
     let skipped = 0;
-    for (const route of routesFor(req.task)) {
+    for (const route of order) {
       if (isOpen(route)) {
         skipped++;
         continue;
@@ -298,7 +303,7 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
         lastError.delete(route.id);
         return { value, route };
       } catch (e) {
-        const err = e instanceof RouteError ? e : new RouteError(e instanceof Error ? e.message : String(e));
+        const err = asRouteError(e);
         failures.push(err);
         trip(route, err);
       }
@@ -313,8 +318,8 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
 
     /** One completion, from the first route that answers. */
     complete: (req: CompletionRequest) =>
-      attempt(req, async (route) => {
-        const text = await deps.transport.complete(route, bodyFor(route, req, false), req.timeoutMs ?? 30_000);
+      attempt(routesFor(req.task, req.prefer), async (route) => {
+        const text = await deps.transport.complete(route, req, req.timeoutMs ?? 30_000);
         if (req.validate && !req.validate(text)) throw new RouteError(`Unusable answer from ${route.id}`, 422);
         return text;
       }),
@@ -325,8 +330,8 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
      * the caller's to report.
      */
     async stream(req: CompletionRequest): Promise<{ tokens: AsyncIterable<string>; route: Route }> {
-      const { value, route } = await attempt(req, async (r) => {
-        const it = (await deps.transport.stream(r, bodyFor(r, req, true), req.timeoutMs ?? 30_000))[Symbol.asyncIterator]();
+      const { value, route } = await attempt(routesFor(req.task, req.prefer), async (r) => {
+        const it = (await deps.transport.stream(r, req, req.timeoutMs ?? 30_000))[Symbol.asyncIterator]();
         const first = await it.next(); // errors before any token count as the route's
         return { it, first };
       });
@@ -343,9 +348,52 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
       return { tokens, route };
     },
 
+    /**
+     * One step of a tool-using conversation. The route that began the
+     * conversation is tried first (its own reasoning can then be sent back);
+     * failover happens until the first visible word — after that, a failure
+     * is the caller's, since the person has already started reading.
+     */
+    async turn(req: TurnRequest): Promise<TurnResult> {
+      if (!deps.transport.turn) throw new AIError("unavailable", "This transport cannot call tools.");
+      const ordered = routesFor(req.task, req.prefer);
+      const sticky = req.stickTo ? ordered.find((r) => r.id === req.stickTo) : undefined;
+      const order = sticky ? [sticky, ...ordered.filter((r) => r !== sticky)] : ordered;
+      const failures: RouteError[] = [];
+      let skipped = 0;
+      for (const route of order) {
+        if (isOpen(route)) {
+          skipped++;
+          continue;
+        }
+        let started = false;
+        try {
+          const out = await deps.transport.turn(route, {
+            ...req,
+            onText: req.onText
+              ? (delta) => {
+                  started = true;
+                  req.onText!(delta);
+                }
+              : undefined,
+          });
+          lastError.delete(route.id);
+          return { ...out, route };
+        } catch (e) {
+          const err = asRouteError(e);
+          failures.push(err);
+          trip(route, err);
+          if (started || req.signal?.aborted) throw new AIError("failed", err.message);
+        }
+      }
+      throw toError(failures, skipped);
+    },
+
     health: (): RouteHealth[] =>
       deps.routes.map((r) => ({
         id: r.id,
+        provider: r.provider,
+        model: r.model,
         tier: r.tier,
         openUntil: isOpen(r) ? openUntil.get(r.id) ?? 0 : 0,
         lastError: lastError.get(r.id),
@@ -357,60 +405,12 @@ export type Router = ReturnType<typeof createRouter>;
 
 /* ── The real transport ───────────────────────────────────────────── */
 
-const clients = new Map<string, OpenAI>();
-export function clientFor(route: Pick<Route, "baseURL" | "apiKey">): OpenAI {
-  const key = `${route.baseURL}|${route.apiKey.slice(-6)}`;
-  let c = clients.get(key);
-  if (!c) {
-    // No SDK retries: a retry waits out the provider's retry-after — up to a
-    // minute of spinner — when the next route could answer at once.
-    c = new OpenAI({ apiKey: route.apiKey, baseURL: route.baseURL, maxRetries: 0 });
-    clients.set(key, c);
-  }
-  return c;
-}
-
-export function toRouteError(e: unknown): RouteError {
-  if (e instanceof OpenAI.APIError) {
-    const header = (e.headers as Record<string, string> | undefined)?.["retry-after"];
-    const fromHeader = header && Number.isFinite(Number(header)) ? Number(header) * 1000 : undefined;
-    return new RouteError(e.message, e.status, fromHeader ?? parseRetryAfter(e.message));
-  }
-  if (e instanceof RouteError) return e;
-  return new RouteError(e instanceof Error ? e.message : String(e));
-}
+const pick = (route: Route) => (route.api === "anthropic" ? anthropicTransport : route.api === "responses" ? responsesTransport : chatTransport);
 
 export const httpTransport: Transport = {
-  async complete(route, body, timeoutMs) {
-    try {
-      const r = (await clientFor(route).chat.completions.create(body as never, { timeout: timeoutMs })) as OpenAI.Chat.Completions.ChatCompletion;
-      return r.choices[0]?.message?.content ?? "";
-    } catch (e) {
-      throw toRouteError(e);
-    }
-  },
-  async stream(route, body, timeoutMs) {
-    let raw: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
-    try {
-      raw = (await clientFor(route).chat.completions.create(body as never, { timeout: timeoutMs })) as never;
-    } catch (e) {
-      throw toRouteError(e);
-    }
-    return {
-      async *[Symbol.asyncIterator]() {
-        try {
-          for await (const chunk of raw) {
-            // Reasoning models stream their reasoning in a separate field;
-            // only the answer is the person's to read.
-            const token = chunk.choices[0]?.delta?.content ?? "";
-            if (token) yield token;
-          }
-        } catch (e) {
-          throw toRouteError(e);
-        }
-      },
-    };
-  },
+  complete: (route, req, timeoutMs) => pick(route).complete(route, req, timeoutMs),
+  stream: (route, req, timeoutMs) => pick(route).stream(route, req, timeoutMs),
+  turn: (route, req) => pick(route).turn(route, req),
 };
 
 /* ── The process-wide router ──────────────────────────────────────── */
@@ -426,4 +426,9 @@ export function ai(): Router {
 /** Whether any model is configured. */
 export function aiAvailable(): boolean {
   return ai().available();
+}
+
+/** Whether a model of the frontier tier is configured (the agent's best). */
+export function frontierAvailable(): boolean {
+  return ai().routes.some((r) => r.tier === "frontier");
 }

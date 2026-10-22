@@ -15,6 +15,7 @@ import { LIMITS, ROLES, TEAM_KINDS, type Role } from "@/lib/team/rules";
 import { getTeamStore, inviteHash, memberId } from "@/lib/team/store";
 import { currentWeek } from "@/lib/team/load";
 import { TeamError, type TeamErrorCode } from "@/lib/team/types";
+import { locked } from "@/lib/plans/server";
 
 /**
  * Teams, as actions. Each one: a signed-in person (never the demo identity),
@@ -23,7 +24,7 @@ import { TeamError, type TeamErrorCode } from "@/lib/team/types";
  * store (Postgres, or the file store's rules) having the last word.
  */
 
-export type TeamActionCode = TeamErrorCode | "unauthorized" | "migration_pending" | "failed";
+export type TeamActionCode = TeamErrorCode | "unauthorized" | "migration_pending" | "edition" | "failed";
 export type TeamResult<T> = { ok: true; data: T } | { ok: false; code: TeamActionCode };
 
 const fail = (code: TeamActionCode): TeamResult<never> => ({ ok: false, code });
@@ -72,6 +73,8 @@ export async function createTeam(input: unknown): Promise<TeamResult<{ id: strin
   if (!parsed.success) return fail("invalid");
   const a = await actor();
   if ("ok" in a) return a;
+  // Circles are in every edition; a company team is the Team edition's.
+  if (parsed.data.kind === "company" && (await locked("teams"))) return fail("edition");
   try {
     const team = await getTeamStore().createTeam(a.userKey, { ...parsed.data, kind: parsed.data.kind as "company" | "circle" });
     refresh(team.id);

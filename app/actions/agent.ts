@@ -8,6 +8,9 @@ import { generateToken } from "@/lib/agent/token";
 import { getCapability } from "@/lib/agent/capabilities";
 import { AUTONOMY_ORDER, type AutonomyLevel } from "@/lib/agent/policy";
 import type { RunnerInfo } from "@/lib/agent/runner-status";
+import { getMessages } from "@/lib/i18n/server";
+import { fill } from "@/lib/i18n/config";
+import { locked } from "@/lib/plans/server";
 
 export type AgentResult = { ok: true } | { ok: false; error: string };
 const ok: AgentResult = { ok: true };
@@ -24,6 +27,18 @@ async function ctx() {
   const userKey = await getAuthenticatedUserKey();
   if (!userKey) throw new Error("Not signed in.");
   return { userKey, db: createAdminClient() };
+}
+
+/**
+ * Throws when the person's edition does not put the agent on a server, MCP
+ * or Telegram. Checked when a credential is issued; a token minted before
+ * stays valid until it is revoked.
+ */
+async function runnerAllowed(): Promise<void> {
+  const needed = await locked("agent.runner");
+  if (!needed) return;
+  const t = (await getMessages()).editions;
+  throw new Error(fill(t.lockedTitle, { feature: t.features["agent.runner"], edition: t.names[needed] }));
 }
 
 /**
@@ -193,6 +208,7 @@ export async function mintRunnerToken(): Promise<
 > {
   try {
     const { userKey, db } = await ctx();
+    await runnerAllowed();
     await db.from("agent_tokens")
       .update({ revoked_at: new Date().toISOString() })
       .eq("user_key", userKey).is("revoked_at", null);
@@ -223,6 +239,7 @@ export async function createTelegramLink(): Promise<
 > {
   try {
     const { userKey } = await ctx();
+    await runnerAllowed();
     const { createLinkCode } = await import("@/lib/agent/telegram");
     const { code, expiresAt } = await createLinkCode(userKey);
     revalidatePath("/agent");

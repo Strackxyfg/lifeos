@@ -3,11 +3,23 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getStore, getUserKey } from "@/lib/db/store";
+import { getMessages } from "@/lib/i18n/server";
+import { fill } from "@/lib/i18n/config";
+import type { Feature } from "@/lib/plans/editions";
+import { locked } from "@/lib/plans/server";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 const ok: ActionResult = { ok: true };
 const fail = (error: string): ActionResult => ({ ok: false, error });
+
+/** The refusal, in the person's language, when their edition does not open the feature. */
+async function outside(feature: Feature): Promise<ActionResult | null> {
+  const needed = await locked(feature);
+  if (!needed) return null;
+  const t = (await getMessages()).editions;
+  return fail(fill(t.lockedTitle, { feature: t.features[feature], edition: t.names[needed] }));
+}
 
 /* ── Projects ─────────────────────────────────────────────────────── */
 
@@ -21,6 +33,8 @@ const projectSchema = z.object({
 });
 
 export async function createProject(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const refused = await outside("projects");
+  if (refused) return refused;
   const parsed = projectSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Invalid project.");
 
@@ -36,6 +50,8 @@ export async function createProject(_prev: ActionResult, formData: FormData): Pr
 }
 
 export async function updateProjectStatus(id: string, status: string): Promise<ActionResult> {
+  const refused = await outside("projects");
+  if (refused) return refused;
   const valid = ["Planning", "In progress", "Blocked", "Done"];
   if (!valid.includes(status)) return fail("Unknown status.");
   try {
@@ -53,6 +69,8 @@ export async function updateProjectStatus(id: string, status: string): Promise<A
 }
 
 export async function deleteProject(id: string): Promise<ActionResult> {
+  const refused = await outside("projects");
+  if (refused) return refused;
   try {
     await getStore().remove(await getUserKey(), "projects", id);
     revalidatePath("/projects");
@@ -75,6 +93,8 @@ const dealSchema = z.object({
 });
 
 export async function createDeal(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const refused = await outside("crm");
+  if (refused) return refused;
   const parsed = dealSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Invalid deal.");
 
@@ -106,6 +126,8 @@ export async function createTransaction(
   _prev: ActionResult,
   formData: FormData
 ): Promise<ActionResult> {
+  const refused = await outside("finance");
+  if (refused) return refused;
   const parsed = txnSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Invalid entry.");
 

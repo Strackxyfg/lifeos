@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import type { Edition } from "@/lib/plans/editions";
 
 /**
  * Lazily-constructed, server-only Stripe client.
@@ -20,22 +21,22 @@ export function getStripe(): Stripe {
   return _stripe;
 }
 
-export type PlanId = "starter" | "pro" | "founder";
-
-export const PLANS: Record<PlanId, { name: string; price: number; priceEnv: string; workspaces: number; generations: number }> = {
-  starter: { name: "Starter", price: 19, priceEnv: "STRIPE_PRICE_STARTER", workspaces: 1, generations: 10 },
-  pro: { name: "Pro", price: 49, priceEnv: "STRIPE_PRICE_PRO", workspaces: 3, generations: 50 },
-  founder: { name: "Founder", price: 99, priceEnv: "STRIPE_PRICE_FOUNDER", workspaces: 999, generations: 999 },
+/** The Stripe price of each edition. Prices themselves live in Stripe (and, for display, the dictionary). */
+export const PRICE_ENV: Record<Edition, string> = {
+  personal: "STRIPE_PRICE_PERSONAL",
+  solo: "STRIPE_PRICE_SOLO",
+  team: "STRIPE_PRICE_TEAM",
 };
 
-/** Create a Checkout session for a plan. Returns the redirect URL. */
+/** Create a Checkout session for an edition. Returns the redirect URL. */
 export async function createCheckoutSession(opts: {
-  plan: PlanId;
+  plan: Edition;
   customerId?: string;
   customerEmail?: string;
   userId: string;
 }): Promise<string> {
-  const priceId = process.env[PLANS[opts.plan].priceEnv];
+  const priceId = process.env[PRICE_ENV[opts.plan]];
+  if (!priceId) throw new Error(`${PRICE_ENV[opts.plan]} is not set`);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   const session = await getStripe().checkout.sessions.create({
@@ -44,6 +45,8 @@ export async function createCheckoutSession(opts: {
     customer: opts.customerId,
     customer_email: opts.customerId ? undefined : opts.customerEmail,
     client_reference_id: opts.userId,
+    // On the session for the webhook, on the subscription for later events.
+    metadata: { plan: opts.plan },
     allow_promotion_codes: true,
     subscription_data: { trial_period_days: 14, metadata: { userId: opts.userId, plan: opts.plan } },
     success_url: `${appUrl}/dashboard?welcome=1`,

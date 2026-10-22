@@ -4,6 +4,7 @@ import { getNotionConnection } from "@/lib/notion/connection";
 import { generateWorkspace } from "@/lib/notion/generate";
 import { requireUserKey } from "@/lib/auth/require-user";
 import { getProfile } from "@/lib/user/profile";
+import { featureRefusal } from "@/lib/plans/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,8 @@ export const maxDuration = 300;
 export async function POST() {
   const auth = await requireUserKey();
   if ("response" in auth) return auth.response;
+  const refused = await featureRefusal("notion");
+  if (refused) return refused;
 
   const connection = await getNotionConnection(auth.userKey).catch(() => null);
   if (!connection) {

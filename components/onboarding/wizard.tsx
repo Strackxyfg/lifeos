@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Brain, Check, Loader2, Sparkles } from "lucide-react";
 
 import { AREA_IDS, questions, type AreaId, type OnboardingDraft, type Question } from "@/lib/onboarding";
+import { EDITIONS, isEdition, suggestEdition, type Edition } from "@/lib/plans/editions";
 import { completeOnboarding, type OnboardingResult } from "@/app/actions/onboarding";
 import { weaveNotes } from "@/app/actions/weave";
 import { RelationChip } from "@/components/brain/relation-chip";
@@ -43,6 +44,7 @@ function sanitizeDraft(raw: unknown): {
   if (Array.isArray(a.areas)) {
     answers.areas = a.areas.filter((x): x is AreaId => (AREA_IDS as readonly string[]).includes(x as string));
   }
+  if (isEdition(a.edition)) answers.edition = a.edition;
   const step = Number.isInteger(src.step) ? Math.min(Math.max(src.step as number, 0), questions.length - 1) : 0;
   return { answers, step };
 }
@@ -88,6 +90,9 @@ export function OnboardingWizard({ initial }: { initial: OnboardingDraft }) {
 
   const q = questions[step];
   const value = answers[q.id];
+  // Until one is picked, the edition shown chosen is the one the areas suggest.
+  const suggested = suggestEdition(answers.areas ?? []);
+  const edition: Edition = answers.edition ?? suggested;
   const last = step === questions.length - 1;
   const canContinue = q.optional || filled(value);
   const progress = phase === "asking" ? (step / questions.length) * 100 : 100;
@@ -103,7 +108,7 @@ export function OnboardingWizard({ initial }: { initial: OnboardingDraft }) {
     setPhase("building");
     setError(null);
     try {
-      const res = await completeOnboarding(answers);
+      const res = await completeOnboarding({ ...answers, edition: answers.edition ?? suggestEdition(answers.areas ?? []) });
       if (res.ok) {
         setResult(res);
         setPhase("done");
@@ -258,6 +263,47 @@ export function OnboardingWizard({ initial }: { initial: OnboardingDraft }) {
                   />
                   <p className="mt-2 text-[0.75rem] text-muted-foreground">{t.newLineHint}</p>
                 </>
+              )}
+
+              {q.type === "edition" && (
+                <div role="radiogroup" aria-label={copy.title} className="grid gap-2">
+                  {EDITIONS.map((id) => {
+                    const active = edition === id;
+                    const plan = m.pricing.plans.find((p) => p.id === id);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => set("edition", id)}
+                        className={cn(
+                          "flex items-start gap-3 rounded-xl border px-4 py-3 text-left transition-colors duration-200",
+                          active ? "border-accent/60 bg-accent/10" : "border-border bg-surface hover:border-border-strong"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border",
+                            active ? "border-accent bg-accent text-accent-foreground" : "border-border-strong"
+                          )}
+                          aria-hidden
+                        >
+                          {active && <Check className="h-3 w-3" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2 text-sm font-medium">
+                            {m.editions.names[id]}
+                            {id === suggested && (
+                              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[0.6875rem] font-normal text-muted-foreground">{t.suggested}</span>
+                            )}
+                          </span>
+                          {plan && <span className="mt-0.5 block text-[0.8125rem] leading-snug text-muted-foreground">{plan.tagline}</span>}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               )}
 
               {q.type === "multi" && (

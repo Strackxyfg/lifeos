@@ -9,6 +9,7 @@ import { getEnterpriseStore, newDomainToken, newScimToken, tokenHash } from "@/l
 import { createSamlProvider, deleteSamlProvider, updateSamlProvider } from "@/lib/enterprise/gotrue";
 import { EnterpriseError, type EnterpriseErrorCode, type EnterpriseOverview } from "@/lib/enterprise/types";
 import { appOrigin } from "@/lib/http/origin";
+import { locked } from "@/lib/plans/server";
 
 /**
  * A company team's enterprise settings, as actions. Each one: a signed-in
@@ -23,6 +24,7 @@ export type EnterpriseActionCode =
   | EnterpriseErrorCode
   | "unauthorized"
   | "migration_pending"
+  | "edition"
   | "failed"
   | "public_domain"
   | "dns_missing"
@@ -40,6 +42,7 @@ async function actor(): Promise<{ userKey: string } | EnterpriseResult<never>> {
   const userKey = await getAuthenticatedUserKey();
   if (!userKey) return fail("unauthorized");
   if (!(await getTeamStore().supportsTeams()) || !(await getEnterpriseStore().supportsEnterprise())) return fail("migration_pending");
+  if (await locked("enterprise")) return fail("edition");
   return { userKey };
 }
 

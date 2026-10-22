@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { isMissingTable } from "@/lib/db/errors";
 import type { DbProfile, ProfilePatch } from "@/lib/db/types";
 import { readProfileAnswers, type AreaId } from "@/lib/onboarding";
+import type { Edition } from "@/lib/plans/editions";
 
 const PROFILE_COOKIE = "lifeos_profile";
 const PROFILE_MAX_AGE = 60 * 60 * 24 * 30;
@@ -21,6 +22,8 @@ export interface Profile {
   areas: AreaId[];
   /** Whether onboarding has ever completed. */
   onboarded: boolean;
+  /** The edition in use — what the navigation shows; the server checks it again on every write. */
+  edition: Edition;
 }
 
 interface StoredProfile {
@@ -98,7 +101,8 @@ export const loadStoredProfile = cache(async function loadStoredProfile(): Promi
 export const getProfile = cache(async function getProfile(): Promise<Profile> {
   const { getUserKey } = await import("@/lib/db/store");
   const userKey = await getUserKey();
-  const [stored, cookie, email] = await Promise.all([loadStoredProfile(), readCookie(userKey), currentEmail()]);
+  const { getEdition } = await import("@/lib/plans/server");
+  const [stored, cookie, email, edition] = await Promise.all([loadStoredProfile(), readCookie(userKey), currentEmail(), getEdition()]);
 
   let name = stored?.name?.trim() || cookie.name?.trim() || (email ? deriveNameFromEmail(email) : "");
   if (!name) name = "there";
@@ -111,6 +115,7 @@ export const getProfile = cache(async function getProfile(): Promise<Profile> {
     email,
     areas: readProfileAnswers(stored?.answers).areas,
     onboarded: Boolean(stored?.onboardedAt),
+    edition,
   };
 });
 

@@ -41,9 +41,18 @@ export function Pricing() {
                 </span>
               )}
               <h3 className="text-sm font-medium text-muted-foreground">{plan.name}</h3>
-              <div className="mt-3 flex items-baseline gap-1">
-                <span className="text-4xl font-medium tracking-tight">{formatCurrency(plan.price, locale)}</span>
-                <span className="text-sm text-muted-foreground">{m.pricing.perMonth}</span>
+              <div className="mt-3 flex min-h-10 items-baseline gap-1">
+                {plan.price === null ? (
+                  // No number until it is decided: per seat, set at launch.
+                  <span className="text-xl font-medium tracking-tight">
+                    {m.editions.priceAtLaunch} <span className="text-sm font-normal text-muted-foreground">· {m.editions.perSeat}</span>
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-4xl font-medium tracking-tight">{formatCurrency(plan.price, locale)}</span>
+                    <span className="text-sm text-muted-foreground">{m.pricing.perMonth}</span>
+                  </>
+                )}
               </div>
               {/* Two lines reserved, so every plan's button sits at the same height. */}
               <p className="mt-2 text-sm text-muted-foreground lg:min-h-10">{plan.tagline}</p>

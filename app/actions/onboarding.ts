@@ -116,7 +116,7 @@ export async function completeOnboarding(input: unknown): Promise<OnboardingResu
     const { stored } = await saveProfile(userKey, {
       name: answers.name,
       profession: answers.profession,
-      answers: { ...(prior?.answers ?? {}), areas: answers.areas },
+      answers: { ...(prior?.answers ?? {}), areas: answers.areas, ...(answers.edition ? { edition: answers.edition } : {}) },
       onboardedAt: prior?.onboardedAt ?? new Date().toISOString(),
     });
 

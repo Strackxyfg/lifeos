@@ -7,6 +7,7 @@ import { getMessages } from "@/lib/i18n/server";
 import { getUserKey } from "@/lib/db/store";
 import { loadTeams } from "@/lib/team/load";
 import { getProfile } from "@/lib/user/profile";
+import { includes } from "@/lib/plans/editions";
 
 export const metadata: Metadata = { title: "Team" };
 
@@ -30,7 +31,12 @@ export default async function TeamIndexPage({ searchParams }: { searchParams: Pr
           {notice}
         </p>
       )}
-      <TeamList teams={teams} available={available} suggestedName={profile.name === "there" ? "" : profile.name} />
+      <TeamList
+        teams={teams}
+        available={available}
+        suggestedName={profile.name === "there" ? "" : profile.name}
+        companies={includes(profile.edition, "teams")}
+      />
     </>
   );
 }

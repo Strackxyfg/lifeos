@@ -8,16 +8,16 @@ import { buttonVariants } from "@/components/ui/button";
 import { useMessages } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 
-/** Every `?notion=` code the OAuth callback can return. */
+/** Every `?notion=` code the OAuth routes can return. */
 type NotionCode =
   | "connected" | "denied" | "no_code" | "bad_state" | "not_configured"
   | "not_signed_in" | "bad_credentials" | "exchange_failed"
-  | "no_page_shared" | "no_database" | "store_failed";
+  | "no_page_shared" | "no_database" | "store_failed" | "edition";
 
 const CODES: NotionCode[] = [
   "connected", "denied", "no_code", "bad_state", "not_configured",
   "not_signed_in", "bad_credentials", "exchange_failed",
-  "no_page_shared", "no_database", "store_failed",
+  "no_page_shared", "no_database", "store_failed", "edition",
 ];
 
 export function NotionConnect({

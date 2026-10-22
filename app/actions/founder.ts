@@ -7,6 +7,8 @@ import { isMissingTable } from "@/lib/db/errors";
 import type { DbReminder, ReviewDecision } from "@/lib/db/types";
 import { isValidZone, zonedInstant } from "@/lib/reminders/zoned";
 import { isoDate } from "@/lib/finance/dates";
+import type { Feature } from "@/lib/plans/editions";
+import { locked } from "@/lib/plans/server";
 
 /**
  * What founders run their week on: dated money, the cash they state, the
@@ -17,7 +19,7 @@ import { isoDate } from "@/lib/finance/dates";
  * come back as codes the page translates.
  */
 
-export type FounderErrorCode = "invalid" | "unauthorized" | "not_found" | "migration_pending" | "failed";
+export type FounderErrorCode = "invalid" | "unauthorized" | "not_found" | "migration_pending" | "edition" | "failed";
 export type FounderResult<T> = { ok: true; data: T } | { ok: false; code: FounderErrorCode };
 
 const fail = (code: FounderErrorCode): FounderResult<never> => ({ ok: false, code });
@@ -28,9 +30,10 @@ const daySchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine((s) => isoDate(Number(s.slice(0, 4)), Number(s.slice(5, 7)), Number(s.slice(8, 10))) === s);
 
-async function ready(): Promise<{ userKey: string } | FounderResult<never>> {
+async function ready(feature: Feature): Promise<{ userKey: string } | FounderResult<never>> {
   const userKey = await getAuthenticatedUserKey();
   if (!userKey) return fail("unauthorized");
+  if (await locked(feature)) return fail("edition");
   if (!(await getStore().supportsFounder())) return fail("migration_pending");
   return { userKey };
 }
@@ -52,7 +55,7 @@ const datesSchema = z.array(z.object({ id: idSchema, date: daySchema.nullable() 
 export async function setTransactionDates(input: unknown): Promise<FounderResult<{ updated: number }>> {
   const parsed = datesSchema.safeParse(input);
   if (!parsed.success) return fail("invalid");
-  const gate = await ready();
+  const gate = await ready("finance");
   if ("ok" in gate) return gate;
   try {
     const store = getStore();
@@ -83,7 +86,7 @@ const balanceSchema = z.object({
 export async function saveBalance(input: unknown): Promise<FounderResult<{ id: string }>> {
   const parsed = balanceSchema.safeParse(input);
   if (!parsed.success) return fail("invalid");
-  const gate = await ready();
+  const gate = await ready("finance");
   if ("ok" in gate) return gate;
   try {
     const store = getStore();
@@ -108,7 +111,7 @@ export async function saveBalance(input: unknown): Promise<FounderResult<{ id: s
 export async function deleteBalance(id: unknown): Promise<FounderResult<{ id: string }>> {
   const pid = idSchema.safeParse(id);
   if (!pid.success) return fail("invalid");
-  const gate = await ready();
+  const gate = await ready("finance");
   if ("ok" in gate) return gate;
   try {
     const store = getStore();
@@ -148,7 +151,7 @@ const nextSchema = z.object({
 export async function planDealNext(input: unknown): Promise<FounderResult<{ reminderId: string | null }>> {
   const parsed = nextSchema.safeParse(input);
   if (!parsed.success) return fail("invalid");
-  const gate = await ready();
+  const gate = await ready("crm");
   if ("ok" in gate) return gate;
   try {
     const store = getStore();
@@ -224,7 +227,7 @@ const reviewSchema = z.object({
 export async function saveReview(input: unknown): Promise<FounderResult<{ id: string; decisions: ReviewDecision[] }>> {
   const parsed = reviewSchema.safeParse(input);
   if (!parsed.success) return fail("invalid");
-  const gate = await ready();
+  const gate = await ready("review");
   if ("ok" in gate) return gate;
   try {
     const store = getStore();

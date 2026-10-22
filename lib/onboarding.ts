@@ -1,15 +1,17 @@
 import { z } from "zod";
 import { normalize } from "@/lib/brain/text";
 import type { BrainCategoryId } from "@/lib/data/brain";
+import { EDITIONS, isEdition, type Edition } from "@/lib/plans/editions";
 
 /**
- * Onboarding: seven questions that build a second brain on the spot.
+ * Onboarding: eight questions that build a second brain on the spot.
  *
  * It used to ask ten questions whose only job was to pick Notion templates —
  * and then threw eight of the answers away. Now every answer lands somewhere
  * the person can see and change:
  *
  *   name, profession, areas  → the profile (the assistant knows who you are)
+ *   edition                  → the profile (what the app shows; see lib/plans)
  *   goal, second goal        → goal notes
  *   next step                → a next-step note, connected to the first goal
  *   what's on your mind      → one note per line, filed by region
@@ -45,6 +47,8 @@ export const onboardingSchema = z.object({
   goal2: optionalText(LIMITS.goal),
   mind: optionalText(LIMITS.mind),
   areas: z.array(z.enum(AREA_IDS)).max(AREA_IDS.length).default([]),
+  /** Asked last, suggested from the areas; absent from older clients. */
+  edition: z.enum(EDITIONS).optional(),
 });
 
 export type OnboardingAnswers = z.infer<typeof onboardingSchema>;
@@ -52,7 +56,7 @@ export type OnboardingAnswers = z.infer<typeof onboardingSchema>;
 export type OnboardingDraft = Partial<z.input<typeof onboardingSchema>>;
 export type QuestionId = keyof OnboardingAnswers;
 
-export type QuestionType = "text" | "longtext" | "multi";
+export type QuestionType = "text" | "longtext" | "multi" | "edition";
 
 export interface Question {
   id: QuestionId;
@@ -70,6 +74,8 @@ export const questions: Question[] = [
   { id: "goal2", type: "text", optional: true, max: LIMITS.goal },
   { id: "mind", type: "longtext", optional: true, max: LIMITS.mind },
   { id: "areas", type: "multi", optional: true },
+  // Last: suggested from the areas, and already chosen — continuing keeps it.
+  { id: "edition", type: "edition", optional: true },
 ];
 
 /* ── Profile answers ──────────────────────────────────────────────── */
@@ -80,6 +86,8 @@ export const questions: Question[] = [
  */
 export const profileAnswersSchema = z.object({
   areas: z.array(z.enum(AREA_IDS)).default([]),
+  /** The edition chosen — what billing caps, see `resolveEdition`. */
+  edition: z.enum(EDITIONS).optional(),
 });
 export type ProfileAnswers = z.infer<typeof profileAnswersSchema>;
 
@@ -87,10 +95,11 @@ export type ProfileAnswers = z.infer<typeof profileAnswersSchema>;
 export function readProfileAnswers(raw: unknown): ProfileAnswers {
   const parsed = profileAnswersSchema.safeParse(raw ?? {});
   if (parsed.success) return parsed.data;
-  // Keep whichever areas are still valid rather than dropping them all.
-  const areas = (raw as { areas?: unknown })?.areas;
+  // Keep whatever is still valid rather than dropping it all.
+  const { areas, edition } = (raw ?? {}) as { areas?: unknown; edition?: unknown };
   return {
     areas: Array.isArray(areas) ? areas.filter((a): a is AreaId => (AREA_IDS as readonly string[]).includes(a)) : [],
+    ...(isEdition(edition) ? { edition: edition as Edition } : {}),
   };
 }
 

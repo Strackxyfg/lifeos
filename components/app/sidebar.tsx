@@ -2,13 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles, LogOut } from "lucide-react";
+import { Sparkles, LogOut, ArrowUpRight } from "lucide-react";
 import { primaryNav, secondaryNav, workNav, type NavItem } from "@/lib/content/app-nav";
 import { signOut } from "@/app/actions/sign-out";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import { useMessages } from "@/lib/i18n/client";
+import { fill } from "@/lib/i18n/config";
+import { NAV_FEATURE, editionFor, includes, type Edition } from "@/lib/plans/editions";
 import type { Profile } from "@/lib/user/profile";
+
+/** The entries the edition opens; the server checks each page again. */
+function visible(items: NavItem[], edition: Edition): NavItem[] {
+  return items.filter((item) => {
+    const feature = NAV_FEATURE[item.id];
+    return !feature || includes(edition, feature);
+  });
+}
 
 /** Desktop rail. */
 export function Sidebar({ profile }: { profile: Profile }) {
@@ -23,6 +33,13 @@ export function Sidebar({ profile }: { profile: Profile }) {
 export function SidebarContent({ profile, onNavigate }: { profile: Profile; onNavigate?: () => void }) {
   const pathname = usePathname();
   const m = useMessages();
+  const { edition } = profile;
+  const work = visible(workNav, edition);
+  // What a richer edition would add here, named once rather than shown locked.
+  const hidden = workNav.filter((item) => !work.includes(item));
+  const next = hidden.length ? editionFor(NAV_FEATURE[hidden[0].id]) : null;
+  // In Personal, the team space holds circles — family, friends.
+  const labels = edition === "personal" ? { ...m.nav, team: m.nav.circles } : m.nav;
 
   return (
     <>
@@ -41,11 +58,21 @@ export function SidebarContent({ profile, onNavigate }: { profile: Profile; onNa
         <Kbd className="hidden [@media(pointer:fine)]:inline-flex">⌘K</Kbd>
       </button>
 
-      <NavGroup items={primaryNav} pathname={pathname} labels={m.nav} onNavigate={onNavigate} />
+      <NavGroup items={visible(primaryNav, edition)} pathname={pathname} labels={labels} onNavigate={onNavigate} />
       <div className="my-4 border-t border-border" />
-      <NavGroup items={workNav} pathname={pathname} labels={m.nav} onNavigate={onNavigate} />
+      <NavGroup items={work} pathname={pathname} labels={labels} onNavigate={onNavigate} />
+      {next && (
+        <Link
+          href="/billing#editions"
+          onClick={onNavigate}
+          className="mt-0.5 flex items-center gap-3 rounded-lg px-3 py-2 text-[0.8125rem] text-muted-foreground transition-colors hover:bg-surface-2/60 hover:text-foreground"
+        >
+          <ArrowUpRight className="h-4 w-4" aria-hidden />
+          {fill(m.editions.moreWith, { edition: m.editions.names[next] })}
+        </Link>
+      )}
       <div className="my-4 border-t border-border" />
-      <NavGroup items={secondaryNav} pathname={pathname} labels={m.nav} onNavigate={onNavigate} />
+      <NavGroup items={secondaryNav} pathname={pathname} labels={labels} onNavigate={onNavigate} />
 
       <div className="mt-auto flex items-center gap-3 rounded-lg border border-border bg-surface p-2.5">
         <span className="grid h-8 w-8 place-items-center rounded-full bg-surface-2 text-sm font-medium">
@@ -53,7 +80,7 @@ export function SidebarContent({ profile, onNavigate }: { profile: Profile; onNa
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{profile.name}</p>
-          <p className="truncate text-[0.75rem] text-muted-foreground">{m.billing.accessPlan}</p>
+          <p className="truncate text-[0.75rem] text-muted-foreground">{m.editions.names[edition]}</p>
         </div>
         <form action={signOut}>
           <button

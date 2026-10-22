@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe/client";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { editionOfPlan } from "@/lib/plans/editions";
 
 // Stripe signature verification needs the raw body → Node runtime.
 export const runtime = "nodejs";
@@ -28,11 +29,14 @@ export async function POST(req: Request) {
     switch (event.type) {
       case "checkout.session.completed": {
         const s = event.data.object as Stripe.Checkout.Session;
+        // The edition paid for opens features: an unreadable one opens the least.
+        const plan = editionOfPlan(s.metadata?.plan);
+        if (!plan) console.error("[stripe] checkout without a known plan", s.id);
         await db.from("subscriptions").upsert({
           user_id: s.client_reference_id,
           stripe_customer_id: s.customer as string,
           stripe_subscription_id: s.subscription as string,
-          plan: s.metadata?.plan ?? "pro",
+          plan: plan ?? "personal",
           status: "trialing",
         });
         break;

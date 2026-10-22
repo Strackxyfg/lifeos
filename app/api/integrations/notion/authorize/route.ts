@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { NOTION_STATE_COOKIE } from "@/lib/notion/oauth";
 import { resolveNotionRedirectUri, requestOrigin } from "@/lib/notion/redirect";
 import { getAuthenticatedUserKey } from "@/lib/db/store";
+import { locked } from "@/lib/plans/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,11 @@ export async function GET(req: Request) {
   // code would be spent by then.
   if (!(await getAuthenticatedUserKey())) {
     return NextResponse.redirect(`${appUrl}/login?next=${encodeURIComponent("/settings")}`);
+  }
+
+  // The Notion export is the Solo edition's: said before Notion's consent screen, not after.
+  if (await locked("notion")) {
+    return NextResponse.redirect(`${appUrl}/settings?notion=edition`);
   }
 
   const state = randomBytes(24).toString("hex");

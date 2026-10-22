@@ -13,7 +13,18 @@ import { toast } from "@/components/ui/toaster";
 import type { TeamListItem } from "@/lib/team/view";
 import type { TeamKind } from "@/lib/team/rules";
 
-export function TeamList({ teams, available, suggestedName }: { teams: TeamListItem[]; available: boolean; suggestedName: string }) {
+export function TeamList({
+  teams,
+  available,
+  suggestedName,
+  companies,
+}: {
+  teams: TeamListItem[];
+  available: boolean;
+  suggestedName: string;
+  /** Whether the edition creates company teams; circles are in every edition. */
+  companies: boolean;
+}) {
   const m = useMessages();
   const t = m.team;
   const locale = useLocale();
@@ -60,18 +71,19 @@ export function TeamList({ teams, available, suggestedName }: { teams: TeamListI
         </p>
       </div>
       <div className="lg:col-span-2">
-        <CreateTeam suggestedName={suggestedName} />
+        <CreateTeam suggestedName={suggestedName} companies={companies} />
       </div>
     </div>
   );
 }
 
-function CreateTeam({ suggestedName }: { suggestedName: string }) {
+function CreateTeam({ suggestedName, companies }: { suggestedName: string; companies: boolean }) {
   const m = useMessages();
   const t = m.team;
   const router = useRouter();
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<TeamKind>("company");
+  const [kind, setKind] = useState<TeamKind>(companies ? "company" : "circle");
+  const kinds: TeamKind[] = companies ? ["company", "circle"] : ["circle"];
   const [me, setMe] = useState(suggestedName);
   const [seats, setSeats] = useState(10);
   const [busy, setBusy] = useState(false);
@@ -97,7 +109,7 @@ function CreateTeam({ suggestedName }: { suggestedName: string }) {
         <fieldset>
           <legend className="text-[0.8125rem] text-muted-foreground">{t.create.kind}</legend>
           <div className="mt-1.5 grid gap-2">
-            {(["company", "circle"] as TeamKind[]).map((k) => (
+            {kinds.map((k) => (
               <label
                 key={k}
                 className={cn(
@@ -113,6 +125,11 @@ function CreateTeam({ suggestedName }: { suggestedName: string }) {
               </label>
             ))}
           </div>
+          {!companies && (
+            <Link href="/billing#editions" className="mt-2 inline-flex items-center gap-1 text-[0.75rem] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+              {fill(m.editions.moreWith, { edition: m.editions.names.team })} — {m.editions.features.teams}
+            </Link>
+          )}
         </fieldset>
         <label className="block text-[0.8125rem] text-muted-foreground">
           {t.create.name}

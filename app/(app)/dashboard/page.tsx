@@ -19,6 +19,7 @@ import { openReminders, reminderCounts } from "@/lib/reminders/client";
 import { getStore } from "@/lib/db/store";
 import { cn, formatCurrency } from "@/lib/utils";
 import { getProfile } from "@/lib/user/profile";
+import { includes } from "@/lib/plans/editions";
 import { getMessages, getLocale } from "@/lib/i18n/server";
 import { plural } from "@/lib/i18n/config";
 import type { Messages } from "@/lib/i18n/dictionaries";
@@ -42,7 +43,7 @@ const FOURTEEN_DAYS = 14 * 86_400_000;
  */
 export default async function DashboardPage() {
   const now = new Date();
-  const [{ firstName }, m, locale, data, view, memory, { reminders, available }] = await Promise.all([
+  const [{ firstName, edition }, m, locale, data, view, memory, { reminders, available }] = await Promise.all([
     getProfile(),
     getMessages(),
     getLocale(),
@@ -68,14 +69,18 @@ export default async function DashboardPage() {
     plural(locale, view.notes.length, d.sublineNotes),
   ].filter(Boolean);
 
-  const kpis = [
+  // The business figures belong to the editions that run a business.
+  const projects = includes(edition, "projects");
+  const kpis: { key: "kpiNotes" | "kpiLinks" | "kpiTasks" | "kpiActiveProjects" | "kpiPipeline" | "kpiNet"; value: string; sub?: string; negative?: boolean }[] = [
     { key: "kpiNotes", value: new Intl.NumberFormat(locale).format(view.notes.length) },
     { key: "kpiLinks", value: new Intl.NumberFormat(locale).format(view.links.length) },
     { key: "kpiTasks", value: new Intl.NumberFormat(locale).format(snapshot.tasks.open) },
-    { key: "kpiActiveProjects", value: String(activeProjects.length), sub: `${snapshot.projects.avgProgress}%` },
-    { key: "kpiPipeline", value: formatCurrency(snapshot.crm.openValue, locale) },
-    { key: "kpiNet", value: formatCurrency(snapshot.finance.net, locale), negative: snapshot.finance.net < 0 },
-  ] as const;
+    ...(projects ? [{ key: "kpiActiveProjects" as const, value: String(activeProjects.length), sub: `${snapshot.projects.avgProgress}%` }] : []),
+    ...(includes(edition, "crm") ? [{ key: "kpiPipeline" as const, value: formatCurrency(snapshot.crm.openValue, locale) }] : []),
+    ...(includes(edition, "finance")
+      ? [{ key: "kpiNet" as const, value: formatCurrency(snapshot.finance.net, locale), negative: snapshot.finance.net < 0 }]
+      : []),
+  ];
 
   return (
     <>
@@ -93,7 +98,7 @@ export default async function DashboardPage() {
         }
       />
 
-      <ReviewNudge reviewedWeeks={data.reviews.map((r) => r.weekStart)} />
+      {includes(edition, "review") && <ReviewNudge reviewedWeeks={data.reviews.map((r) => r.weekStart)} />}
 
       <div className="grid gap-3 lg:grid-cols-3">
         {/* Reminders — the day's promises. */}
@@ -151,7 +156,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* The figures, from the person's own rows. */}
-      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className={cn("mt-3 grid grid-cols-2 gap-3 md:grid-cols-3", kpis.length > 3 && "xl:grid-cols-6")}>
         {kpis.map((k) => (
           <Card key={k.key} className="p-4">
             <p className="truncate text-[0.8125rem] text-muted-foreground">{d[k.key]}</p>
@@ -164,7 +169,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Each card its own height: the tallest (the briefing) does not stretch the others. */}
-      <div className="mt-3 grid items-start gap-3 lg:grid-cols-3">
+      <div className={cn("mt-3 grid items-start gap-3", projects ? "lg:grid-cols-3" : "lg:grid-cols-2")}>
         <Card>
           <CaptureChart createdAt={recent} />
           <div className="border-t border-border px-5 py-3 text-[0.8125rem] text-muted-foreground">
@@ -173,6 +178,7 @@ export default async function DashboardPage() {
           </div>
         </Card>
 
+        {projects && (
         <Card>
           <CardHeader
             title={d.projects}
@@ -197,6 +203,7 @@ export default async function DashboardPage() {
             {activeProjects.length === 0 && <p className="px-5 py-8 text-center text-sm text-muted-foreground">{m.common.nothingHere}</p>}
           </div>
         </Card>
+        )}
 
         {/* AI insights — weekly review + daily summary. */}
         <AiInsights />

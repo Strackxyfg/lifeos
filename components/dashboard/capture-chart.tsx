@@ -125,19 +125,22 @@ export function CaptureChart({ createdAt }: { createdAt: string[] }) {
       </div>
 
       {/* The same figures as a table, for screen readers. */}
-      <table className="sr-only">
-        <caption>
-          {d.captures} · {d.capturesRange}
-        </caption>
-        <tbody>
-          {days.map((x) => (
-            <tr key={x.key}>
-              <th scope="row">{label(x)}</th>
-              <td>{x.n}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* In a block: `sr-only` on a table itself keeps the table as wide as its text, which widens the page on a phone. */}
+      <div className="sr-only">
+        <table>
+          <caption>
+            {d.captures} · {d.capturesRange}
+          </caption>
+          <tbody>
+            {days.map((x) => (
+              <tr key={x.key}>
+                <th scope="row">{label(x)}</th>
+                <td>{x.n}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }

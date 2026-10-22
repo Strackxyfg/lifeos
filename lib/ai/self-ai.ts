@@ -46,6 +46,7 @@ function portraitSystem(language: "French" | "English"): string {
     "- Stay close to what they wrote. Never diagnose, label or psychologise (\"anxious\", \"perfectionist\") unless they",
     "  say it of themselves. Never infer health, religion, politics, sexuality or ethnic origin.",
     "- A one-off task or event is not a trait. Prefer what recurs, or what they state as true about themselves.",
+    "- A passing state is not a trait either: feeling lost, exhausted, low or discouraged right now says how they are, not who they are.",
     `- Write each statement in ${language}, addressed to them${language === "French" ? " with \"vous\" (\"Vous travaillez mieux le matin\")" : " (\"You work best in the morning\")"},`,
     "  in one sentence under 140 characters.",
     ...(language === "French"

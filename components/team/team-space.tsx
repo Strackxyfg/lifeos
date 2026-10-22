@@ -6,6 +6,7 @@ import { Activity, Brain, Building2, CalendarCheck, CloudSun, KeyRound, ShieldCh
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { plural } from "@/lib/i18n/config";
 import { cn } from "@/lib/utils";
+import { TabStrip } from "@/components/ui/tab-strip";
 import type { TeamPageView } from "@/lib/team/view";
 import { TeamBrain, TeamCheckin, TeamFeed, TeamPulse } from "./team-panels";
 import { TeamMembers } from "./team-members";
@@ -80,7 +81,7 @@ export function TeamSpace({ view }: { view: TeamPageView }) {
         {t.privacy}
       </p>
 
-      <nav role="tablist" aria-label={t.title} className="mt-5 flex gap-1 overflow-x-auto border-b border-border [scrollbar-width:none]">
+      <TabStrip role="tablist" label={t.title} activeKey={tab} className="mt-5 border-b border-border" scrollerClassName="gap-1">
         {tabs.map(({ id, icon: Icon }) => (
           <button
             key={id}
@@ -90,7 +91,7 @@ export function TeamSpace({ view }: { view: TeamPageView }) {
             aria-controls={`panel-${id}`}
             onClick={() => go(id)}
             className={cn(
-              "relative flex shrink-0 items-center gap-2 px-3 py-2.5 text-sm transition-colors",
+              "relative flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm transition-colors",
               tab === id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -101,10 +102,10 @@ export function TeamSpace({ view }: { view: TeamPageView }) {
                 {badge[id]}
               </span>
             )}
-            {tab === id && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-accent" />}
+            {tab === id && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-accent" />}
           </button>
         ))}
-      </nav>
+      </TabStrip>
 
       <section id={`panel-${tab}`} role="tabpanel" className="mt-5">
         {tab === "feed" && (

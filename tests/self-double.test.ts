@@ -8,8 +8,10 @@ import {
   parseDoubleActions,
   portraitSection,
   rhythmSection,
+  tidyAnswer,
   visibleAnswer,
 } from "@/lib/self/double";
+import { neutralFrench } from "@/lib/self/voice";
 import { portraitOf, traitKey, type TraitLike } from "@/lib/self/portrait";
 import { summarize } from "@/lib/self/rhythm";
 
@@ -120,3 +122,73 @@ describe("what the double is given", () => {
     expect(s).toContain('"vous"');
   });
 });
+
+describe("how the double speaks", () => {
+  it("answers what was confided, helps for real, and never opens with a disclaimer", () => {
+    const s = doubleSystem({ language: "French" });
+    expect(s).toContain("first receive it");
+    expect(s).toContain("give 2 or 3 axes");
+    expect(s).toContain("Never open with a disclaimer");
+    expect(s).not.toContain("suggest they talk to someone qualified");
+  });
+
+  it("replies to the question of the day as someone who listened", () => {
+    const s = doubleSystem({ language: "French", mode: "answer" });
+    expect(s).toContain("They have just answered the question of the day");
+    expect(s).toContain("Never talk about traits");
+    expect(doubleSystem({ language: "French" })).not.toContain("question of the day");
+  });
+
+  it("puts safety first in a crisis: who to call, no plan, no actions", () => {
+    const fr = doubleSystem({ language: "French", care: "crisis" });
+    expect(fr).toContain("Their safety comes first");
+    expect(fr).toContain("3114");
+    expect(fr).toContain("whether they are safe right now");
+    expect(fr).not.toContain(ACTIONS_OPEN);
+    const en = doubleSystem({ language: "English", care: "crisis" });
+    expect(en).toContain("988");
+    expect(en).toContain("116 123");
+    expect(doubleSystem({ language: "French", care: "distress" })).toContain("receive it before anything else");
+  });
+
+  it("says « tu » to someone who says « tu », and agrees as they agree with themselves", () => {
+    expect(doubleSystem({ language: "French", register: "tu" })).toContain('they say "tu" to you');
+    expect(doubleSystem({ language: "French", gender: "m" })).toContain("in the masculine");
+    expect(doubleSystem({ language: "French", gender: "f", register: "tu" })).toContain("tu es épuisée");
+    expect(doubleSystem({ language: "French", gender: "f" })).not.toContain("You do not know their gender");
+    expect(doubleSystem({ language: "French" })).toContain("You do not know their gender");
+  });
+
+  it("proposes actions in the conversation's language, never for « now »", () => {
+    const en = doubleSystem({ language: "English" });
+    expect(en).toContain('"title":"Call Marc about the quote"');
+    expect(en).toContain('never "now"');
+    expect(en).toContain("Nothing comes after the block");
+    expect(doubleSystem({ language: "French" })).toContain('"title":"Appeler Marc pour le devis"');
+  });
+});
+
+describe("what reaches the page", () => {
+  it("is plain text: no actions block, no Markdown", () => {
+    expect(tidyAnswer(`## Ce que je vois
+1. **Protéger vos matinées** — c'est votre créneau.
+
+${ACTIONS_OPEN}
+[]
+${ACTIONS_CLOSE}`)).toBe(
+      `Ce que je vois
+1. Protéger vos matinées — c'est votre créneau.`
+    );
+  });
+
+  it("assumes no gender when the double does not know it", () => {
+    expect(neutralFrench("C'est dur de porter tout ça seul.")).toBe("C'est dur de porter tout ça sans aide.");
+    expect(neutralFrench("Vous n'êtes pas seul face à ça.")).toBe("Vous n'êtes pas sans soutien face à ça.");
+    expect(neutralFrench("Je suis désolé d'apprendre cela.")).toBe("Je regrette d'apprendre cela.");
+    expect(neutralFrench("Je suis vraiment content que tu me le dises.")).toBe("Ça me fait vraiment plaisir que tu me le dises.");
+    expect(neutralFrench("je suis touché que vous me le disiez")).toBe("ça me touche que vous me le disiez");
+    // Nothing else moves.
+    for (const fine of ["Seul compte le premier pas.", "Vous êtes seule juge.", "Je suis là.", "Le seul moyen, c'est d'appeler Marc."]) expect(neutralFrench(fine)).toBe(fine);
+  });
+});
+

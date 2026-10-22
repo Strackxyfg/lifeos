@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowRight, Flame, Loader2, Mic, RefreshCw, Sparkles, Square } from "lucide-react";
-import { checkIn, type CheckinSaved } from "@/app/actions/self";
+import { ArrowRight, Flame, Loader2, MessageCircle, Mic, RefreshCw, Sparkles, Square, UserRound } from "lucide-react";
+import { acceptDoubleAction, checkIn, type Accepted, type CheckinSaved } from "@/app/actions/self";
+import type { DoubleAction } from "@/lib/self/double";
 import type { Question } from "@/lib/self/questions";
 import type { TraitLike } from "@/lib/self/portrait";
 import type { SelfData } from "@/lib/self/store";
@@ -12,6 +13,10 @@ import { fill, plural } from "@/lib/i18n/config";
 import { useLocale, useMessages } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { TraitRow, type TraitHandlers } from "./trait-row";
+import { DoubleReply } from "./double-reply";
+import { streamDouble, type DoubleTurn } from "./double-stream";
+import { careLevel } from "@/lib/self/care";
+import { formatWhen } from "./advice-list";
 
 type Checkin = SelfData["checkins"][number];
 
@@ -82,6 +87,8 @@ export function TodayCard({
   traits,
   titles,
   handlers,
+  onAccepted,
+  onContinue,
 }: {
   name: string | null;
   zone: string;
@@ -98,6 +105,10 @@ export function TodayCard({
   traits: Map<string, TraitLike>;
   titles: Map<string, string>;
   handlers: TraitHandlers;
+  /** An action the double proposed in its reply, accepted. */
+  onAccepted: (a: Accepted) => void;
+  /** Carries the exchange on in the conversation: their answer and the double's reply. */
+  onContinue: (turns: DoubleTurn[]) => void;
 }) {
   const m = useMessages();
   const locale = useLocale();
@@ -129,8 +140,11 @@ export function TodayCard({
   const [index, setIndex] = useState(0);
   const question = questions.length ? questions[index % questions.length] : null;
   const [answer, setAnswer] = useState("");
-  const [phase, setPhase] = useState<"ask" | "saving" | "reading" | "learned">("ask");
+  const [phase, setPhase] = useState<"ask" | "saving" | "replied">("ask");
   const [learned, setLearned] = useState<string[]>([]);
+  /** What they answered, and the double's reply to it — streaming in, then with its actions. */
+  const [exchange, setExchange] = useState<{ question: string; answer: string; reply: DoubleTurn; streaming: boolean; failed: boolean; continued?: boolean } | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
   const dictation = useDictation({
     locale,
     onText: (text) => setAnswer(text),
@@ -149,15 +163,61 @@ export function TodayCard({
     }
     onSaved(res.data);
     setAnswer("");
-    toast(s.question.kept);
+    setLearned([]);
     if (!aiEnabled || !res.data.note) {
-      setLearned([]);
-      return setPhase("learned");
+      toast(s.question.kept);
+      setExchange(null);
+      return setPhase("replied");
     }
-    setPhase("reading");
-    const traits = await learn(res.data.note.id);
-    setLearned((traits ?? []).map((t) => t.id));
-    setPhase("learned");
+    // The double replies to what they confided — and, alongside, reads it for their portrait.
+    const asked = questionText(question, m);
+    const noteId = res.data.note.id;
+    setExchange({ question: asked, answer: text, reply: { role: "assistant", content: "" }, streaming: true, failed: false });
+    setPhase("replied");
+    // A hard moment is how they are today, not who they are: it is answered, not read for the portrait.
+    if (careLevel(text) === "none") void learn(noteId).then((traits) => setLearned((traits ?? []).map((t) => t.id)));
+    const patch = (p: Partial<DoubleTurn>) => setExchange((x) => (x ? { ...x, reply: { ...x.reply, ...p } } : x));
+    const out = await streamDouble({
+      turns: [{ role: "user", content: text, question: asked }],
+      mode: "answer",
+      answerNote: noteId,
+      locale,
+      zone,
+      questionLabel: s.talk.questionOfDay,
+      onText: (content) => patch({ content }),
+      onCare: (care) => patch({ care }),
+    });
+    setExchange((x) =>
+      x
+        ? {
+            ...x,
+            streaming: false,
+            failed: !out.ok,
+            // The answer they have just written is not a source of the reply to it.
+            reply: { ...x.reply, content: out.text, actions: out.actions, sources: out.sources.filter((src) => src.id !== noteId), accepted: [], care: out.care },
+          }
+        : x
+    );
+  }
+
+  async function accept(index: number, action: DoubleAction) {
+    setBusy(index);
+    const res = await acceptDoubleAction(action, { zone, locale }).catch(() => null);
+    setBusy(null);
+    if (!res || !res.ok) {
+      if (res?.code === "invalid" && action.type === "reminder") return void toast(fill(s.talk.whenUnclear, { when: action.when }), "error");
+      return void toast(s.errors[res?.code ?? "failed"], "error");
+    }
+    onAccepted(res.data);
+    setExchange((x) => (x ? { ...x, reply: { ...x.reply, accepted: [...(x.reply.accepted ?? []), index] } } : x));
+    toast(res.data.reminder ? fill(s.advice.reminded, { when: formatWhen(res.data.reminder.dueAt, locale, zone) }) : s.talk.accepted);
+  }
+
+  function nextQuestion() {
+    setPhase("ask");
+    setLearned([]);
+    setExchange(null);
+    setIndex((i) => i + 1);
   }
 
   const greetingKey = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
@@ -283,41 +343,69 @@ export function TodayCard({
               </div>
             </div>
           </>
-        ) : phase === "reading" ? (
-          <p className="mt-3 flex items-center gap-2 text-[0.84rem] text-muted-foreground" role="status">
-            <Loader2 className="h-4 w-4 animate-spin text-accent" /> {s.question.reading}
-          </p>
         ) : (
-          <div className="mt-3" role="status">
-            {learnedTraits.length > 0 ? (
+          <div className="mt-3">
+            {exchange ? (
               <>
-                <p className="text-[0.8rem] font-medium">{s.question.learned}</p>
-                <ul className="mt-2 flex flex-col gap-1.5">
-                  {learnedTraits.map((t) => (
-                    <TraitRow
-                      key={t.id}
-                      trait={t}
-                      quotes={t.evidence.map((e) => ({ ...e, title: titles.get(e.noteId) ?? "" }))}
-                      handlers={handlers}
-                      compact
-                    />
-                  ))}
-                </ul>
+                <div className="ml-auto w-fit max-w-[90%] rounded-xl rounded-br-sm bg-surface-2 px-3 py-2 text-[0.84rem] leading-relaxed">
+                  <span className="mb-0.5 block text-[0.7rem] text-muted-foreground">{exchange.question}</span>
+                  <span className="whitespace-pre-wrap">{exchange.answer}</span>
+                </div>
+                <div className="mt-3 flex gap-2.5" aria-live="polite">
+                  <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent/10 text-accent" aria-hidden>
+                    <UserRound className="h-3.5 w-3.5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="sr-only">{s.talk.double}:</p>
+                    {exchange.failed && !exchange.reply.content ? (
+                      <p className="text-[0.84rem] leading-relaxed text-muted-foreground">{s.question.replyFailed}</p>
+                    ) : (
+                      <DoubleReply turn={exchange.reply} busy={busy} onAccept={(i, a) => void accept(i, a)} />
+                    )}
+                  </div>
+                </div>
               </>
             ) : (
-              <p className="text-[0.82rem] leading-relaxed text-muted-foreground">{aiEnabled ? s.question.learnedNothing : s.question.kept}</p>
+              <p className="text-[0.82rem] leading-relaxed text-muted-foreground" role="status">
+                {s.question.kept}
+              </p>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                setPhase("ask");
-                setLearned([]);
-                setIndex((i) => i + 1);
-              }}
-              className="mt-3 inline-flex items-center gap-1 text-[0.76rem] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-            >
-              <RefreshCw className="h-3 w-3" /> {s.question.another}
-            </button>
+            {learnedTraits.length > 0 && (
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="text-[0.78rem] font-medium">{s.question.learned}</p>
+                <ul className="mt-2 flex flex-col gap-1.5">
+                  {learnedTraits.map((t) => (
+                    <TraitRow key={t.id} trait={t} quotes={t.evidence.map((e) => ({ ...e, title: titles.get(e.noteId) ?? "" }))} handlers={handlers} compact />
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {exchange && !exchange.streaming && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Once in the conversation, the exchange is not added again: a second click only goes there.
+                    if (exchange.continued) return onContinue([]);
+                    const turns: DoubleTurn[] = [{ role: "user", content: exchange.answer, question: exchange.question }];
+                    if (exchange.reply.content) turns.push(exchange.reply);
+                    onContinue(turns);
+                    setExchange((x) => (x ? { ...x, continued: true } : x));
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-[0.78rem] font-medium text-background [@media(pointer:coarse)]:py-2"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" /> {s.question.continue}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={nextQuestion}
+                disabled={exchange?.streaming}
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[0.76rem] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                <RefreshCw className="h-3 w-3" /> {s.question.another}
+              </button>
+            </div>
           </div>
         )}
       </div>

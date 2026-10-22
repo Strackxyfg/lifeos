@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Database, UserRound } from "lucide-react";
 import { adviceState, addTrait, correctTrait, judgeTrait, readForPortrait, removeTrait, type Accepted, type CheckinSaved } from "@/app/actions/self";
 import { updateNote } from "@/app/actions/brain";
@@ -20,7 +20,8 @@ import { TodayCard } from "./today-card";
 import { AdviceList, formatWhen, type AdviceHandlers } from "./advice-list";
 import { PortraitPanel } from "./portrait-panel";
 import { RhythmPanel } from "./rhythm-panel";
-import { DoubleChat } from "./double-chat";
+import { DoubleChat, type DoubleChatHandle } from "./double-chat";
+import type { DoubleTurn } from "./double-stream";
 import type { TraitHandlers } from "./trait-row";
 
 type Checkin = SelfData["checkins"][number];
@@ -95,6 +96,9 @@ export function DoubleView({
   const [states, setStates] = useState(initialAdvice);
   const [reminders, setReminders] = useState(initialReminders);
   const [reading, setReading] = useState(false);
+  // The conversation, held here: an exchange begun on the question of the day carries on in it.
+  const [thread, setThread] = useState<DoubleTurn[]>([]);
+  const chat = useRef<DoubleChatHandle>(null);
 
   const err = useCallback((code: keyof typeof s.errors | undefined) => toast(s.errors[code ?? "failed"], "error"), [s]);
 
@@ -289,10 +293,17 @@ export function DoubleView({
                 traits={traitsById}
                 titles={titles}
                 handlers={handlers}
+                onAccepted={accepted}
+                onContinue={(turns) => {
+                  // The exchange joins the conversation, after what was already said there.
+                  if (turns.length) setThread((prev) => [...prev, ...turns]);
+                  // Once the thread has rendered (not on an animation frame: those wait while the tab is hidden).
+                  setTimeout(() => chat.current?.focus(), 0);
+                }}
               />
             )}
             <AdviceList advice={advice} handlers={adviceHandlers} zone={zone} />
-            <DoubleChat aiEnabled={aiEnabled} zone={zone} onAccepted={accepted} />
+            <DoubleChat ref={chat} aiEnabled={aiEnabled} zone={zone} turns={thread} setTurns={setThread} onAccepted={accepted} />
           </div>
           <div className="flex min-w-0 flex-col gap-5">
             {available && <PortraitPanel portrait={portrait} aiEnabled={aiEnabled} reading={reading} onRead={() => void readAll()} onAdd={addOwn} handlers={handlers} />}

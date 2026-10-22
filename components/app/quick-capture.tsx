@@ -105,9 +105,10 @@ export function QuickCapture() {
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className={cn(buttonVariants({ size: "sm" }))}
+        className={cn(buttonVariants({ size: "sm" }), "max-[359px]:px-2.5")}
       >
-        <Plus className="h-4 w-4" /> {m.common.capture}
+        {/* Under 360 px the bar holds only the icon; the name is still read aloud. */}
+        <Plus className="h-4 w-4" /> <span className="max-[359px]:sr-only">{m.common.capture}</span>
       </button>
 
       <AnimatePresence>

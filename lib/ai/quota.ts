@@ -26,6 +26,9 @@ export const ALLOWANCES = {
   double: { limit: 60, windowMs: 60 * 60_000 },
   // Ideas suggested on a mind map.
   maps: { limit: 60, windowMs: 60 * 60_000 },
+  // The double answering someone who may be in danger: apart from "double", so it never runs out with it. Past it, they
+  // get the answer written in advance (and the page shows who to call) — never silence, and no unbounded model calls.
+  care: { limit: 30, windowMs: 60 * 60_000 },
 } as const satisfies Record<string, Allowance>;
 
 export type QuotaKind = keyof typeof ALLOWANCES;

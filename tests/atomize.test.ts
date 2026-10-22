@@ -249,6 +249,7 @@ describe("quota", () => {
         portrait: { limit: 1, windowMs: 1000 },
         double: { limit: 1, windowMs: 1000 },
         maps: { limit: 1, windowMs: 1000 },
+        care: { limit: 1, windowMs: 1000 },
       },
       () => t
     );

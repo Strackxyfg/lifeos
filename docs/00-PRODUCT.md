@@ -98,14 +98,20 @@ second cerveau (`/brain/double`), et une carte en tête de la vue d'ensemble.
   aucune déduction sur la santé, la religion, les opinions, l'orientation ou
   l'origine ; en français, jamais d'accord qui suppose votre genre (« vous
   êtes intéressé » est écarté, « l'entrepreneuriat vous intéresse » gardé).
+  Un état passager (« je me sens perdu ce soir ») n'est jamais pris pour un
+  trait : il dit comment vous allez, pas qui vous êtes.
 - **La question du jour.** Une question par jour, posée là où le double vous
   connaît le moins (48 questions, 6 par dimension, en français et en anglais,
   jamais genrées), ou sur ce que vous vivez : un objectif sans prochaine action
   depuis une semaine (« Qu'est-ce qui vous retient d'avancer sur… ? »), une
   tension encore ouverte. Réponse écrite ou dictée ; elle devient une note,
   rangée, avec sa question à côté (et reliée à l'objectif ou à la tension
-  concernés) ; le double la lit aussitôt et montre **ce qu'il en retient**, à
-  confirmer. Jamais la même question deux fois ; la même toute la journée.
+  concernés). **Le double vous répond aussitôt** : il reprend ce que vous avez
+  dit, le relie à ce qu'il sait de vous, vous donne un ou deux axes et un
+  premier pas, et vous relance d'une question — puis « Continuer la
+  conversation » emmène l'échange dans la discussion. Ce qu'il propose
+  d'ajouter à votre portrait vient en dessous, à confirmer. Jamais la même
+  question deux fois ; la même toute la journée.
 - **Le point du jour.** Humeur et énergie, de 1 à 5, en deux touches ; jours
   d'affilée. **Vos rythmes** : moyennes des 7 derniers jours et tendance
   (seulement si chaque semaine compte au moins 4 relevés), et les différences
@@ -127,12 +133,35 @@ second cerveau (`/brain/double`), et une carte en tête de la vue d'ensemble.
   pour une semaine. Une heure n'est jamais affichée si vous ne l'avez pas dite.
 - **Parler à votre double.** Il répond d'après votre portrait (confirmé, et le
   reste présenté comme hypothèse), vos relevés, vos objectifs et les notes
-  liées à la question, en citant ce sur quoi il s'appuie ; environ 150 mots ;
-  « vous », jamais « tu ». Il peut proposer jusqu'à trois actions — une
-  prochaine action (reliée à l'objectif qu'elle sert), un rappel (« dimanche
-  soir » lu par les mêmes règles que tous les rappels ; un moment illisible
-  est refusé, jamais deviné), une note — que vous acceptez d'un clic ; rien
-  n'est fait sans vous. Il n'est ni médecin ni thérapeute, et le dit.
+  liées à la question, en citant ce sur quoi il s'appuie. Il parle comme
+  quelqu'un qui vous connaît de l'intérieur : il répond à ce que vous avez dit,
+  reçoit d'abord ce qui est lourd, puis aide pour de vrai — deux ou trois axes
+  adaptés à votre façon de fonctionner, chacun avec un premier pas pour
+  aujourd'hui. Jamais d'avertissement en ouverture ni de renvoi ailleurs à la
+  place d'une réponse. Il vous répond comme vous lui parlez : « tu » si vous
+  le tutoyez, « vous » sinon ; en français, il s'accorde comme vous vous
+  accordez vous-même dans vos messages et vos notes (« je me suis livré »,
+  « je suis fatiguée ») — lu dans vos propres phrases à la première personne,
+  jamais déduit d'un prénom, jamais enregistré — et reste neutre sinon. Il peut
+  proposer jusqu'à trois actions — une prochaine action (reliée à l'objectif
+  qu'elle sert), un rappel (« dimanche soir » lu par les mêmes règles que tous
+  les rappels ; un moment illisible est refusé, jamais deviné), une note — que
+  vous acceptez d'un clic ; rien n'est fait sans vous.
+- **Quand c'est lourd.** Ce que vous écrivez est lu, sans modèle, en français
+  et en anglais : un moment difficile (« je n'en peux plus », « je suis à
+  bout »), et le double ralentit pour l'accueillir ; un danger (« envie d'en
+  finir », « me faire du mal »), et votre sécurité passe avant tout — le double
+  vous demande si vous êtes en sécurité et **les lignes d'écoute s'affichent
+  aussitôt**, avant même sa réponse et quoi qu'il écrive (3114, 15, 112 ;
+  Belgique, Suisse, Canada ; 988, Samaritans 116 123 en anglais ; un lien
+  pour les autres pays ; un numéro, un toucher). Une allocation à part, que
+  la conversation n'épuise jamais, et une réponse écrite à l'avance si aucun
+  modèle ne répond. Les
+  expressions qui ne font que ressembler (« se tuer à la tâche », « ce dossier
+  me tue ») ne déclenchent rien. Il n'est ni médecin ni thérapeute, le dit en
+  bas de la discussion, et propose lui-même d'en parler à votre médecin ou à
+  un psychologue si ce que vous décrivez dure ; « Besoin de parler à quelqu'un
+  maintenant ? » donne les numéros à tout moment.
 - **Sur l'île**, le bâtiment du second cerveau compte aussi ce que le double
   attend de vous (« Sur vous, à confirmer »). **L'agent** lit le double
   (`self_read`) et le portrait (dans `brain_read`) : sur Telegram, c'est le
@@ -560,7 +589,7 @@ devenir une facturation par siège — le tarif entreprise reste à décider
 Next.js 15 · React 19 · TypeScript strict · Supabase (authentification,
 Postgres, sécurité ligne par ligne) · API Notion · agent sur VPS · PWA
 (installable, cible de partage) · three.js / React Three Fiber · interface
-intégralement bilingue · 878 tests
+intégralement bilingue · 935 tests
 automatisés, dont des gardes contre les fausses allégations, les routes non
 protégées et les caractères de contrôle dans le code.
 

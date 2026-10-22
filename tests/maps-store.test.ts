@@ -9,6 +9,9 @@ import { join } from "node:path";
  * images no map uses go (but not fresh ones), and the complete export and
  * the erasure both include maps.
  */
+// The first test loads the store and the export cold (dynamic imports, after the cwd is mocked): under a full parallel run that alone can pass 5 s.
+vi.setConfig({ testTimeout: 30_000 });
+
 let dir: string;
 const saved: Record<string, string | undefined> = {};
 

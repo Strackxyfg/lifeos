@@ -110,25 +110,28 @@ function Chart({ summary, today }: { summary: RhythmSummary; today: string }) {
           ))
         )}
       </figcaption>
-      <table className="sr-only">
-        <caption>{t.chart}</caption>
-        <thead>
-          <tr>
-            <th scope="col">—</th>
-            <th scope="col">{t.mood}</th>
-            <th scope="col">{t.energy}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {summary.series.map((p) => (
-            <tr key={p.day}>
-              <th scope="row">{fmtDay(p.day)}</th>
-              <td>{p.mood === null ? "—" : new Intl.NumberFormat(locale).format(p.mood)}</td>
-              <td>{p.energy === null ? "—" : new Intl.NumberFormat(locale).format(p.energy)}</td>
+      {/* In a block: `sr-only` on a table itself keeps the table as wide as its text, which widens the page on a phone. */}
+      <div className="sr-only">
+        <table>
+          <caption>{t.chart}</caption>
+          <thead>
+            <tr>
+              <th scope="col">—</th>
+              <th scope="col">{t.mood}</th>
+              <th scope="col">{t.energy}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {summary.series.map((p) => (
+              <tr key={p.day}>
+                <th scope="row">{fmtDay(p.day)}</th>
+                <td>{p.mood === null ? "—" : new Intl.NumberFormat(locale).format(p.mood)}</td>
+                <td>{p.energy === null ? "—" : new Intl.NumberFormat(locale).format(p.energy)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }

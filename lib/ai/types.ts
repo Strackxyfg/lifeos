@@ -29,7 +29,13 @@ export type AITask =
   | "portrait"
   | "maps"
   /** The agent: plans, calls tools, checks its work. */
-  | "agent";
+  | "agent"
+  /** The agent asked to think harder: the deepest reasoning model first. */
+  | "agent_deep"
+  /** A research sub-agent working one part of a question in parallel: fast and capable. */
+  | "research"
+  /** Reading the web's search results back: cheap and quick. */
+  | "search";
 
 /** How hard a reasoning model should think. Mapped per provider. */
 export type Effort = "low" | "medium" | "high";
@@ -147,7 +153,8 @@ export interface TurnOutput {
   toolCalls: ToolCall[];
   replay?: Replay;
   stop: StopReason;
-  usage?: { input: number; output: number };
+  /** Tokens, and the cost in US dollars when the provider reports it (OpenRouter does). */
+  usage?: { input: number; output: number; cost?: number };
 }
 
 export interface TurnResult extends TurnOutput {

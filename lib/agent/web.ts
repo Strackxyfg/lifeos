@@ -33,7 +33,7 @@ export const WEB_LIMITS = { bytes: 1_500_000, chars: 14_000, redirects: 3, timeo
 export type WebError = "invalid_url" | "not_public" | "unsupported" | "too_large" | "http_error" | "timeout" | "failed";
 
 export type WebPage =
-  | { ok: true; url: string; title: string | null; text: string; truncated: boolean }
+  | { ok: true; url: string; title: string | null; text: string; truncated: boolean; links: { url: string; text: string }[] }
   | { ok: false; error: WebError; detail?: string };
 
 /* ── Addresses ────────────────────────────────────────────────────── */
@@ -174,6 +174,34 @@ export function htmlToText(html: string): { title: string | null; text: string }
   return { title: title ? decodeEntities(title).replace(/\s+/g, " ").trim() || null : null, text };
 }
 
+/**
+ * The links of a page — absolute web addresses with their text, once each,
+ * at most `max` — so the agent can follow them the way a person browses.
+ */
+export function linksOf(html: string, base: string, max = 40): { url: string; text: string }[] {
+  const out: { url: string; text: string }[] = [];
+  const seen = new Set<string>();
+  const body = html.replace(/<(script|style|noscript|svg|template)\b[\s\S]*?<\/\1\s*>/gi, " ");
+  for (const m of body.matchAll(/<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a\s*>/gi)) {
+    const href = decodeEntities((m[1] ?? m[2] ?? m[3] ?? "").trim());
+    let u: URL;
+    try {
+      u = new URL(href, base);
+    } catch {
+      continue;
+    }
+    if (u.protocol !== "http:" && u.protocol !== "https:") continue;
+    u.hash = "";
+    if (seen.has(u.href)) continue;
+    const text = decodeEntities(m[4].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim().slice(0, 100);
+    if (!text) continue;
+    seen.add(u.href);
+    out.push({ url: u.href, text });
+    if (out.length === max) break;
+  }
+  return out;
+}
+
 const TEXTUAL = /^(text\/(html|plain|markdown|xml|csv)|application\/(xhtml\+xml|json|ld\+json|xml|rss\+xml|atom\+xml))$/i;
 
 /* ── Fetching ─────────────────────────────────────────────────────── */
@@ -298,7 +326,8 @@ export async function readPage(raw: unknown, opts: { lookup?: LookupFunction } =
     const html = /html|xml/i.test(r.type) || (!r.type && /^\s*</.test(raw));
     const { title, text } = html ? htmlToText(raw) : { title: null, text: raw.trim() };
     const truncated = text.length > WEB_LIMITS.chars || r.body.length >= WEB_LIMITS.bytes;
-    return { ok: true, url: url.href, title, text: text.slice(0, WEB_LIMITS.chars), truncated };
+    const links = /html/i.test(r.type) || (!r.type && /^\s*</.test(raw)) ? linksOf(raw, url.href) : [];
+    return { ok: true, url: url.href, title, text: text.slice(0, WEB_LIMITS.chars), truncated, links };
   }
   return { ok: false, error: "http_error" };
 }

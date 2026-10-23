@@ -17,6 +17,8 @@ const nextConfig = {
   outputFileTracingIncludes: {
     "/api/agent/runner/[file]": ["./agent-runner/install.sh", "./agent-runner/*.mjs", "./agent-runner/Dockerfile", "./agent-runner/docker-compose.yml"],
   },
+  // The agent's calculation sandbox loads its WebAssembly from its own package at run time.
+  serverExternalPackages: ["quickjs-emscripten", "quickjs-emscripten-core", "@jitl/quickjs-wasmfile-release-sync"],
   reactStrictMode: true,
   poweredByHeader: false,
   experimental: {

@@ -35,12 +35,15 @@ export const CAPABILITIES: Capability[] = [
   { id: "analyze", tier: "safe", label: "Analyse and summarise", labelFr: "Analyser et résumer", rationale: "Computation only." },
   { id: "brain.search", tier: "safe", label: "Search your second brain", labelFr: "Chercher dans votre second cerveau", rationale: "No side effects." },
   { id: "brain.related", tier: "safe", label: "See what a note is connected to", labelFr: "Voir à quoi une note est reliée", rationale: "No side effects." },
+  { id: "web.search", tier: "safe", label: "Search the web", labelFr: "Chercher sur le web", rationale: "Read-only: the query goes to LifeOS's search provider, nothing is published or sent to a site." },
+  { id: "compute", tier: "safe", label: "Calculate and analyse with code", labelFr: "Calculer et analyser avec du code", rationale: "Runs in an isolated sandbox with no network, no files and no access to LifeOS — computation only." },
   { id: "self.read", tier: "safe", label: "Read your portrait and what your double suggests", labelFr: "Lire votre portrait et ce que votre double suggère", rationale: "No side effects; the portrait is only ever changed by you." },
 
   // ── Internal writes ────────────────────────────────────────────────
   { id: "brain.write", tier: "low", label: "Capture notes and ideas", labelFr: "Capturer notes et idées", rationale: "Private to LifeOS, reversible." },
   { id: "brain.link", tier: "low", label: "Connect notes", labelFr: "Relier des notes", rationale: "Private to LifeOS, reversible — a connection can be removed, and it is marked for your review." },
   { id: "brain.weave", tier: "low", label: "Let LifeOS connect your notes", labelFr: "Laisser LifeOS relier vos notes", rationale: "Private to LifeOS; every connection drawn is marked for your review and can be removed." },
+  { id: "agent.research", tier: "low", label: "Send research sub-agents in parallel", labelFr: "Lancer des sous-agents de recherche en parallèle", rationale: "They only read (the web, the brain) and calculate; counted because they spend model budget." },
   { id: "task.write", tier: "low", label: "Create and update tasks", labelFr: "Créer et modifier des tâches", rationale: "Private to LifeOS, reversible." },
   { id: "reminder.write", tier: "low", label: "Set reminders", labelFr: "Programmer des rappels", rationale: "Private to LifeOS; a reminder can be edited, snoozed or deleted." },
   { id: "project.write", tier: "low", label: "Create and update projects", labelFr: "Créer et modifier des projets", rationale: "Private to LifeOS, reversible." },

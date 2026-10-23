@@ -120,7 +120,19 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     key: "OPENROUTER_API_KEY",
     model: "OPENROUTER_MODEL",
     models: "OPENROUTER_MODELS",
-    defaults: ["moonshotai/kimi-k3", "deepseek/deepseek-v4-pro", "z-ai/glm-5.3"],
+    // One key, the frontier of every lab: Claude, GPT, Gemini, Kimi, DeepSeek. Ids checked against
+    // openrouter.ai/api/v1/models on 2026-10-23, each with tool calling and reasoning.
+    defaults: [
+      "anthropic/claude-sonnet-5.5",
+      "anthropic/claude-opus-5.5",
+      "openai/gpt-6.1-sol",
+      "google/gemini-4-argon",
+      "moonshotai/kimi-k3",
+      "deepseek/deepseek-v4-pro",
+      "anthropic/claude-haiku-5.5",
+      "deepseek/deepseek-v4.1-flash",
+      "openai/gpt-6-luna",
+    ],
     api: "chat",
     label: "OpenRouter",
   },
@@ -153,7 +165,7 @@ const TIER_ORDER: Tier[] = ["frontier", "strong", "balanced", "fast"];
 export function tierOf(model: string): Tier {
   const m = model.toLowerCase();
   if (
-    /claude-(opus|fable|mythos|sonnet)|gpt-6(\.\d+)?-(astra|sol)|gpt-5\.\d+-sol|deepseek-v4-pro|kimi-k3|kimi-k2\.[6-9]|glm-5\.\d+-prime|qwen3\.\d+-max/.test(m)
+    /claude-(opus|fable|mythos|sonnet)|gpt-6(\.\d+)?-(astra|sol)|gpt-5\.\d+-sol|gemini-4|deepseek-v4-pro|kimi-k3|kimi-k2\.[6-9]|glm-5\.\d+-prime|qwen3\.\d+-max/.test(m)
   ) {
     return "frontier";
   }
@@ -183,7 +195,40 @@ export const TASK_TIERS: Record<AITask, Tier[]> = {
   portrait: ["balanced", "strong", "fast"],
   maps: ["balanced", "fast", "strong"],
   agent: ["frontier", "strong", "balanced", "fast"],
+  agent_deep: ["frontier", "strong", "balanced", "fast"],
+  research: ["frontier", "strong", "balanced", "fast"],
+  search: ["balanced", "strong", "fast", "frontier"],
 };
+
+/**
+ * Within what a task's tiers allow, the models it should try first, best
+ * first — chosen for that work, not by size:
+ *
+ *  - agent: the models that lead tool use and long tasks, at a cost that
+ *    allows many steps (Claude Sonnet first; Opus is kept for "think harder").
+ *  - agent_deep: the deepest reasoning first.
+ *  - research: sub-agents run several at once, each over many steps — fast,
+ *    capable and cheap first (Claude Haiku, DeepSeek Flash, GPT Luna).
+ *  - search: reading search results back costs a few tokens; the cheapest.
+ *
+ * A model matching none of a task's patterns comes after those that do, in
+ * the usual order. Patterns are anchored: a ":batch" or "-pro" variant is
+ * another price, never picked by accident.
+ */
+export const MODEL_RANK: Partial<Record<AITask, RegExp[]>> = {
+  agent: [/claude-sonnet-5\.5$/, /gpt-6\.1-sol$/, /gemini-4-argon$/, /claude-opus-5\.5$/, /kimi-k3$/, /deepseek-v4-pro$/, /glm-5\.3-prime$/],
+  agent_deep: [/claude-opus-5\.5$/, /gpt-6\.1-sol$/, /claude-sonnet-5\.5$/, /gemini-4-argon$/, /kimi-k3$/, /deepseek-v4-pro$/],
+  research: [/claude-haiku-5\.5$/, /deepseek-v4\.1-flash$/, /gpt-6-luna$/, /kimi-k3$/, /claude-sonnet-5\.5$/, /deepseek-v4-pro$/, /gpt-oss-120b$/],
+  search: [/deepseek-v4\.1-flash$/, /claude-haiku-5\.5$/, /gpt-6-luna$/],
+};
+
+/** Where a model stands in a task's ranking; models it does not list come last. */
+export function rankOf(task: AITask, model: string): number {
+  const list = MODEL_RANK[task];
+  if (!list) return 0;
+  const i = list.findIndex((re) => re.test(model));
+  return i >= 0 ? i : list.length;
+}
 
 const unique = <T>(xs: T[]) => [...new Set(xs)];
 const list = (v: string | undefined) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -269,11 +314,13 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
     const providerRank = new Map(unique(deps.routes.map((r) => r.provider)).map((p, i) => [p, i]));
     const index = new Map(deps.routes.map((r, i) => [r.id, i]));
     const capabilityFirst = tiers[0] === "frontier";
+    const ranked = !prefer?.length && MODEL_RANK[task] !== undefined;
     return [...deps.routes].sort((a, b) => {
+      const byRank = ranked ? rankOf(task, a.model) - rankOf(task, b.model) : 0;
       const byTier = tierRank(a.tier) - tierRank(b.tier);
       const byProvider = (providerRank.get(a.provider) ?? 0) - (providerRank.get(b.provider) ?? 0);
       const byIndex = (index.get(a.id) ?? 0) - (index.get(b.id) ?? 0);
-      return capabilityFirst ? byTier || byProvider || byIndex : byProvider || byTier || byIndex;
+      return byRank || (capabilityFirst ? byTier || byProvider || byIndex : byProvider || byTier || byIndex);
     });
   };
 

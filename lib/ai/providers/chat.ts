@@ -5,6 +5,7 @@ import {
   type AgentMessage,
   type CompletionRequest,
   type Effort,
+  type Replay,
   type Route,
   type ToolCall,
   type TurnOutput,
@@ -80,6 +81,49 @@ export function mistralId(id: string): string {
 
 const idFor = (route: Route, id: string) => (route.provider === "mistral" && !/^[a-zA-Z0-9]{9}$/.test(id) ? mistralId(id) : id);
 
+/* ── OpenRouter reasoning ─────────────────────────────────────────── */
+
+type Detail = Record<string, unknown>;
+
+/** The reasoning blocks a turn kept, when they belong to this route's model. */
+export function openRouterDetails(route: Route, replay: Replay | undefined): Detail[] | null {
+  if (route.provider !== "openrouter" || !replay || replay.provider !== "openrouter" || replay.model !== route.model) return null;
+  const details = (replay.data as { details?: unknown } | null)?.details;
+  return Array.isArray(details) && details.length ? (details as Detail[]) : null;
+}
+
+/**
+ * Streamed reasoning blocks, put back together: a fragment carrying an
+ * `index` continues the block with that index; one without continues the
+ * last block of its type, or starts a new one. Text fields are appended in
+ * the order they came; the other fields keep their first value, except the
+ * signature, which arrives last.
+ */
+export function mergeDetails(blocks: Detail[], fragments: unknown): void {
+  if (!Array.isArray(fragments)) return;
+  for (const raw of fragments) {
+    if (!raw || typeof raw !== "object") continue;
+    const f = raw as Detail;
+    const last = blocks[blocks.length - 1];
+    const target =
+      typeof f.index === "number"
+        ? blocks.find((b) => b.index === f.index)
+        : last && last.index === undefined && last.type === f.type
+          ? last
+          : undefined;
+    if (!target) {
+      blocks.push({ ...f });
+      continue;
+    }
+    for (const [k, v] of Object.entries(f)) {
+      if (v === null || v === undefined) continue;
+      if ((k === "text" || k === "summary" || k === "data") && typeof v === "string") target[k] = `${typeof target[k] === "string" ? target[k] : ""}${v}`;
+      else if (k === "signature") target[k] = v;
+      else if (target[k] === undefined || target[k] === null) target[k] = v;
+    }
+  }
+}
+
 /* ── Messages ─────────────────────────────────────────────────────── */
 
 /** A conversation in Chat Completions shape, for this route. */
@@ -99,6 +143,9 @@ export function toChatMessages(route: Route, messages: AgentMessage[]): Record<s
       }
       // DeepSeek wants its own reasoning back on every later turn of a tool conversation.
       if (isDeepSeek(route) && m.replay?.provider === "deepseek" && typeof m.replay.data === "string") msg.reasoning_content = m.replay.data;
+      // OpenRouter: the model's own reasoning blocks, unchanged, to the model that wrote them.
+      const details = openRouterDetails(route, m.replay);
+      if (details) msg.reasoning_details = details;
       out.push(msg);
     } else {
       out.push({ role: "tool", tool_call_id: idFor(route, m.toolCallId), content: m.isError ? `ERROR: ${m.content}` : m.content });
@@ -141,7 +188,12 @@ export function turnBody(route: Route, req: TurnRequest): Record<string, unknown
   } else if (isGptOss(route.model)) {
     body.reasoning_effort = EFFORT[effort].oss;
   } else if (route.provider === "openrouter") {
-    body.reasoning = { effort: EFFORT[effort].openrouter, exclude: true };
+    // Reasoning is returned and sent back with each step, as Claude and GPT expect when they call tools. A
+    // tool step another model answered has no blocks this model wrote: the step after it reasons without.
+    const lastTool = [...req.messages].reverse().find((m) => m.role === "assistant" && m.toolCalls?.length);
+    const foreign = lastTool?.role === "assistant" && (lastTool.replay?.provider !== "openrouter" || lastTool.replay.model !== route.model);
+    body.reasoning = foreign ? { effort: "none" } : { effort: EFFORT[effort].openrouter };
+    body.stream_options = { include_usage: true };
   } else {
     body.temperature = 0.3;
   }
@@ -259,6 +311,8 @@ export const chatTransport = {
     const visible = thinkFilter();
     let text = "";
     let reasoning = "";
+    const details: Detail[] = [];
+    let usage: TurnOutput["usage"];
     let finish: string | null = null;
     const slots: { id: string; name: string; args: string }[] = [];
     try {
@@ -267,9 +321,13 @@ export const chatTransport = {
         signal: req.signal,
       })) as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
       for await (const chunk of stream) {
+        // The usage comes in a last chunk of its own, with no choice.
+        const u = chunk.usage as (OpenAI.CompletionUsage & { cost?: number }) | null | undefined;
+        if (u) usage = { input: u.prompt_tokens ?? 0, output: u.completion_tokens ?? 0, ...(typeof u.cost === "number" ? { cost: u.cost } : {}) };
         const choice = chunk.choices[0];
         if (!choice) continue;
-        const d = choice.delta as OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta & { reasoning_content?: string | null };
+        const d = choice.delta as OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta & { reasoning_content?: string | null; reasoning_details?: unknown };
+        if (route.provider === "openrouter") mergeDetails(details, d.reasoning_details);
         if (d.content) {
           const shown = visible(d.content);
           if (shown) {
@@ -299,7 +357,14 @@ export const chatTransport = {
       text: text.trim(),
       toolCalls,
       stop: stopOf(finish, toolCalls.length),
-      replay: isDeepSeek(route) && reasoning ? { provider: route.provider, model: route.model, data: reasoning } : undefined,
+      // OpenRouter turns always carry a replay, empty or not: it says which model wrote the step.
+      replay:
+        route.provider === "openrouter"
+          ? { provider: route.provider, model: route.model, data: { details } }
+          : isDeepSeek(route) && reasoning
+            ? { provider: route.provider, model: route.model, data: reasoning }
+            : undefined,
+      ...(usage ? { usage } : {}),
     };
   },
 };

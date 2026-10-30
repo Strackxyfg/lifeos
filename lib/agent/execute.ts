@@ -345,6 +345,16 @@ export async function executeCapability(
         return { ok: true, detail: `Read ${host}${page.title ? ` — "${page.title.slice(0, 60)}"` : ""}.`, data };
       }
 
+      case "compute": {
+        const code = typeof payload.code === "string" ? payload.code : "";
+        const { runCode } = await import("./sandbox");
+        const r = await runCode(code);
+        const purpose = str(payload.purpose, 200);
+        const printed = r.logs ? `Printed:\n${r.logs}\n` : "";
+        if (!r.ok) return { ok: false, code: "failed", error: `${printed}${r.error}` };
+        return { ok: true, detail: purpose ? `Computed: ${purpose.slice(0, 80)}.` : "Computed.", data: `${printed}Result:\n${r.value}` };
+      }
+
       case "web.search": {
         const query = str(payload.query, 300);
         if (!query) return { ok: false, error: "A search needs a query.", code: "invalid_payload" };

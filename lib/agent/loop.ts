@@ -1,7 +1,7 @@
 import type { AgentMessage, Effort, ToolCall, TurnRequest, TurnResult } from "@/lib/ai/types";
 import type { RiskTier } from "./capabilities";
 import type { Decision } from "./policy";
-import { INJECTION_NOTE, checkArgs, clipResult, looksLikeInjection, tierOfTool, type AgentTool, type Source } from "./tools";
+import { INJECTION_NOTE, checkArgs, clipResult, isReadOnly, looksLikeInjection, tierOfTool, type AgentTool, type Source } from "./tools";
 
 /**
  * The agent's loop: think, call tools, read what they return, again — until
@@ -23,7 +23,9 @@ export type StopKind = "end" | "approval" | "limit" | "max_tokens" | "refusal" |
 export type LoopErrorCode = "unavailable" | "rate_limited" | "failed" | "stale" | "aborted";
 
 export type AgentEvent =
-  | { t: "model"; route: string; provider: string; model: string }
+  | { t: "model"; route: string; provider: string; model: string; cost?: number }
+  /** A research sub-agent's progress: which one, what it is doing, how far it is. */
+  | { t: "sub"; call: string; n: number; title: string; state: "running" | "done" | "error"; tool?: { name: string; args: Record<string, unknown> }; steps: number; sources?: Source[] }
   | { t: "text"; d: string }
   | {
       t: "step";
@@ -39,7 +41,9 @@ export type AgentEvent =
   | { t: "approval"; id: string; name: string; capability: string; tier: RiskTier; args: Record<string, unknown>; reason: string }
   | { t: "transcript"; messages: AgentMessage[] }
   | { t: "end"; stop: StopKind; steps: number }
-  | { t: "error"; code: LoopErrorCode };
+  | { t: "error"; code: LoopErrorCode }
+  /** What they wrote may be heavy for them: the page shows who to call, whatever the model writes. */
+  | { t: "care"; level: "distress" | "crisis" };
 
 export interface Outcome {
   ok: boolean;
@@ -63,8 +67,10 @@ export interface LoopDeps {
   system: string;
   tools: AgentTool[];
   turn(req: TurnRequest): Promise<TurnResult>;
-  decide(capability: string): Decision;
-  execute(tool: AgentTool, args: Record<string, unknown>): Promise<Outcome>;
+  /** The policy's word on a call — with its arguments and the conversation, for decisions that depend on them (where a web address came from). */
+  decide(capability: string, args: Record<string, unknown>, messages: AgentMessage[]): Decision;
+  /** `callId` names the call, for a tool whose progress the page follows (research). */
+  execute(tool: AgentTool, args: Record<string, unknown>, callId?: string): Promise<Outcome>;
   journal(entry: JournalEntry): Promise<void>;
   emit(e: AgentEvent): void;
   /** Model turns this request may take. */
@@ -138,31 +144,38 @@ const toolMessage = (call: ToolCall, content: string, isError = false): AgentMes
 /**
  * Answers calls in order. Returns the index of the call that needs the
  * owner's approval (the loop pauses there), or -1 when every call was answered.
+ *
+ * Calls that only read run at the same time — five searches take the time of
+ * one; a call that writes runs on its own, in its turn. Results go into the
+ * conversation in the order the model asked for them.
  */
 async function answer(calls: ToolCall[], messages: AgentMessage[], deps: LoopDeps): Promise<number> {
   const byName = new Map(deps.tools.map((t) => [t.spec.name, t]));
+  const results: (AgentMessage | null)[] = calls.map(() => null);
+  const reads: Promise<void>[] = [];
+  let paused = -1;
   for (let i = 0; i < calls.length; i++) {
     const call = calls[i];
     const tool = byName.get(call.name);
     if (!tool) {
-      messages.push(toolMessage(call, `Unknown tool "${call.name}". Use only the tools you were given.`, true));
+      results[i] = toolMessage(call, `Unknown tool "${call.name}". Use only the tools you were given.`, true);
       deps.emit({ t: "step", id: call.id, name: call.name, args: {}, state: "error", summary: "unknown tool" });
       continue;
     }
     if (call.invalid !== undefined) {
-      messages.push(toolMessage(call, "The arguments were not valid JSON. Call the tool again with a JSON object.", true));
+      results[i] = toolMessage(call, "The arguments were not valid JSON. Call the tool again with a JSON object.", true);
       deps.emit({ t: "step", id: call.id, name: call.name, args: {}, state: "error", summary: "invalid arguments" });
       continue;
     }
     const checked = checkArgs(tool.spec.parameters, call.arguments);
     if (!checked.ok) {
-      messages.push(toolMessage(call, checked.error, true));
+      results[i] = toolMessage(call, checked.error, true);
       deps.emit({ t: "step", id: call.id, name: call.name, args: call.arguments, state: "error", summary: checked.error });
       continue;
     }
-    const decision = deps.decide(tool.capability);
+    const decision = deps.decide(tool.capability, checked.args, messages);
     if (decision.action === "deny") {
-      messages.push(toolMessage(call, `Refused: ${decision.reason}`, true));
+      results[i] = toolMessage(call, `Refused: ${decision.reason}`, true);
       await deps.journal({ capability: tool.capability, decision: "deny", reason: decision.reason, payload: checked.args });
       deps.emit({ t: "step", id: call.id, name: call.name, args: checked.args, state: "denied", summary: decision.reason });
       continue;
@@ -177,24 +190,31 @@ async function answer(calls: ToolCall[], messages: AgentMessage[], deps: LoopDep
         args: checked.args,
         reason: decision.reason,
       });
-      return i;
+      paused = i;
+      break;
     }
-    await run(call, tool, checked.args, messages, deps, false);
+    if (isReadOnly(tool)) {
+      reads.push(run(call, tool, checked.args, deps, false).then((m) => void (results[i] = m)));
+    } else {
+      results[i] = await run(call, tool, checked.args, deps, false);
+    }
   }
-  return -1;
+  await Promise.all(reads);
+  for (const m of results) if (m) messages.push(m);
+  return paused;
 }
 
-async function run(call: ToolCall, tool: AgentTool, args: Record<string, unknown>, messages: AgentMessage[], deps: LoopDeps, approved: boolean) {
+async function run(call: ToolCall, tool: AgentTool, args: Record<string, unknown>, deps: LoopDeps, approved: boolean): Promise<AgentMessage> {
   deps.emit({ t: "step", id: call.id, name: call.name, args, state: "running" });
   let out: Outcome;
   try {
-    out = await deps.execute(tool, args);
+    out = await deps.execute(tool, args, call.id);
   } catch (e) {
     out = { ok: false, content: e instanceof Error ? e.message : "The tool failed.", summary: "failed" };
   }
   const text = out.ok ? out.content || out.summary : `Failed: ${out.content || out.summary}`;
   const flagged = out.ok && looksLikeInjection(text);
-  messages.push(toolMessage(call, flagged ? `${INJECTION_NOTE}\n\n${text}` : text, !out.ok));
+  const message = toolMessage(call, flagged ? `${INJECTION_NOTE}\n\n${text}` : text, !out.ok);
   await deps.journal({
     capability: tool.capability,
     decision: out.ok ? "allow" : "deny",
@@ -212,6 +232,7 @@ async function run(call: ToolCall, tool: AgentTool, args: Record<string, unknown
     sources: out.sources,
     ...(flagged ? { flagged: true } : {}),
   });
+  return message;
 }
 
 /* ── The loop ─────────────────────────────────────────────────────── */
@@ -253,7 +274,13 @@ async function loop(messages: AgentMessage[], deps: LoopDeps, steps0 = 0): Promi
     }
     steps++;
     route = out.route.id;
-    deps.emit({ t: "model", route: out.route.id, provider: out.route.provider, model: out.route.model });
+    deps.emit({
+      t: "model",
+      route: out.route.id,
+      provider: out.route.provider,
+      model: out.route.model,
+      ...(typeof out.usage?.cost === "number" ? { cost: out.usage.cost } : {}),
+    });
     messages.push({
       role: "assistant",
       content: out.text,
@@ -320,13 +347,13 @@ export async function resume(messages: AgentMessage[], decision: { id: string; a
     // Approval is the owner's word on this call, not a pass around the
     // rules: decided again now — the kill switch, a forbidden action, an
     // edition that no longer opens it all still win.
-    const now = deps.decide(tool.capability);
+    const now = deps.decide(tool.capability, checked.args, convo);
     if (now.action === "deny") {
       convo.push(toolMessage(call, `Refused: ${now.reason}`, true));
       await deps.journal({ capability: tool.capability, decision: "deny", reason: now.reason, payload: checked.args });
       deps.emit({ t: "step", id: call.id, name: call.name, args: checked.args, state: "denied", summary: now.reason });
     } else {
-      await run(call, tool, checked.args, convo, deps, true);
+      convo.push(await run(call, tool, checked.args, deps, true));
     }
   }
 

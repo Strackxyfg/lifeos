@@ -29,14 +29,35 @@ export function normalizeUrl(raw: string): string | null {
   return href.endsWith("/") && u.pathname !== "/" ? href.slice(0, -1) : href.replace(/\/$/, "");
 }
 
-/** Every address the person wrote or a tool returned in this conversation. */
+/** Tools whose results come from the web itself, not from a model's pen. */
+const FROM_THE_WEB = new Set(["web_search", "web_read"]);
+export const SOURCES_OPEN = "<<<SOURCES CONSULTED>>>";
+export const SOURCES_CLOSE = "<<<END OF SOURCES>>>";
+
+/**
+ * Every address the person wrote or the web returned in this conversation.
+ * Text a model wrote — its answers, a sub-agent's report, a program's
+ * output — could carry an address it composed, so it does not count; of a
+ * research report, only the list of pages its sub-agents actually opened,
+ * written by LifeOS between the markers, does.
+ */
 export function knownUrls(messages: AgentMessage[]): Set<string> {
   const known = new Set<string>();
-  for (const m of messages) {
-    if (m.role !== "user" && m.role !== "tool") continue;
-    for (const match of m.content.matchAll(URL_IN_TEXT)) {
+  const take = (text: string) => {
+    for (const match of text.matchAll(URL_IN_TEXT)) {
       const n = normalizeUrl(match[0]);
       if (n) known.add(n);
+    }
+  };
+  for (const m of messages) {
+    if (m.role === "user") take(m.content);
+    else if (m.role === "tool" && !m.isError) {
+      if (FROM_THE_WEB.has(m.name)) take(m.content);
+      else if (m.name === "research") {
+        const start = m.content.indexOf(SOURCES_OPEN);
+        const end = m.content.indexOf(SOURCES_CLOSE);
+        if (start >= 0 && end > start) take(m.content.slice(start, end));
+      }
     }
   }
   return known;

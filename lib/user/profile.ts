@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
+import { unstable_rethrow } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { isMissingTable } from "@/lib/db/errors";
 import type { DbProfile, ProfilePatch } from "@/lib/db/types";
@@ -86,6 +87,9 @@ export const loadStoredProfile = cache(async function loadStoredProfile(): Promi
     const { getStore, getUserKey } = await import("@/lib/db/store");
     return await getStore().getProfile(await getUserKey());
   } catch (err) {
+    // Next's own signals (a page that reads cookies is rendered per request) are not failures: let them through,
+    // or a page whose only dynamic read is this one would be built once, static, with nobody's profile.
+    unstable_rethrow(err);
     if (!isMissingTable(err)) console.error("[profile] read failed", err);
     return null;
   }

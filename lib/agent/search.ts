@@ -27,8 +27,12 @@ export type SearchOutcome = { ok: true; results: SearchResult[]; brief: string }
 
 export const SEARCH_LIMITS = { results: 8, excerpt: 700, query: 300, timeoutMs: 30_000 } as const;
 
+/** An OpenRouter route exists and is not resting after an error (a refused key rests the provider for an hour). */
 export function searchAvailable(): boolean {
-  return ai().routes.some((r) => r.provider === "openrouter");
+  const now = Date.now();
+  return ai()
+    .health()
+    .some((h) => h.provider === "openrouter" && h.openUntil <= now);
 }
 
 const clip = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);

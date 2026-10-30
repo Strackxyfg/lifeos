@@ -29,10 +29,12 @@ describe("MCP tool surface", () => {
     }
   });
 
-  it("publishes every capability that is not forbidden", () => {
-    for (const cap of CAPABILITIES.filter((c) => c.tier !== "forbidden")) {
+  it("publishes every capability that is not forbidden — except those only the app's agent runs", () => {
+    for (const cap of CAPABILITIES.filter((c) => c.tier !== "forbidden" && c.id !== "agent.research")) {
       expect(tools.find((t) => t.name === toToolName(cap.id)), cap.id).toBeDefined();
     }
+    // Research drives other agents on LifeOS's model budget: never offered to an outside client.
+    expect(tools.find((t) => t.name === toToolName("agent.research"))).toBeUndefined();
   });
 
   it("round-trips tool names back to capability ids", () => {

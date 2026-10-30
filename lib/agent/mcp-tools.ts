@@ -192,7 +192,20 @@ const SCHEMAS: Record<string, McpTool["inputSchema"]> = {
     properties: { url: str("A public page to read.") },
     required: ["url"],
   },
+  "web.search": {
+    type: "object",
+    properties: { query: str("What to search for."), max: num("How many results, 1 to 8.") },
+    required: ["query"],
+  },
+  compute: {
+    type: "object",
+    properties: { code: str("A short JavaScript program; the value of its last expression is returned."), purpose: str("What it computes.") },
+    required: ["code"],
+  },
 };
+
+/** Capabilities that only the agent in the app can run (they drive other agents). */
+const APP_ONLY = new Set(["agent.research"]);
 
 const GENERIC: McpTool["inputSchema"] = {
   type: "object",
@@ -210,7 +223,7 @@ function describe(cap: Capability): string {
 }
 
 export function listMcpTools(): McpTool[] {
-  return CAPABILITIES.filter((c) => c.tier !== "forbidden").map((cap) => ({
+  return CAPABILITIES.filter((c) => c.tier !== "forbidden" && !APP_ONLY.has(c.id)).map((cap) => ({
     name: toToolName(cap.id),
     description: describe(cap),
     inputSchema: SCHEMAS[cap.id] ?? GENERIC,

@@ -34,7 +34,7 @@ function harness(script: Script, opts: { autonomy?: AutonomyLevel; killSwitch?: 
   };
   const deps: LoopDeps = {
     system: "SYSTEM",
-    tools: opts.tools ?? toolsFor({ edition: "team", supabase: true, email: true, reminders: true, self: true }),
+    tools: opts.tools ?? toolsFor({ edition: "team", supabase: true, email: true, reminders: true, self: true, search: true }),
     turn: async (req) => {
       requests.push(structuredClone({ ...req, onText: undefined, signal: undefined }));
       const out = script(req, n++);
@@ -249,18 +249,22 @@ describe("what the model is sent", () => {
 
 describe("the tools", () => {
   it("offers each tool only in the editions that open it, and only where it can work", () => {
-    const personal = toolsFor({ edition: "personal", supabase: false, email: false, reminders: true, self: true }).map((t) => t.spec.name);
+    const personal = toolsFor({ edition: "personal", supabase: false, email: false, reminders: true, self: true, search: true }).map((t) => t.spec.name);
     expect(personal).toContain("brain_search");
     expect(personal).toContain("reminder_create");
     expect(personal).toContain("web_read");
+    expect(personal).toContain("web_search");
+    expect(personal).toContain("compute");
+    expect(personal).toContain("research");
     expect(personal).not.toContain("workspace_overview");
     expect(personal).not.toContain("deal_create");
-    const solo = toolsFor({ edition: "solo", supabase: false, email: false, reminders: false, self: false }).map((t) => t.spec.name);
+    const solo = toolsFor({ edition: "solo", supabase: false, email: false, reminders: false, self: false, search: false }).map((t) => t.spec.name);
     expect(solo).toContain("deal_create");
     expect(solo).not.toContain("reminder_create");
     expect(solo).not.toContain("email_draft"); // drafts live in Supabase
     expect(solo).not.toContain("email_send");
-    const full = toolsFor({ edition: "team", supabase: true, email: true, reminders: true, self: true });
+    expect(solo).not.toContain("web_search"); // no search provider configured
+    const full = toolsFor({ edition: "team", supabase: true, email: true, reminders: true, self: true, search: true });
     expect(full).toHaveLength(AGENT_TOOLS.length);
     for (const t of AGENT_TOOLS) expect(includes("team", t.feature)).toBe(true);
   });

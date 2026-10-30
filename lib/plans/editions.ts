@@ -91,10 +91,10 @@ export const addedBy = (edition: Edition): Feature[] => FEATURES.filter((f) => H
  * one), and how many model turns one request may take. Bounds on cost and on
  * runaway loops, not on what it can reach.
  */
-export const LIMITS: Record<Edition, { agentRunsPerDay: number; agentSteps: number }> = {
-  personal: { agentRunsPerDay: 40, agentSteps: 8 },
-  solo: { agentRunsPerDay: 150, agentSteps: 16 },
-  team: { agentRunsPerDay: 400, agentSteps: 24 },
+export const LIMITS: Record<Edition, { agentRunsPerDay: number; agentSteps: number; researchAgents: number; researchSteps: number }> = {
+  personal: { agentRunsPerDay: 40, agentSteps: 12, researchAgents: 3, researchSteps: 6 },
+  solo: { agentRunsPerDay: 150, agentSteps: 20, researchAgents: 5, researchSteps: 8 },
+  team: { agentRunsPerDay: 400, agentSteps: 30, researchAgents: 8, researchSteps: 10 },
 };
 
 /** Which navigation entries belong to which feature. */

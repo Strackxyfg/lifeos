@@ -19,6 +19,7 @@ import {
   applyEvent, decide, emptyAgentTurn, pendingApproval, sourcesOf, stepLabel, textOf, type AgentTurn, type Segment, type Turn,
 } from "./agent-view";
 import { RichText } from "./rich-text";
+import { CareCard } from "@/components/self/care-card";
 
 /**
  * The agent in the app: a conversation where it looks things up, acts, and
@@ -321,6 +322,22 @@ export function AgentThread({ firstName, business }: { firstName: string; busine
   );
 }
 
+/** An argument as the owner reads it: a list one item per line (by its title when it has one), never "[object Object]". */
+const shown = (v: unknown): string =>
+  Array.isArray(v)
+    ? v.map((x) => `• ${x && typeof x === "object" && "title" in x ? String((x as { title: unknown }).title) : shown(x)}`).join("\n")
+    : v && typeof v === "object"
+      ? JSON.stringify(v)
+      : String(v);
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+};
+
 const pendingApprovalIn = (turn: AgentTurn) => turn.segments.some((s) => s.kind === "approval" && s.status === "pending");
 
 function Toggle({ on, onClick, icon, label, short, hint }: { on: boolean; onClick: () => void; icon: React.ReactNode; label: string; short: string; hint: string }) {
@@ -376,6 +393,7 @@ function AgentTurnView({ turn, live, onDecide, disabled }: { turn: AgentTurn; li
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, ease }}>
       <AgentBubble>
+        {turn.care === "crisis" && <CareCard />}
         {turn.segments.map((s, i) => (
           <SegmentView key={s.kind === "text" ? `t${i}` : s.id + s.kind} segment={s} onDecide={onDecide} disabled={disabled} />
         ))}
@@ -392,19 +410,34 @@ function AgentTurnView({ turn, live, onDecide, disabled }: { turn: AgentTurn; li
         {!live && (sources.length > 0 || turn.model || text) && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-1">
             {sources.length > 0 && <span className="text-[0.7rem] text-muted">{t.sources}</span>}
-            {sources.map((s) => (
-              <Link
-                key={s.id}
-                href={`/brain?note=${encodeURIComponent(s.id)}`}
-                className="max-w-[14rem] truncate rounded-full border border-border px-2 py-0.5 text-[0.72rem] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
-              >
-                {s.t}
-              </Link>
-            ))}
+            {sources.map((s) =>
+              s.id ? (
+                <Link
+                  key={`n:${s.id}`}
+                  href={`/brain?note=${encodeURIComponent(s.id)}`}
+                  className="max-w-[14rem] truncate rounded-full border border-border px-2 py-0.5 text-[0.72rem] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+                >
+                  {s.t}
+                </Link>
+              ) : s.url ? (
+                <a
+                  key={`u:${s.url}`}
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  title={s.url}
+                  className="inline-flex max-w-[16rem] items-center gap-1 truncate rounded-full border border-border px-2 py-0.5 text-[0.72rem] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+                >
+                  <span className="shrink-0 text-muted">{hostOf(s.url)}</span>
+                  <span className="truncate">{s.t}</span>
+                </a>
+              ) : null
+            )}
             {text && <SpeakButton text={text} compact className="h-6 w-6 justify-center" />}
             {turn.model && (
               <span className="text-[0.7rem] text-muted" title={turn.steps ? plural(locale, turn.steps, t.steps) : undefined}>
                 {fill(t.model, { model: `${turn.model} · ${PROVIDER_LABEL[turn.provider ?? ""] ?? turn.provider ?? ""}` })}
+                {typeof turn.cost === "number" && turn.cost > 0 && ` · ${fill(t.cost, { cost: turn.cost < 0.01 ? "< 0,01" : turn.cost.toFixed(2) })}`}
               </span>
             )}
           </div>
@@ -445,6 +478,34 @@ function SegmentView({ segment: s, onDecide, disabled }: { segment: Segment; onD
               <ShieldAlert className="mt-0.5 h-3 w-3 shrink-0" aria-hidden /> {t.injection}
             </span>
           )}
+          {s.name === "compute" && typeof s.args.code === "string" && (
+            <details className="mt-1">
+              <summary className="cursor-pointer text-[0.75rem] text-muted hover:text-foreground">{t.showCode}</summary>
+              <pre className="mt-1 max-h-60 overflow-auto rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[0.75rem] leading-relaxed text-foreground/85">
+                {s.args.code}
+              </pre>
+            </details>
+          )}
+          {s.subs && s.subs.length > 0 && (
+            <ul className="mt-1.5 space-y-1 border-l border-border pl-3">
+              {s.subs.map((a) => (
+                <li key={a.n} className="text-[0.78rem]">
+                  <span className="flex items-center gap-1.5">
+                    {a.state === "running" ? (
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-accent" aria-hidden />
+                    ) : a.state === "done" ? (
+                      <Check className="h-3 w-3 shrink-0 text-success" aria-hidden />
+                    ) : (
+                      <X className="h-3 w-3 shrink-0 text-danger" aria-hidden />
+                    )}
+                    <span className="text-foreground/85">{a.title}</span>
+                    <span className="text-muted">· {fill(t.subSteps, { n: a.steps })}</span>
+                  </span>
+                  {a.state === "running" && a.tool && <span className="ml-4.5 block truncate pl-[1.125rem] text-[0.72rem] text-muted">{stepLabel(t.tools, a.tool.name, a.tool.args)}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
         </span>
       </div>
     );
@@ -466,7 +527,7 @@ function ApprovalCard({
   const m = useMessages();
   const t = m.agentChat;
   const fields = Object.entries(card.args).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== "");
-  const long = (k: string) => k === "body" || k === "detail";
+  const long = (k: string) => k === "body" || k === "detail" || k === "code" || k === "tasks";
   return (
     <div className={cn("rounded-xl border p-3.5", card.status === "pending" ? "border-warning/50 bg-warning/5" : "border-border bg-surface-2/40")}>
       <div className="flex flex-wrap items-center gap-2">
@@ -486,7 +547,7 @@ function ApprovalCard({
                   long(k) && "mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-surface px-3 py-2"
                 )}
               >
-                {String(v)}
+                {shown(v)}
               </dd>
             </div>
           ))}

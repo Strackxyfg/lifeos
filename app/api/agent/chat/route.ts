@@ -15,8 +15,12 @@ import { executeCapability } from "@/lib/agent/execute";
 import { decider, interactivePolicy } from "@/lib/agent/interactive";
 import { journal } from "@/lib/agent/journal";
 import { resume, start, type AgentEvent, type LoopDeps, type Outcome } from "@/lib/agent/loop";
-import { agentSystem } from "@/lib/agent/prompt";
-import { sourcesIn, toolsFor, type AgentTool } from "@/lib/agent/tools";
+import { personaFor } from "@/lib/agent/persona";
+import { agentSystem, localNow } from "@/lib/agent/prompt";
+import { isKnownUrl } from "@/lib/agent/provenance";
+import { runResearch, type ResearchTask } from "@/lib/agent/research";
+import { searchAvailable } from "@/lib/agent/search";
+import { isReadOnly, sourcesIn, toolsFor, webSourcesIn, type AgentTool } from "@/lib/agent/tools";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -119,29 +123,52 @@ export async function POST(req: Request) {
     store.supportsSelf().catch(() => false),
     interactivePolicy(userKey, parsed.strict === true),
   ]);
-  const tools = toolsFor({ edition, supabase: isSupabaseConfigured(), email: isEmailConfigured(), reminders, self });
+  const tools = toolsFor({ edition, supabase: isSupabaseConfigured(), email: isEmailConfigured(), reminders, self, search: searchAvailable() });
   const m = dictionaries[locale];
-  const system = agentSystem({
-    locale,
-    now: new Date(),
-    zone,
-    person: {
-      name: profile.name === "there" ? undefined : profile.name,
-      profession: profile.profession,
-      areas: profile.areas.map((a) => m.onboarding.areas[a]),
-    },
-    edition,
-    tools: tools.map((t) => t.spec.name),
+  const now = new Date();
+  const person = {
+    name: profile.name === "there" ? undefined : profile.name,
+    profession: profile.profession,
+    areas: profile.areas.map((a) => m.onboarding.areas[a]),
+  };
+  const history = parsed.messages as AgentMessage[];
+  const userMessages = [...history.flatMap((x) => (x.role === "user" ? [x.content] : [])), ...(parsed.input ? [parsed.input] : [])];
+  const persona = await personaFor({ store, userKey, locale, zone, now, person, userMessages }).catch((err) => {
+    console.error("[agent] persona failed", err instanceof Error ? err.message : err);
+    return null;
   });
+  const system = agentSystem({ locale, now, zone, person, edition, tools: tools.map((t) => t.spec.name), persona: persona?.text });
 
-  const execute = async (tool: AgentTool, args: Record<string, unknown>): Promise<Outcome> => {
+  // Web pages may be read freely when their address came from the person or from the web itself (`provenance.ts`).
+  const base = decider(policy);
+  const decide = (capability: string, args: Record<string, unknown>, messages: AgentMessage[]) =>
+    capability === "web.research" && !policy.killSwitch && isKnownUrl(args.url, messages)
+      ? { action: "allow" as const, reason: "A page found in this conversation." }
+      : base(capability);
+  const deep = parsed.effort === "high";
+  const turn: LoopDeps["turn"] = async (r) => {
+    try {
+      return await ai().turn({ ...r, task: r.task === "research" ? "research" : deep ? "agent_deep" : "agent" });
+    } catch (err) {
+      // Every route failed: why, for whoever reads the server's log (never the conversation).
+      console.warn("[agent] model turn failed:", err instanceof Error ? err.message.slice(0, 300) : err);
+      throw err;
+    }
+  };
+
+  /** One capability, run by the shared executor, with what the page shows of it. */
+  const runCapability = async (tool: AgentTool, args: Record<string, unknown>): Promise<Outcome> => {
     // A reminder keeps the person's clock; the model gives the wall time only.
     const payload = tool.capability === "reminder.write" ? { ...args, zone } : args;
     const r = await executeCapability(userKey, tool.capability, payload);
     if (!r.ok) return { ok: false, content: r.error, summary: r.error };
     const content = r.data ? `${r.detail}\n\n${r.data}` : r.detail;
     const created = tool.capability === "brain.write" ? r.data?.match(/^id: (\S+)/)?.[1] : undefined;
-    const sources = created ? [{ id: created, t: String(args.title ?? "").slice(0, 80) }] : sourcesIn(r.data ?? "");
+    const sources = created
+      ? [{ id: created, t: String(args.title ?? "").slice(0, 80) }]
+      : tool.capability === "web.search" || tool.capability === "web.research"
+        ? webSourcesIn(r.data ?? "")
+        : sourcesIn(r.data ?? "");
     return { ok: true, content, summary: r.detail, sources };
   };
 
@@ -157,21 +184,46 @@ export async function POST(req: Request) {
           open = false;
         }
       };
+      // The lead's conversation as of its latest decision: what its sub-agents may build on.
+      let lead: AgentMessage[] = history;
+      const workerTools = tools.filter((t) => isReadOnly(t) && t.spec.name !== "research");
+      const execute: LoopDeps["execute"] = async (tool, args, callId) => {
+        if (tool.capability !== "agent.research") return runCapability(tool, args);
+        return runResearch((args.tasks as ResearchTask[]) ?? [], {
+          leadMessages: lead,
+          tools: workerTools,
+          turn,
+          decide,
+          execute: runCapability,
+          journal: (entry) => journal(userKey, entry),
+          emit,
+          callId: callId ?? "research",
+          maxAgents: LIMITS[edition].researchAgents,
+          maxSteps: LIMITS[edition].researchSteps,
+          concurrency: 4,
+          today: localNow(now, zone),
+          language: locale === "fr" ? "French" : "English",
+          signal: req.signal,
+        });
+      };
       const deps: LoopDeps = {
         system,
         tools,
-        turn: (r) => ai().turn(r),
-        decide: decider(policy),
+        turn,
+        decide: (capability, args, messages) => {
+          lead = messages;
+          return decide(capability, args, messages);
+        },
         execute,
         journal: (entry) => journal(userKey, entry),
         emit,
         maxSteps: LIMITS[edition].agentSteps,
-        maxTokens: 4_000,
-        effort: parsed.effort ?? "medium",
+        maxTokens: deep ? 12_000 : 8_000,
+        effort: deep ? "high" : "medium",
         signal: req.signal,
         stickTo: parsed.route,
       };
-      const history = parsed.messages as AgentMessage[];
+      if (persona && persona.care !== "none") emit({ t: "care", level: persona.care });
       try {
         const result = parsed.decision
           ? await resume(history, parsed.decision, deps)

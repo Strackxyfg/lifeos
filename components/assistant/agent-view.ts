@@ -9,7 +9,7 @@ import type { RiskTier } from "@/lib/agent/capabilities";
 
 export type Segment =
   | { kind: "text"; text: string }
-  | { kind: "step"; id: string; name: string; args: Record<string, unknown>; state: StepState; summary?: string; sources?: Source[]; flagged?: boolean }
+  | { kind: "step"; id: string; name: string; args: Record<string, unknown>; state: StepState; summary?: string; sources?: Source[]; flagged?: boolean; subs?: SubAgent[] }
   | {
       kind: "approval";
       id: string;
@@ -29,6 +29,20 @@ export interface AgentTurn {
   stop?: StopKind;
   steps: number;
   error?: string;
+  /** What the models reported this turn cost, in US dollars, when they report it. */
+  cost?: number;
+  /** What they wrote may be heavy for them: the page shows who to call. */
+  care?: "distress" | "crisis";
+}
+
+/** One research sub-agent, as its research step shows it. */
+export interface SubAgent {
+  n: number;
+  title: string;
+  state: "running" | "done" | "error";
+  tool?: { name: string; args: Record<string, unknown> };
+  steps: number;
+  sources?: Source[];
 }
 
 export type Turn = { role: "user"; text: string } | AgentTurn;
@@ -47,7 +61,18 @@ export function applyEvent(turn: AgentTurn, e: AgentEvent): AgentTurn {
     }
     case "step": {
       const at = segments.findIndex((s) => s.kind === "step" && s.id === e.id);
-      const step: Segment = { kind: "step", id: e.id, name: e.name, args: e.args, state: e.state, summary: e.summary, sources: e.sources, ...(e.flagged ? { flagged: true } : {}) };
+      const prior = at >= 0 ? (segments[at] as Extract<Segment, { kind: "step" }>) : null;
+      const step: Segment = {
+        kind: "step",
+        id: e.id,
+        name: e.name,
+        args: e.args,
+        state: e.state,
+        summary: e.summary,
+        sources: e.sources,
+        ...(e.flagged ? { flagged: true } : {}),
+        ...(prior?.subs ? { subs: prior.subs } : {}),
+      };
       // A step that follows the owner's decision replaces nothing: the card stays, the step follows it.
       if (at >= 0) segments[at] = step;
       else segments.push(step);
@@ -59,7 +84,22 @@ export function applyEvent(turn: AgentTurn, e: AgentEvent): AgentTurn {
       return { ...turn, segments };
     }
     case "model":
-      return { ...turn, model: e.model, provider: e.provider };
+      return { ...turn, model: e.model, provider: e.provider, ...(typeof e.cost === "number" ? { cost: (turn.cost ?? 0) + e.cost } : {}) };
+    case "care":
+      return { ...turn, care: e.level };
+    case "sub": {
+      const at = segments.findIndex((x) => x.kind === "step" && x.id === e.call);
+      if (at < 0) return turn;
+      const step = segments[at] as Extract<Segment, { kind: "step" }>;
+      const sub: SubAgent = { n: e.n, title: e.title, state: e.state, steps: e.steps, ...(e.tool ? { tool: e.tool } : {}), ...(e.sources ? { sources: e.sources } : {}) };
+      const subs = [...(step.subs ?? [])];
+      const i = subs.findIndex((x) => x.n === e.n);
+      if (i >= 0) subs[i] = { ...subs[i], ...sub, tool: e.state === "running" ? (e.tool ?? subs[i].tool) : undefined };
+      else subs.push(sub);
+      subs.sort((a, b) => a.n - b.n);
+      segments[at] = { ...step, subs };
+      return { ...turn, segments };
+    }
     case "end":
       return { ...turn, stop: e.stop, steps: turn.steps + e.steps };
     case "error":
@@ -79,11 +119,18 @@ export function decide(turn: AgentTurn, id: string, approve: boolean): AgentTurn
   };
 }
 
-/** The notes the turn's steps relied on, once each. */
+/** The notes and pages the turn's steps relied on, once each — notes first. */
 export function sourcesOf(turn: AgentTurn): Source[] {
   const seen = new Map<string, Source>();
-  for (const s of turn.segments) if (s.kind === "step" && s.state === "done") for (const src of s.sources ?? []) if (!seen.has(src.id)) seen.set(src.id, src);
-  return [...seen.values()].slice(0, 8);
+  for (const s of turn.segments) {
+    if (s.kind !== "step" || s.state !== "done") continue;
+    for (const src of s.sources ?? []) {
+      const key = src.id ? `n:${src.id}` : src.url ? `u:${src.url}` : null;
+      if (key && !seen.has(key)) seen.set(key, src);
+    }
+  }
+  const all = [...seen.values()];
+  return [...all.filter((x) => x.id), ...all.filter((x) => !x.id)].slice(0, 12);
 }
 
 /** The text the agent wrote, all of it — what "read aloud" reads. */

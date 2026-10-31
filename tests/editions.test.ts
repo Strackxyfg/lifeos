@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// The first import of the server modules is slow when the whole suite runs at once.
+vi.setConfig({ testTimeout: 30_000 });
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import {

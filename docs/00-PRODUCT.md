@@ -557,6 +557,34 @@ prochaine action, les tensions à arbitrer, ce qui a été capturé et relié ce
 semaine, les notes à revoir — puis situent les projets et les finances. Sans
 IA, le même texte est calculé depuis les mêmes faits.
 
+## 11 bis. Les ventes — devis, factures, avoirs ✅
+
+Édition Solo (G V). Un annuaire de clients, un catalogue, et des devis,
+factures et avoirs **numérotés sans trou** (DEV/FAC/AV-année-numéro, une série
+par type et par an), avec les mentions que la loi demande, imprimés sur A4 ou
+enregistrés en PDF — toujours en français, quelle que soit la langue de
+l'écran.
+
+- **Brouillon** librement modifiable, avec la feuille telle qu'elle sera
+  imprimée à côté, et ce qui bloque encore l'émission listé pendant la saisie
+  (les mêmes règles que le serveur).
+- **Émission** : le numéro suivant, la date du jour, et le document figé — le
+  client et l'entreprise copiés tels qu'ils sont ce jour-là. Un document émis
+  ne se modifie ni ne se supprime ; la base elle-même le refuse (migration 017).
+- **Après** : un devis accepté devient une facture ; une facture reçoit ses
+  paiements (jamais plus que le reste dû), inscrits aussi dans Finances comme
+  recettes ; une facture s'annule par un avoir.
+- **Montants exacts** : centimes et entiers longs, un seul arrondi, TVA par
+  taux ; franchise en base (art. 293 B du CGI) ; SIREN, SIRET, n° de TVA et IBAN
+  vérifiés par leur clé.
+- **L'agent** lit les chiffres et prépare des brouillons ; il n'émet jamais —
+  c'est un acte de la personne.
+- **Ce que LifeOS n'est pas** : une plateforme agréée de facturation
+  électronique (obligatoire pour l'émission des TPE au 1er septembre 2027 — la
+  page le dit), ni un logiciel comptable.
+
+Détails : `docs/22-SALES.md`.
+
 ## 12. Notion — export facultatif ✅
 
 Depuis les Paramètres, une fois Notion connecté : LifeOS montre les bases qu'il
@@ -671,8 +699,10 @@ de 5 s, testées.
 
 ## 16. Avant de lancer
 
-1. **Appliquer les migrations 013, 014, 015 puis 016** dans Supabase (007 à
-   012 sont faites). Sans 013 : ni trésorerie datée, ni soldes, ni rappels
+1. **Appliquer les migrations 013, 014, 015, 016 puis 017** dans Supabase (007
+   à 012 sont faites). Sans 017 : pas de ventes (la page le dit) ; 017 a été
+   relue mais **pas encore exécutée sur Postgres** — la passer une fois sur le
+   vrai projet, puis faire le parcours devis → facture → paiement → avoir. Sans 013 : ni trésorerie datée, ni soldes, ni rappels
    d'affaires, ni revue du vendredi, ni pack d'accueil. Sans 014 : ni domaines,
    ni connexion unique, ni provisionnement. Sans 015 : pas de double (portrait,
    point du jour, suivi des conseils). Sans 016 : pas de cartes mentales

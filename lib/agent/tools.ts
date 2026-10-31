@@ -79,6 +79,13 @@ export const AGENT_TOOLS: AgentTool[] = [
     schema({})
   ),
   tool(
+    "sales_overview",
+    "sales.read",
+    "invoicing",
+    "Quotes, invoices and credit notes at a glance: what is still owed and overdue, what was invoiced this year, quotes awaiting an answer, every document with its status, and the clients and catalogue items with their ids (for sales_draft).",
+    schema({})
+  ),
+  tool(
     "web_search",
     "web.search",
     "agent",
@@ -204,6 +211,40 @@ export const AGENT_TOOLS: AgentTool[] = [
         due: str("Optional due date, as the owner said it.", { maxLength: 40 }),
       },
       ["name"]
+    )
+  ),
+  tool(
+    "sales_draft",
+    "sales.draft",
+    "invoicing",
+    "Prepare a draft quote or invoice for the owner to check and issue. It is never issued here: it gets no number, and the owner issues it from the page. Use client and catalogue ids from sales_overview; prices are excluding VAT, in euros. Never invent a client, a price or a rate the owner did not give or that the catalogue does not hold — ask instead.",
+    schema(
+      {
+        document: str("What to prepare.", { enum: ["quote", "invoice"] }),
+        clientId: str("The client's id, as shown in brackets by sales_overview. Leave it out if the owner has not said who.", { maxLength: 64 }),
+        lines: {
+          type: "array",
+          description: "The lines, 1 to 50.",
+          minItems: 1,
+          maxItems: 50,
+          items: {
+            type: "object",
+            properties: {
+              catalogId: str("A catalogue item's id: its name, unit, price and VAT rate are used unless given here.", { maxLength: 64 }),
+              description: str("What is sold.", { maxLength: 2000 }),
+              quantity: { type: "number", description: "Default 1. Up to three decimals.", minimum: 0, maximum: 1000000 },
+              unit: str("Hour, day, piece…", { maxLength: 30 }),
+              unitPriceEuros: { type: "number", description: "Unit price excluding VAT, in euros.", minimum: 0 },
+              vatRate: { type: "number", description: "VAT rate in percent: 20, 10, 5.5, 2.1 or 0. Default 20 (ignored when the business is exempt).", minimum: 0, maximum: 100 },
+              discountPercent: { type: "number", description: "Discount on the line, in percent.", minimum: 0, maximum: 100 },
+            },
+            additionalProperties: false,
+          },
+        },
+        nature: str("What is sold: services, goods, or both. Default services.", { enum: ["services", "goods", "mixed"] }),
+        notes: str("A note printed on the document.", { maxLength: 4000 }),
+      },
+      ["document", "lines"]
     )
   ),
   tool(

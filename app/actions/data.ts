@@ -5,6 +5,7 @@ import { getAuthenticatedUserKey, getStore } from "@/lib/db/store";
 import { forgetProfileCookie } from "@/lib/user/profile";
 import { getTeamStore } from "@/lib/team/store";
 import { getMapStore } from "@/lib/maps/store";
+import { getSalesStore } from "@/lib/sales/store";
 
 export type DeleteResult = { ok: true } | { ok: false; code: "unauthorized" | "invalid" | "failed" };
 
@@ -14,7 +15,7 @@ const CONFIRM_WORDS = new Set(["DELETE", "SUPPRIMER"]);
 /**
  * Erases everything the person has in LifeOS: notes and their connections,
  * projects, deals, transactions, tasks, reminders, mind maps and their
- * images, the profile — and their place in every team, with what they
+ * images, quotes, invoices, clients and catalogue, the profile — and their place in every team, with what they
  * shared there (a team they own passes to its longest-standing admin, or is
  * deleted if they were alone in it).
  *
@@ -40,6 +41,9 @@ export async function deleteMyData(confirmation: unknown): Promise<DeleteResult>
     // Mind maps and their images (migration 016; nothing to clear before it).
     const maps = getMapStore();
     if (await maps.supports()) await maps.clear(userKey);
+    // Sales (migration 017). The numbering is kept: a new invoice never reuses a number.
+    const sales = getSalesStore();
+    if (await sales.supports()) await sales.erase(userKey);
     await getStore().clear(userKey);
     await forgetProfileCookie();
     revalidatePath("/", "layout");

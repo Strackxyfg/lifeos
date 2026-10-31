@@ -206,6 +206,7 @@ describe("where the editions are enforced", () => {
       ["finance", "finance"],
       ["review", "review"],
       ["reports", "reports"],
+      ["sales", "invoicing"],
     ] as const) {
       const path = `app/(app)/${dir}/layout.tsx`;
       expect(existsSync(join(ROOT, path)), path).toBe(true);
@@ -220,6 +221,8 @@ describe("where the editions are enforced", () => {
       ["app/actions/enterprise.ts", ['locked("enterprise")']],
       ["app/actions/team.ts", ['locked("teams")']],
       ["app/actions/agent.ts", ['locked("agent.runner")']],
+      ["app/actions/sales.ts", ['locked("invoicing")']],
+      ["lib/sales/agent.ts", ['locked("invoicing")']],
       ["app/api/generate/stream/route.ts", ['featureRefusal("notion")']],
       ["app/api/integrations/notion/authorize/route.ts", ['locked("notion")']],
     ];

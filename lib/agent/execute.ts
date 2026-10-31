@@ -214,6 +214,14 @@ export async function executeCapability(
       case "analyze":
         return { ok: true, detail: "Analysis runs in the model; nothing to fetch." };
 
+      // Sales: read, and prepare drafts. Issuing is not a capability the agent has.
+      case "sales.read":
+      case "sales.draft": {
+        const { createSalesDraft, salesOverview } = await import("@/lib/sales/agent");
+        const r = capabilityId === "sales.read" ? await salesOverview(userKey) : await createSalesDraft(userKey, payload);
+        return r.ok ? { ok: true, detail: r.detail, data: r.data } : { ok: false, error: r.error, code: "invalid_payload" };
+      }
+
       case "brain.write": {
         const title = str(payload.title);
         if (!title) return { ok: false, error: "A note needs a title.", code: "invalid_payload" };

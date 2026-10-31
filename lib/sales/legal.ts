@@ -1,5 +1,5 @@
 import { balanceOf, paidOf } from "./compute";
-import { isFrenchVat, isEuVat, isSiren, isSiret } from "./identifiers";
+import { formatIban, isFrenchVat, isEuVat, isSiren, isSiret } from "./identifiers";
 import type { Client, ClientSnapshot, DocContent, DocKind, Issuer, SalesDoc } from "./model";
 
 /**
@@ -185,7 +185,7 @@ export function mentionsOf(doc: Pick<SalesDoc, "kind" | "number" | "content">, i
     if (c.validUntil) out.push(`Devis valable jusqu'au ${frDate(c.validUntil)}.`);
     out.push("Bon pour accord : date, signature et mention « bon pour accord ».");
   }
-  if (issuer.iban && doc.kind !== "credit") out.push(`Règlement par virement : IBAN ${issuer.iban}${issuer.bic ? ` — BIC ${issuer.bic}` : ""}.`);
+  if (issuer.iban && doc.kind !== "credit") out.push(`Règlement par virement : IBAN ${formatIban(issuer.iban)}${issuer.bic ? ` — BIC ${issuer.bic}` : ""}.`);
   return out;
 }
 

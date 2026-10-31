@@ -37,6 +37,7 @@ export const CAPABILITIES: Capability[] = [
   { id: "brain.related", tier: "safe", label: "See what a note is connected to", labelFr: "Voir à quoi une note est reliée", rationale: "No side effects." },
   { id: "web.search", tier: "safe", label: "Search the web", labelFr: "Chercher sur le web", rationale: "Read-only: the query goes to LifeOS's search provider, nothing is published or sent to a site." },
   { id: "compute", tier: "safe", label: "Calculate and analyse with code", labelFr: "Calculer et analyser avec du code", rationale: "Runs in an isolated sandbox with no network, no files and no access to LifeOS — computation only." },
+  { id: "sales.read", tier: "safe", label: "Read your quotes, invoices and clients", labelFr: "Lire vos devis, factures et clients", rationale: "No side effects." },
   { id: "self.read", tier: "safe", label: "Read your portrait and what your double suggests", labelFr: "Lire votre portrait et ce que votre double suggère", rationale: "No side effects; the portrait is only ever changed by you." },
 
   // ── Internal writes ────────────────────────────────────────────────
@@ -47,6 +48,7 @@ export const CAPABILITIES: Capability[] = [
   { id: "task.write", tier: "low", label: "Create and update tasks", labelFr: "Créer et modifier des tâches", rationale: "Private to LifeOS, reversible." },
   { id: "reminder.write", tier: "low", label: "Set reminders", labelFr: "Programmer des rappels", rationale: "Private to LifeOS; a reminder can be edited, snoozed or deleted." },
   { id: "project.write", tier: "low", label: "Create and update projects", labelFr: "Créer et modifier des projets", rationale: "Private to LifeOS, reversible." },
+  { id: "sales.draft", tier: "low", label: "Prepare quote and invoice drafts", labelFr: "Préparer des brouillons de devis et de factures", rationale: "A draft has no number and can be deleted; issuing it stays with you." },
   { id: "deal.write", tier: "low", label: "Update the sales pipeline", labelFr: "Mettre à jour le pipeline commercial", rationale: "Private to LifeOS, reversible." },
 
   // ── Drafting: the agent does the work, you keep the send button ────
@@ -74,6 +76,7 @@ export const CAPABILITIES: Capability[] = [
   { id: "payment", tier: "forbidden", label: "Move money", labelFr: "Déplacer de l'argent", rationale: "Open-ended transfers always belong to a human. Ad spend is the one narrow exception, and it is approved campaign by campaign." },
   { id: "contract.sign", tier: "forbidden", label: "Agree terms or sign on your behalf", labelFr: "Accepter des conditions ou signer en votre nom", rationale: "Only a person can bind you to a contract. The agent negotiates and drafts; you sign." },
   { id: "credentials.read", tier: "forbidden", label: "Read secrets or tokens", labelFr: "Lire secrets ou jetons", rationale: "No legitimate agent task requires raw credentials." },
+  { id: "sales.issue", tier: "forbidden", label: "Issue a quote or an invoice", labelFr: "Émettre un devis ou une facture", rationale: "An issued invoice is a legal document that can never be changed nor deleted; only you give it its number." },
   { id: "data.delete", tier: "forbidden", label: "Permanently delete data", labelFr: "Supprimer définitivement des données", rationale: "Unrecoverable; archiving is offered instead." },
   { id: "account.modify", tier: "forbidden", label: "Change account or security settings", labelFr: "Modifier le compte ou la sécurité", rationale: "Would let the agent widen its own permissions." },
 ];

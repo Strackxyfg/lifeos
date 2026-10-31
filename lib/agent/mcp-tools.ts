@@ -205,7 +205,8 @@ const SCHEMAS: Record<string, McpTool["inputSchema"]> = {
 };
 
 /** Capabilities that only the agent in the app can run (they drive other agents). */
-const APP_ONLY = new Set(["agent.research"]);
+// Sales read and write through the owner's signed-in session: offered in the app only.
+const APP_ONLY = new Set(["agent.research", "sales.read", "sales.draft"]);
 
 const GENERIC: McpTool["inputSchema"] = {
   type: "object",

@@ -200,3 +200,27 @@ summary {
     color: #111;
   }
 }
+
+/* Printing a quote, an invoice or a credit note: the sheet alone, on A4. */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+  #sales-doc,
+  #sales-doc * {
+    visibility: visible;
+  }
+  #sales-doc {
+    position: absolute;
+    inset: 0 0 auto 0;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  #sales-doc tr {
+    break-inside: avoid;
+  }
+}

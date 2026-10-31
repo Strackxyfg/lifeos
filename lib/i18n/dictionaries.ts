@@ -3,6 +3,7 @@ import { selfEn, selfFr } from "./self";
 import { agentSetupEn, agentSetupFr } from "./agent-setup";
 import { mapsEn, mapsFr } from "./maps";
 import { agentChatEn, agentChatFr } from "./agent-chat";
+import { salesEn, salesFr } from "./sales";
 
 /** Text for a seeded Second-Brain item. */
 export type ItemText = { title: string; detail?: string };
@@ -259,6 +260,7 @@ const en = {
     finance: "Finance",
     review: "Friday review",
     reports: "Investor update",
+    sales: "Sales",
     assistant: "Assistant",
     brain: "Second Brain",
     agent: "Agent",
@@ -1189,7 +1191,7 @@ const en = {
     redoHint: "Adds goals and thoughts. What's already in your brain is kept, never duplicated.",
     deleteTitle: "Delete all my data",
     deleteBody:
-      "Erases your notes and their connections, projects, deals, transactions, tasks and profile. Your account stays, and so does anything in Notion. This can't be undone.",
+      "Erases your notes and their connections, projects, deals, transactions, tasks, quotes and invoices, and profile. Your account stays, and so does anything in Notion. This can't be undone. Invoices you issued must be kept for ten years: export your data first.",
     deleteCta: "Delete my data…",
     deleteConfirmLabel: "Type {word} to confirm",
     deleteWord: "DELETE",
@@ -1686,6 +1688,7 @@ const en = {
   agentSetup: agentSetupEn,
   maps: mapsEn,
   agentChat: agentChatEn,
+  sales: salesEn,
 };
 
 export type Messages = typeof en;
@@ -1905,6 +1908,7 @@ const fr: Messages = {
     finance: "Finances",
     review: "Revue du vendredi",
     reports: "Rapport investisseurs",
+    sales: "Ventes",
     assistant: "Assistant",
     brain: "Second cerveau",
     agent: "Agent",
@@ -2833,7 +2837,7 @@ const fr: Messages = {
     redoHint: "Ajoute des objectifs et des pensées. Ce qui est déjà dans votre cerveau est conservé, jamais dupliqué.",
     deleteTitle: "Supprimer toutes mes données",
     deleteBody:
-      "Efface vos notes et leurs connexions, projets, opportunités, transactions, tâches et profil. Votre compte reste, ainsi que tout ce qui est dans Notion. C'est irréversible.",
+      "Efface vos notes et leurs connexions, projets, opportunités, transactions, tâches, devis et factures, et votre profil. Votre compte reste, ainsi que tout ce qui est dans Notion. C'est irréversible. Les factures émises doivent être conservées dix ans : exportez d'abord vos données.",
     deleteCta: "Supprimer mes données…",
     deleteConfirmLabel: "Tapez {word} pour confirmer",
     deleteWord: "SUPPRIMER",
@@ -3328,6 +3332,7 @@ const fr: Messages = {
   agentSetup: agentSetupFr,
   maps: mapsFr,
   agentChat: agentChatFr,
+  sales: salesFr,
 };
 
 export const dictionaries: Record<Locale, Messages> = { en, fr };

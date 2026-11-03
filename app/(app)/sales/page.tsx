@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Building2 } from "lucide-react";
+import { Building2, Download } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
@@ -42,6 +42,8 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   const today = parisToday();
   const rows = rowsOf(docs, clients, today);
   const fig = figuresOf(rows, docs, today);
+  // The years that have an issued invoice or credit note, newest first.
+  const journalYears = [...new Set(docs.filter((d) => d.number !== null && d.kind !== "quote").map((d) => Number(d.content.issueDate.slice(0, 4))))].sort((a, b) => b - a);
   const docCounts: Record<string, number> = {};
   for (const d of docs) if (d.content.clientId) docCounts[d.content.clientId] = (docCounts[d.content.clientId] ?? 0) + 1;
 
@@ -83,6 +85,22 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
             ))}
           </div>
           <DocList rows={rows} />
+          {journalYears.length > 0 && (
+            <Card className="mt-4 flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.875rem] font-medium">{t.journal.title}</p>
+                <p className="mt-0.5 text-[0.75rem] leading-relaxed text-muted-foreground">{t.journal.hint}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {journalYears.map((y) => (
+                  <a key={y} href={`/api/sales/journal?year=${y}`} download className={buttonVariants({ variant: "secondary", size: "sm" })}>
+                    <Download className="h-3.5 w-3.5" aria-hidden />
+                    {fill(t.journal.download, { year: y })}
+                  </a>
+                ))}
+              </div>
+            </Card>
+          )}
         </>
       )}
       {tab === "clients" && <ClientsPanel clients={clients} docCounts={docCounts} />}

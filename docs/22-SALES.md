@@ -40,7 +40,19 @@ are copied as they are that day. After that:
   written to Finance as income, on the day received, and removed with it;
 - an invoice is cancelled by a credit note: a draft for the whole amount,
   editable for a partial credit; once credit notes cover it, it is cancelled;
-- any quote or invoice is duplicated into a new draft.
+- any quote or invoice is duplicated into a new draft;
+- an unpaid invoice gets a **payment reminder** (`lib/sales/reminder.ts`): what is
+  owed, since when, how to pay — courteous until fifteen days past due, then
+  recalling the penalties and, between businesses, the €40 fee the invoice
+  states. Written in French for the owner to copy or open in their own
+  mailbox (`mailto:`); LifeOS sends nothing, and never claims an earlier
+  reminder it cannot know of. It is not a formal notice (*mise en demeure*).
+
+The **sales journal** of each year (`lib/sales/journal.ts`, `GET
+/api/sales/journal?year=`) is a CSV for the accountant: every issued invoice
+and credit note by date, base and VAT per rate, totals, paid and owed, credit
+notes negative, the year's totals; semicolons, decimal commas and a byte-order
+mark, so Excel opens it as it is.
 
 ## 2. Code
 
@@ -110,8 +122,9 @@ prepares compliant invoices and keeps the numbering; it is not an approved
 platform and does not transmit invoices to the tax administration. The
 invoice page says so.
 
-**Accounting.** Payments reach Finance as income; there is no ledger, no FEC
-export, no VAT return.
+**Accounting.** Payments reach Finance as income and the sales journal goes to
+the accountant; there is no ledger, no FEC (a FEC holds every entry of the
+business, which LifeOS does not keep), no VAT return.
 
 **Keeping.** Invoices must be kept ten years (art. L123-22 of the Code de
 commerce). They are in every export (`workspace.json`: business, clients,

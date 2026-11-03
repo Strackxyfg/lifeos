@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Copy, FileMinus2, FileOutput, Info, Lock, Printer } from "lucide-react";
+import { ArrowLeft, BellRing, Copy, FileMinus2, FileOutput, Info, Lock, Printer } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { toast } from "@/components/ui/toaster";
@@ -18,6 +18,8 @@ import { StatusPill } from "./doc-list";
 import { DocSheet } from "./doc-sheet";
 import { attempt, day, failureText, zone } from "./format";
 import { Payments } from "./payments";
+import { ReminderDialog } from "./reminder-dialog";
+import { reminderOf } from "@/lib/sales/reminder";
 
 export interface FollowUp {
   id: string;
@@ -36,6 +38,8 @@ export function DocView({ doc, status, followUps, today }: { doc: SalesDoc; stat
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmCredit, setConfirmCredit] = useState(false);
+  const [reminding, setReminding] = useState(false);
+  const reminder = reminderOf(doc, today);
 
   const run = async (key: string, action: () => Promise<{ ok: true; data: { id: string } | null } | Parameters<typeof failureText>[1]>, done?: string) => {
     setBusy(key);
@@ -86,6 +90,16 @@ export function DocView({ doc, status, followUps, today }: { doc: SalesDoc; stat
             <button type="button" disabled={busy !== null} onClick={() => run("convert", () => attempt(() => convertQuote(doc.id, zone())), t.doc.converted)} className={buttonVariants({ size: "sm" })}>
               <FileOutput className="h-3.5 w-3.5" aria-hidden />
               {t.doc.convert}
+            </button>
+          )}
+          {reminder && (
+            <button
+              type="button"
+              onClick={() => setReminding(true)}
+              className={buttonVariants({ variant: status === "overdue" ? "primary" : "secondary", size: "sm" })}
+            >
+              <BellRing className="h-3.5 w-3.5" aria-hidden />
+              {t.reminder.button}
             </button>
           )}
           {canCredit && (
@@ -149,6 +163,8 @@ export function DocView({ doc, status, followUps, today }: { doc: SalesDoc; stat
           )}
         </aside>
       </div>
+
+      {reminder && <ReminderDialog open={reminding} onClose={() => setReminding(false)} number={doc.number ?? ""} reminder={reminder} />}
 
       <Modal open={confirmCredit} onClose={() => setConfirmCredit(false)} title={t.doc.creditTitle} closeLabel={t.close}>
         <div className="space-y-4 p-5">

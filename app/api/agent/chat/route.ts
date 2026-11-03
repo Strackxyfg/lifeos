@@ -22,6 +22,9 @@ import { runResearch, workerToolsOf, type ResearchTask } from "@/lib/agent/resea
 import { searchAvailable } from "@/lib/agent/search";
 import { sourcesIn, toolsFor, webSourcesIn, type AgentTool } from "@/lib/agent/tools";
 import { readText } from "@/lib/http/body";
+import { delegateTool, runSettings, runSpecialists, specialistSystem, specialistTools, type SpecialistContext } from "@/lib/specialists/run";
+import { getSpecialistStore } from "@/lib/specialists/store";
+import type { Specialist } from "@/lib/specialists/model";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +77,8 @@ const bodySchema = z
     effort: z.enum(["medium", "high"]).optional(),
     strict: z.boolean().optional(),
     route: z.string().max(200).optional(),
+    /** Talking to one of the owner's specialists rather than to the agent. */
+    specialist: z.string().min(1).max(64).optional(),
   })
   .refine((b) => (b.input === undefined) !== (b.decision === undefined), "Either a message or a decision.");
 
@@ -125,7 +130,17 @@ export async function POST(req: Request) {
     store.supportsSelf().catch(() => false),
     interactivePolicy(userKey, parsed.strict === true),
   ]);
-  const tools = toolsFor({ edition, supabase: isSupabaseConfigured(), email: isEmailConfigured(), reminders, self, search: searchAvailable() });
+  const offered = toolsFor({ edition, supabase: isSupabaseConfigured(), email: isEmailConfigured(), reminders, self, search: searchAvailable() });
+  // The owner's specialists: the one spoken to, or those the agent may hand tasks to. Before migration 018, none.
+  const specialists: Specialist[] = await (async () => {
+    const s = getSpecialistStore();
+    return (await s.supports().catch(() => false)) ? await s.list(userKey) : [];
+  })();
+  const speaking = parsed.specialist ? specialists.find((s) => s.id === parsed.specialist) ?? null : null;
+  if (parsed.specialist && !speaking) return json(404, { error: "specialist" });
+  const maxAgents = LIMITS[edition].researchAgents;
+  // A specialist never gets more than the agent; the agent gets `delegate` once there is someone to delegate to.
+  const tools = speaking ? specialistTools(speaking, offered) : [...offered, ...(specialists.length ? [delegateTool(specialists, maxAgents)] : [])];
   const m = dictionaries[locale];
   const now = new Date();
   const person = {
@@ -139,7 +154,10 @@ export async function POST(req: Request) {
     console.error("[agent] persona failed", err instanceof Error ? err.message : err);
     return null;
   });
-  const system = agentSystem({ locale, now, zone, person, edition, tools: tools.map((t) => t.spec.name), persona: persona?.text });
+  const context: SpecialistContext = { locale, now, zone, person, edition, persona: persona?.text };
+  const system = speaking
+    ? specialistSystem(speaking, tools.map((t) => t.spec.name), context, "direct")
+    : agentSystem({ locale, now, zone, person, edition, tools: tools.map((t) => t.spec.name), persona: persona?.text });
 
   // Web pages may be read freely when their address came from the person or from the web itself (`provenance.ts`).
   const base = decider(policy);
@@ -150,7 +168,7 @@ export async function POST(req: Request) {
   const deep = parsed.effort === "high";
   const turn: LoopDeps["turn"] = async (r) => {
     try {
-      return await ai().turn({ ...r, task: r.task === "research" ? "research" : deep ? "agent_deep" : "agent" });
+      return await ai().turn(r);
     } catch (err) {
       // Every route failed: why, for whoever reads the server's log (never the conversation).
       console.warn("[agent] model turn failed:", err instanceof Error ? err.message.slice(0, 300) : err);
@@ -190,6 +208,24 @@ export async function POST(req: Request) {
       let lead: AgentMessage[] = history;
       const workerTools = workerToolsOf(tools);
       const execute: LoopDeps["execute"] = async (tool, args, callId) => {
+        if (tool.capability === "agent.delegate") {
+          return runSpecialists((args.tasks as { specialist: string; task: string }[]) ?? [], {
+            leadMessages: lead,
+            turn,
+            decide,
+            execute: runCapability,
+            journal: (entry) => journal(userKey, entry),
+            emit,
+            callId: callId ?? "delegate",
+            maxSteps: LIMITS[edition].researchSteps,
+            concurrency: 4,
+            signal: req.signal,
+            specialists,
+            offered,
+            maxAgents,
+            context,
+          });
+        }
         if (tool.capability !== "agent.research") return runCapability(tool, args);
         return runResearch((args.tasks as ResearchTask[]) ?? [], {
           leadMessages: lead,
@@ -220,8 +256,12 @@ export async function POST(req: Request) {
         journal: (entry) => journal(userKey, entry),
         emit,
         maxSteps: LIMITS[edition].agentSteps,
-        maxTokens: deep ? 12_000 : 8_000,
-        effort: deep ? "high" : "medium",
+        // The agent's settings, or the specialist's own depth — "think harder" deepens either.
+        ...(speaking
+          ? deep
+            ? { maxTokens: 12_000, effort: "high" as const, task: "agent_deep" as const }
+            : runSettings(speaking.depth)
+          : { maxTokens: deep ? 12_000 : 8_000, effort: deep ? ("high" as const) : ("medium" as const), task: deep ? ("agent_deep" as const) : ("agent" as const) }),
         signal: req.signal,
         stickTo: parsed.route,
       };

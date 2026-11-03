@@ -1,4 +1,4 @@
-import type { AgentMessage, Effort, ToolCall, TurnRequest, TurnResult } from "@/lib/ai/types";
+import type { AgentMessage, AITask, Effort, ToolCall, TurnRequest, TurnResult } from "@/lib/ai/types";
 import type { RiskTier } from "./capabilities";
 import type { Decision } from "./policy";
 import { INJECTION_NOTE, checkArgs, clipResult, isReadOnly, looksLikeInjection, tierOfTool, type AgentTool, type Source } from "./tools";
@@ -77,6 +77,8 @@ export interface LoopDeps {
   maxSteps: number;
   maxTokens?: number;
   effort?: Effort;
+  /** Which models: the agent's (default), the deepest, or a sub-agent's (`MODEL_RANK`). */
+  task?: AITask;
   signal?: AbortSignal;
   /** The route the conversation began on, so its reasoning can be sent back to it. */
   stickTo?: string;
@@ -259,7 +261,7 @@ async function loop(messages: AgentMessage[], deps: LoopDeps, steps0 = 0): Promi
     let out: TurnResult;
     try {
       out = await deps.turn({
-        task: "agent",
+        task: deps.task ?? "agent",
         messages: [{ role: "system", content: deps.system }, ...convo, ...(last ? [{ role: "user" as const, content: LIMIT_NUDGE }] : [])],
         tools: specs,
         maxTokens: deps.maxTokens ?? 4_000,

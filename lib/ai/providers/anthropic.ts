@@ -8,6 +8,7 @@ import {
   type TurnOutput,
   type TurnRequest,
 } from "../types";
+import { forProvider } from "../tool-schema";
 
 /**
  * Claude, through the official SDK and its own Messages protocol — not an
@@ -199,7 +200,7 @@ export const anthropicTransport = {
             ...(system ? { system } : {}),
             messages,
             ...(req.tools.length
-              ? { tools: req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters })) }
+              ? { tools: req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: forProvider(t.parameters) })) }
               : {}),
             output_config: { effort: req.effort ?? "medium" },
             ...extra,

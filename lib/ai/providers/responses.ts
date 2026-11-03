@@ -8,6 +8,7 @@ import {
   type TurnRequest,
 } from "../types";
 import { clientFor, toRouteError } from "./chat";
+import { forProvider } from "../tool-schema";
 
 /**
  * OpenAI's current models through the Responses API. Their Chat Completions
@@ -140,7 +141,7 @@ export const responsesTransport = {
           ...(instructions ? { instructions } : {}),
           input,
           ...(req.tools.length
-            ? { tools: req.tools.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: t.parameters, strict: false })) }
+            ? { tools: req.tools.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: forProvider(t.parameters), strict: false })) }
             : {}),
           reasoning: { effort: req.effort ?? "medium" },
           max_output_tokens: req.maxTokens + HEADROOM.agent,

@@ -11,6 +11,7 @@ import {
   type TurnOutput,
   type TurnRequest,
 } from "../types";
+import { forProvider } from "../tool-schema";
 
 /**
  * Providers that speak the OpenAI Chat Completions protocol: Groq, Mistral,
@@ -176,7 +177,7 @@ export function turnBody(route: Route, req: TurnRequest): Record<string, unknown
     stream: true,
   };
   if (req.tools.length) {
-    body.tools = req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
+    body.tools = req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: forProvider(t.parameters) } }));
   }
   if (isDeepSeek(route)) {
     // With tools, DeepSeek wants the reasoning of every earlier answer back. An answer it did not write (another model,
@@ -267,14 +268,23 @@ export function parseAfford(text: string): { requested: number; affordable: numb
   return m ? { requested: Number(m[1]), affordable: Number(m[2]) } : undefined;
 }
 
+/**
+ * A provider that checks the arguments a model wrote against the tool's schema
+ * (Groq) refuses the answer mid-stream, without a status: that is the model's
+ * output, like a 400 — another model is asked, this one is not rested.
+ */
+const MODEL_OUTPUT = /tool call validation failed|failed to (call a function|parse tool call)/i;
+
 export function toRouteError(e: unknown): RouteError {
   if (e instanceof OpenAI.APIError) {
     const header = (e.headers as Record<string, string> | undefined)?.["retry-after"];
     const fromHeader = header && Number.isFinite(Number(header)) ? Number(header) * 1000 : undefined;
-    return new RouteError(e.message, e.status, fromHeader ?? parseRetryAfter(e.message), e.status === 402 ? parseAfford(e.message) : undefined);
+    const status = e.status ?? (MODEL_OUTPUT.test(e.message) ? 400 : undefined);
+    return new RouteError(e.message, status, fromHeader ?? parseRetryAfter(e.message), status === 402 ? parseAfford(e.message) : undefined);
   }
   if (e instanceof RouteError) return e;
-  return new RouteError(e instanceof Error ? e.message : String(e));
+  const message = e instanceof Error ? e.message : String(e);
+  return new RouteError(message, MODEL_OUTPUT.test(message) ? 400 : undefined);
 }
 
 const stopOf = (finish: string | null, calls: number): TurnOutput["stop"] =>

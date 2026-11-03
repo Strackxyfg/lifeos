@@ -30,7 +30,7 @@ describe("MCP tool surface", () => {
   });
 
   it("publishes every capability that is not forbidden — except those only the app's agent runs", () => {
-    const appOnly = ["agent.research", "sales.read", "sales.draft"];
+    const appOnly = ["agent.research", "agent.delegate", "specialist.write", "sales.read", "sales.draft"];
     for (const cap of CAPABILITIES.filter((c) => c.tier !== "forbidden" && !appOnly.includes(c.id))) {
       expect(tools.find((t) => t.name === toToolName(cap.id)), cap.id).toBeDefined();
     }
@@ -39,6 +39,9 @@ describe("MCP tool surface", () => {
     // Sales go through the owner's signed-in session, which an outside client does not have.
     expect(tools.find((t) => t.name === toToolName("sales.read"))).toBeUndefined();
     expect(tools.find((t) => t.name === toToolName("sales.draft"))).toBeUndefined();
+    // Specialists are the owner's own agents, in their session: an outside client neither runs nor creates them.
+    expect(tools.find((t) => t.name === toToolName("agent.delegate"))).toBeUndefined();
+    expect(tools.find((t) => t.name === toToolName("specialist.write"))).toBeUndefined();
   });
 
   it("round-trips tool names back to capability ids", () => {

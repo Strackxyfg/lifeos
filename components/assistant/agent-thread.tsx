@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  ArrowUp, Check, CircleSlash, Loader2, Mic, Plus, ShieldAlert, Sparkles, Square, User, X, AlertTriangle, Gauge, Hand,
+  ArrowUp, Check, CircleSlash, Loader2, Mic, Plus, ShieldAlert, Sparkles, Square, User, X, AlertTriangle, Gauge, Hand, Users,
 } from "lucide-react";
 import type { AgentMessage } from "@/lib/ai/types";
 import type { AgentEvent } from "@/lib/agent/loop";
@@ -40,6 +40,15 @@ interface Saved {
   transcript: AgentMessage[];
   turns: Turn[];
   route?: string;
+  /** The specialist this conversation is with; none: the agent. */
+  speaking?: string | null;
+}
+
+/** One of the owner's specialists, as the conversation names it. */
+export interface SpecialistChoice {
+  id: string;
+  name: string;
+  description: string;
 }
 
 function load(): Saved | null {
@@ -61,7 +70,18 @@ function browserZone(): string {
   }
 }
 
-export function AgentThread({ firstName, business }: { firstName: string; business: boolean }) {
+export function AgentThread({
+  firstName,
+  business,
+  specialists = [],
+  initialSpecialist = null,
+}: {
+  firstName: string;
+  business: boolean;
+  specialists?: SpecialistChoice[];
+  /** From a "talk to it" link: start with this specialist. */
+  initialSpecialist?: string | null;
+}) {
   const m = useMessages();
   const t = m.agentChat;
   const locale = useLocale();
@@ -72,29 +92,40 @@ export function AgentThread({ firstName, business }: { firstName: string; busine
   const [busy, setBusy] = useState(false);
   const [deep, setDeep] = useState(false);
   const [strict, setStrict] = useState(false);
+  const [speaking, setSpeaking] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
+  const ts = m.specialists;
+  const speaker = specialists.find((s) => s.id === speaking) ?? null;
   const endRef = useRef<HTMLDivElement>(null);
   const restored = useRef(false);
 
   useEffect(() => {
     const saved = load();
-    if (saved) {
+    const exists = (id: string | null | undefined) => (id && specialists.some((s) => s.id === id) ? id : null);
+    // A "talk to it" link opens that specialist; a kept conversation is restored only if it is with the same one.
+    const wanted = exists(initialSpecialist);
+    const keep = saved && (wanted === null || exists(saved.speaking) === wanted) && (saved.speaking == null || exists(saved.speaking) !== null);
+    if (keep) {
       setTranscript(saved.transcript);
       // A turn cut off mid-stream by a reload has nothing more coming.
       setTurns(saved.turns.map((x) => (x.role === "agent" && !x.stop && !x.error && !pendingApprovalIn(x) ? { ...x, error: "aborted" } : x)));
       setRoute(saved.route);
+      setSpeaking(exists(saved.speaking));
+    } else {
+      setSpeaking(wanted);
     }
     restored.current = true;
+    // Once, on arrival: the list and the link are the page's.
   }, []);
 
   useEffect(() => {
     if (!restored.current || busy) return;
     try {
-      sessionStorage.setItem(STORE_KEY, JSON.stringify({ transcript, turns, route } satisfies Saved));
+      sessionStorage.setItem(STORE_KEY, JSON.stringify({ transcript, turns, route, speaking } satisfies Saved));
     } catch {
       /* full or unavailable: the conversation still works, it just won't survive a reload */
     }
-  }, [transcript, turns, route, busy]);
+  }, [transcript, turns, route, speaking, busy]);
 
   const scrollToEnd = () => setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 30);
 
@@ -125,11 +156,21 @@ export function AgentThread({ firstName, business }: { firstName: string; busine
             effort: deep ? "high" : "medium",
             strict,
             route,
+            ...(speaking ? { specialist: speaking } : {}),
           }),
           signal: ctrl.signal,
         });
         if (!res.ok || !res.body) {
           const err = ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
+          if (err === "specialist") {
+            // Deleted meanwhile: back with the agent, in a new conversation.
+            setTurns([]);
+            setTranscript([]);
+            setRoute(undefined);
+            setSpeaking(null);
+            toast(ts.chat.gone, "error");
+            return;
+          }
           onAgent((x) => ({ ...x, error: err === "quota" || err === "no_ai" || err === "too_long" ? err : "failed" }));
           return;
         }
@@ -166,7 +207,7 @@ export function AgentThread({ firstName, business }: { firstName: string; busine
         setBusy(false);
       }
     },
-    [locale, deep, strict, route, onAgent]
+    [locale, deep, strict, route, speaking, onAgent, ts]
   );
 
   const send = (text: string) => {
@@ -195,6 +236,22 @@ export function AgentThread({ firstName, business }: { firstName: string; busine
     }
   };
 
+  /** Talking to someone else starts a new conversation: the agent's and a specialist's never mix. */
+  const talkTo = (id: string | null) => {
+    if (id === speaking) return;
+    const had = turns.length > 0;
+    reset();
+    setSpeaking(id);
+    // The address no longer names a specialist once the owner has chosen.
+    try {
+      window.history.replaceState(null, "", "/assistant");
+    } catch {
+      /* not essential */
+    }
+    const name = specialists.find((s) => s.id === id)?.name ?? ts.chat.agent;
+    if (had) toast(fill(ts.chat.switched, { name }));
+  };
+
   const dictation = useDictation({
     locale,
     onText: (text, final) => {
@@ -210,7 +267,33 @@ export function AgentThread({ firstName, business }: { firstName: string; busine
   return (
     <div className="flex h-[calc(100dvh-15rem)] min-h-[24rem] flex-col rounded-xl border border-border bg-surface lg:h-[calc(100dvh-14rem)]">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {specialists.length > 0 && (
+            <label className="relative">
+              <span className="sr-only">{ts.chat.with}</span>
+              <select
+                value={speaking ?? ""}
+                onChange={(e) => talkTo(e.target.value || null)}
+                disabled={busy}
+                className="h-8 max-w-[11rem] truncate rounded-md border border-border bg-surface-2/50 px-2 text-base outline-none focus:border-border-strong sm:max-w-[14rem] sm:text-[0.8125rem]"
+              >
+                <option value="">{ts.chat.agent}</option>
+                {specialists.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <Link
+            href="/assistant/specialists"
+            title={ts.manage}
+            aria-label={ts.manage}
+            className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+          >
+            <Users className="h-4 w-4" aria-hidden />
+          </Link>
           <Toggle on={deep} onClick={() => setDeep((v) => !v)} icon={<Gauge className="h-3.5 w-3.5" aria-hidden />} label={t.deep} short={t.deepShort} hint={t.deepHint} />
           <Toggle on={strict} onClick={() => setStrict((v) => !v)} icon={<Hand className="h-3.5 w-3.5" aria-hidden />} label={t.strict} short={t.strictShort} hint={t.strictHint} />
         </div>
@@ -228,9 +311,16 @@ export function AgentThread({ firstName, business }: { firstName: string; busine
 
       <div className="flex-1 space-y-6 overflow-y-auto p-4 sm:p-6" role="log" aria-live="polite" aria-busy={busy}>
         <AgentBubble>
-          <p className="whitespace-pre-wrap rounded-xl bg-surface-2 px-4 py-3 text-[0.9375rem] leading-relaxed text-foreground/90">
-            {fill(t.seed, { name: firstName === "there" ? "" : firstName, business: business ? t.seedBusiness : "" }).replace(/^(Hi|Bonjour) \./, "$1.")}
-          </p>
+          {speaker ? (
+            <div className="rounded-xl bg-surface-2 px-4 py-3 text-[0.9375rem] leading-relaxed text-foreground/90">
+              <p className="font-medium">{fill(ts.chat.speaking, { name: speaker.name })}</p>
+              <p className="mt-1 text-[0.875rem] text-muted-foreground">{speaker.description}</p>
+            </div>
+          ) : (
+            <p className="whitespace-pre-wrap rounded-xl bg-surface-2 px-4 py-3 text-[0.9375rem] leading-relaxed text-foreground/90">
+              {fill(t.seed, { name: firstName === "there" ? "" : firstName, business: business ? t.seedBusiness : "" }).replace(/^(Hi|Bonjour) \./, "$1.")}
+            </p>
+          )}
         </AgentBubble>
 
         {turns.map((turn, i) =>
@@ -248,7 +338,7 @@ export function AgentThread({ firstName, business }: { firstName: string; busine
         <div ref={endRef} />
       </div>
 
-      {turns.length === 0 && (
+      {turns.length === 0 && !speaker && (
         // One scrolling row on a phone, so the conversation keeps the room; wrapped on wider screens.
         <div className="flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none] sm:flex-wrap sm:px-6">
           {suggestions.map((s) => (

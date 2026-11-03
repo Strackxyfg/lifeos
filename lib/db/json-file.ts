@@ -4,9 +4,9 @@ import { randomUUID } from "node:crypto";
 import { dataDir } from "@/lib/db/data-dir";
 
 /**
- * The sales file of the local data folder, read and written through the
- * same process-wide queue as every other local file, and replaced
- * atomically (written aside, then renamed).
+ * A JSON file of the local data folder (sales, specialists…), read and
+ * written through the same process-wide queue as every other local file,
+ * and replaced atomically (written aside, then renamed).
  */
 
 const QUEUE = Symbol.for("lifeos.localStore.queue");

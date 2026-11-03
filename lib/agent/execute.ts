@@ -214,6 +214,13 @@ export async function executeCapability(
       case "analyze":
         return { ok: true, detail: "Analysis runs in the model; nothing to fetch." };
 
+      // A specialist the owner asked for: the same checks as the specialists page.
+      case "specialist.write": {
+        const { createSpecialistFor } = await import("@/lib/specialists/agent");
+        const r = await createSpecialistFor(userKey, payload);
+        return r.ok ? { ok: true, detail: r.detail, data: r.data } : { ok: false, error: r.error, code: "invalid_payload" };
+      }
+
       // Sales: read, and prepare drafts. Issuing is not a capability the agent has.
       case "sales.read":
       case "sales.draft": {

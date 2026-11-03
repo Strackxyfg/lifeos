@@ -4,6 +4,7 @@ import { agentSetupEn, agentSetupFr } from "./agent-setup";
 import { mapsEn, mapsFr } from "./maps";
 import { agentChatEn, agentChatFr } from "./agent-chat";
 import { salesEn, salesFr } from "./sales";
+import { specialistsEn, specialistsFr } from "./specialists";
 
 /** Text for a seeded Second-Brain item. */
 export type ItemText = { title: string; detail?: string };
@@ -1703,6 +1704,7 @@ const en = {
   maps: mapsEn,
   agentChat: agentChatEn,
   sales: salesEn,
+  specialists: specialistsEn,
 };
 
 export type Messages = typeof en;
@@ -3361,6 +3363,7 @@ const fr: Messages = {
   maps: mapsFr,
   agentChat: agentChatFr,
   sales: salesFr,
+  specialists: specialistsFr,
 };
 
 export const dictionaries: Record<Locale, Messages> = { en, fr };

@@ -4,6 +4,7 @@ import { RELATION_KINDS } from "@/lib/brain/relations";
 import { REPEATS } from "@/lib/reminders/schedule";
 import { includes, type Edition, type Feature } from "@/lib/plans/editions";
 import { getCapability, type RiskTier } from "./capabilities";
+import { DEPTHS, SPECIALIST_LIMITS, SPECIALIST_TOOLS } from "@/lib/specialists/constants";
 
 /**
  * The tools of the agent in the app — each one a capability of the shared
@@ -248,6 +249,22 @@ export const AGENT_TOOLS: AgentTool[] = [
     )
   ),
   tool(
+    "specialist_create",
+    "specialist.write",
+    "agent",
+    "Create a specialist for the owner — an agent of their own for a need they describe (a lawyer's eye on contracts, their accountant, a writer in their voice). Only when they ask for one. Give it a clear role: what it is for, how it works, what it delivers, its limits; the fewest tools that fit — never email_send unless they asked it to send emails. It is saved at once; they can change it on the specialists page.",
+    schema(
+      {
+        name: str(`Its name, short (at most ${SPECIALIST_LIMITS.name} characters), in the owner's language.`, { maxLength: SPECIALIST_LIMITS.name, clip: true }),
+        description: str(`When to call it, in one or two sentences (at most ${SPECIALIST_LIMITS.description} characters), in the owner's language.`, { maxLength: SPECIALIST_LIMITS.description, clip: true }),
+        instructions: str("Its role and method, in the owner's language: scope, how it works, what it delivers, what it does not do.", { maxLength: SPECIALIST_LIMITS.instructions, clip: true }),
+        tools: { type: "array", description: "The tools it may use.", items: { type: "string", enum: [...SPECIALIST_TOOLS] }, maxItems: SPECIALIST_TOOLS.length },
+        depth: str("fast for quick lookups, balanced for most work, deep for hard reasoning.", { enum: [...DEPTHS] }),
+      },
+      ["name", "description", "instructions", "tools", "depth"]
+    )
+  ),
+  tool(
     "deal_create",
     "deal.write",
     "agent.business",
@@ -352,6 +369,8 @@ type Prop = {
   type?: string;
   enum?: unknown[];
   maxLength?: number;
+  /** A text past `maxLength` is cut at a word rather than refused (and the provider is not sent the limit). */
+  clip?: boolean;
   minimum?: number;
   maximum?: number;
   minItems?: number;
@@ -363,6 +382,14 @@ type Prop = {
 
 const MISSING = Symbol("missing");
 
+/** At most `max` characters, cut after a whole word, an ellipsis where it was cut. */
+export function clipAtWord(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const room = text.slice(0, max - 1);
+  const space = room.search(/\s\S*$/);
+  return `${(space > max * 0.6 ? room.slice(0, space) : room).trimEnd().replace(/[,;:.\-–—]+$/, "")}…`;
+}
+
 /** One value against its schema: the value to keep, or `MISSING` with the problem written down. */
 function checkValue(name: string, p: Prop, raw: unknown, problems: string[]): unknown {
   let v = raw;
@@ -370,7 +397,10 @@ function checkValue(name: string, p: Prop, raw: unknown, problems: string[]): un
     if (typeof v === "number" || typeof v === "boolean") v = String(v);
     if (typeof v !== "string") return problems.push(`"${name}" must be text`), MISSING;
     v = v.trim();
-    if (p.maxLength && (v as string).length > p.maxLength) return problems.push(`"${name}" is longer than ${p.maxLength} characters`), MISSING;
+    if (p.maxLength && (v as string).length > p.maxLength) {
+      if (!p.clip) return problems.push(`"${name}" is longer than ${p.maxLength} characters`), MISSING;
+      v = clipAtWord(v as string, p.maxLength);
+    }
   } else if (p.type === "number") {
     const n = typeof v === "string" && v.trim() ? Number(v) : v;
     if (typeof n !== "number" || !Number.isFinite(n)) return problems.push(`"${name}" must be a number`), MISSING;

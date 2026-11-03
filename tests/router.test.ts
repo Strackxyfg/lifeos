@@ -224,6 +224,14 @@ describe("failover", () => {
     expect(r2.health().filter((h) => h.openUntil > 0).every((h) => h.provider === "groq")).toBe(true);
   });
 
+  it("takes a provider's refusal of a model's tool arguments as that model's output, not the route's health", async () => {
+    const { toRouteError } = await import("@/lib/ai/providers/chat");
+    const e = toRouteError(new Error("Tool call validation failed: parameters for tool specialist_create did not match schema"));
+    expect(e.status).toBe(400);
+    expect(breakerFor(e)).toBeNull();
+    expect(toRouteError(new Error("socket hang up")).status).toBeUndefined();
+  });
+
   it("reads OpenRouter's wording of what the account can afford", async () => {
     const { parseAfford } = await import("@/lib/ai/providers/chat");
     expect(parseAfford("This request requires more credits, or fewer max_tokens. You requested up to 8000 tokens, but can only afford 3789. To increase, visit …")).toEqual({ requested: 8000, affordable: 3789 });

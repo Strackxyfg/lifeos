@@ -44,6 +44,7 @@ export const CAPABILITIES: Capability[] = [
   { id: "brain.write", tier: "low", label: "Capture notes and ideas", labelFr: "Capturer notes et idées", rationale: "Private to LifeOS, reversible." },
   { id: "brain.link", tier: "low", label: "Connect notes", labelFr: "Relier des notes", rationale: "Private to LifeOS, reversible — a connection can be removed, and it is marked for your review." },
   { id: "brain.weave", tier: "low", label: "Let LifeOS connect your notes", labelFr: "Laisser LifeOS relier vos notes", rationale: "Private to LifeOS; every connection drawn is marked for your review and can be removed." },
+  { id: "agent.delegate", tier: "low", label: "Hand tasks to your specialists", labelFr: "Confier des tâches à vos spécialistes", rationale: "They work with the tools you gave them, never more than the agent's, and cannot ask you anything; counted because they spend model budget." },
   { id: "agent.research", tier: "low", label: "Send research sub-agents in parallel", labelFr: "Lancer des sous-agents de recherche en parallèle", rationale: "They only read (the web, the brain) and calculate; counted because they spend model budget." },
   { id: "task.write", tier: "low", label: "Create and update tasks", labelFr: "Créer et modifier des tâches", rationale: "Private to LifeOS, reversible." },
   { id: "reminder.write", tier: "low", label: "Set reminders", labelFr: "Programmer des rappels", rationale: "Private to LifeOS; a reminder can be edited, snoozed or deleted." },
@@ -63,6 +64,9 @@ export const CAPABILITIES: Capability[] = [
   // ── Connected tools ────────────────────────────────────────────────
   { id: "notion.write", tier: "medium", label: "Write into your Notion", labelFr: "Écrire dans votre Notion", rationale: "Changes a system outside LifeOS, but recoverable from Notion trash." },
   { id: "calendar.write", tier: "medium", label: "Create calendar events", labelFr: "Créer des événements d'agenda", rationale: "Visible to invitees; reversible." },
+  // Medium on purpose: a specialist's instructions steer the agent's work from then on, so the agent shows it
+  // to the owner before saving it — unless they gave it the widest autonomy. It never gets more than the agent.
+  { id: "specialist.write", tier: "medium", label: "Create a specialist for you", labelFr: "Créer un spécialiste pour vous", rationale: "Its instructions guide future work, so you see it before it is saved; it never gets more tools than the agent, and LifeOS's rules prevail over it." },
   { id: "web.research", tier: "medium", label: "Read public web pages", labelFr: "Consulter des pages web publiques", rationale: "Read-only and public, but fetched text is untrusted input — it is treated as data, never as instructions." },
 
   // ── Leaves the user's control ──────────────────────────────────────

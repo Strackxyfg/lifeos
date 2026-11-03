@@ -1,4 +1,4 @@
-import type { AgentMessage, TurnRequest, TurnResult } from "@/lib/ai/types";
+import type { AgentMessage, AITask, Effort, TurnRequest, TurnResult } from "@/lib/ai/types";
 import { start, type AgentEvent, type JournalEntry, type Outcome } from "./loop";
 import type { Decision } from "./policy";
 import { SOURCES_CLOSE, SOURCES_OPEN } from "./provenance";
@@ -47,10 +47,10 @@ const REPORT_MAX = 6_000;
 /**
  * What a sub-agent may use: the read-only tools, and reading web pages —
  * which its `decide` limits to pages its own searches found or the lead
- * already holds. Never research itself (no recursion), never a write.
+ * already holds. Never research or delegation (no recursion), never a write.
  */
 export function workerToolsOf(tools: AgentTool[]): AgentTool[] {
-  return tools.filter((t) => (isReadOnly(t) || t.capability === "web.research") && t.capability !== "agent.research");
+  return tools.filter((t) => (isReadOnly(t) || t.capability === "web.research") && t.capability !== "agent.research" && t.capability !== "agent.delegate");
 }
 
 export function workerSystem(task: ResearchTask, d: Pick<ResearchDeps, "today" | "language" | "maxSteps">): string {
@@ -85,27 +85,49 @@ export async function pool<T, R>(items: T[], limit: number, work: (item: T, inde
   return out;
 }
 
-export async function runResearch(tasks: ResearchTask[], deps: ResearchDeps): Promise<Outcome> {
-  const chosen = tasks.slice(0, deps.maxAgents);
-  const dropped = tasks.length - chosen.length;
+/**
+ * One sub-agent's job: what it is told, what it may use, on which models.
+ * Research parts and delegated specialists are both jobs.
+ */
+export interface WorkerJob {
+  title: string;
+  system: string;
+  /** Its first message: the task. */
+  prompt: string;
+  tools: AgentTool[];
+  task: AITask;
+  maxTokens: number;
+  effort: Effort;
+}
+
+export type WorkerDeps = Pick<ResearchDeps, "leadMessages" | "turn" | "decide" | "execute" | "journal" | "emit" | "callId" | "maxSteps" | "concurrency" | "signal">;
+
+/**
+ * Runs sub-agents in parallel (a few at a time), each in its own
+ * conversation, and returns their reports with the pages they opened.
+ * None of them can ask the owner: a call that would need approval is
+ * refused to them, and they say what they could not do.
+ */
+export async function runWorkers(jobs: WorkerJob[], deps: WorkerDeps, skipped: { count: number; limit: number } = { count: 0, limit: jobs.length }): Promise<Outcome> {
   const leadKnown = deps.leadMessages.filter((m) => m.role === "user" || m.role === "tool");
 
-  const reports = await pool(chosen, deps.concurrency, async (task, i) => {
+  const reports = await pool(jobs, deps.concurrency, async (job, i) => {
     const n = i + 1;
     let steps = 0;
     const sources: Source[] = [];
     const emit = (state: "running" | "done" | "error", tool?: { name: string; args: Record<string, unknown> }) =>
-      deps.emit({ t: "sub", call: deps.callId, n, title: task.title, state, steps, ...(tool ? { tool } : {}), ...(state !== "running" ? { sources } : {}) });
+      deps.emit({ t: "sub", call: deps.callId, n, title: job.title, state, steps, ...(tool ? { tool } : {}), ...(state !== "running" ? { sources } : {}) });
     emit("running");
-    const result = await start([{ role: "user", content: `Your task — ${task.title}\n\n${task.brief}` }], {
-      system: workerSystem(task, deps),
-      tools: deps.tools,
-      turn: (r) => deps.turn({ ...r, task: "research" }),
-      // The brief is a model's text: its addresses do not count, only the lead's known ones and this sub-agent's own results.
+    const result = await start([{ role: "user", content: job.prompt }], {
+      system: job.system,
+      tools: job.tools,
+      turn: deps.turn,
+      task: job.task,
+      // The task is a model's text: its addresses do not count, only the lead's known ones and this sub-agent's own results.
       decide: (capability, args, messages) => {
         const d = deps.decide(capability, args, [...leadKnown, ...messages.filter((m) => m.role === "tool")]);
         return d.action === "approve"
-          ? { action: "deny", reason: "A sub-agent cannot ask the owner: it reads only pages found by its own searches or already in the conversation." }
+          ? { action: "deny", reason: "A sub-agent cannot ask the owner: an action that needs their approval is refused to it — say in your report what you would have done." }
           : d;
       },
       execute: deps.execute,
@@ -116,22 +138,22 @@ export async function runResearch(tasks: ResearchTask[], deps: ResearchDeps): Pr
         if (e.t === "step" && e.state === "done") for (const s of e.sources ?? []) if (s.url && !sources.some((x) => x.url === s.url)) sources.push(s);
       },
       maxSteps: deps.maxSteps,
-      maxTokens: 3_000,
-      effort: "medium",
+      maxTokens: job.maxTokens,
+      effort: job.effort,
       signal: deps.signal,
     });
     const last = [...result.messages].reverse().find((m) => m.role === "assistant" && m.content.trim());
     const report = last?.role === "assistant" ? last.content.trim() : "";
     const ok = result.stop !== "error" && report.length > 0;
     emit(ok ? "done" : "error");
-    return { task, report, sources, ok };
+    return { job, report, sources, ok };
   });
 
   const consulted = reports.flatMap((r) => r.sources).filter((s, i, all) => s.url && all.findIndex((x) => x.url === s.url) === i);
   const content = [
-    `${reports.length} sub-agent${reports.length === 1 ? "" : "s"} reported${dropped ? ` (${dropped} more part${dropped === 1 ? " was" : "s were"} not run: the limit is ${deps.maxAgents})` : ""}.`,
+    `${reports.length} sub-agent${reports.length === 1 ? "" : "s"} reported${skipped.count ? ` (${skipped.count} more part${skipped.count === 1 ? " was" : "s were"} not run: the limit is ${skipped.limit})` : ""}.`,
     ...reports.map((r, i) =>
-      [`\n## ${i + 1}. ${r.task.title}${r.ok ? "" : " — incomplete"}`, r.report ? clipResult(r.report, REPORT_MAX) : "(no report: the sub-agent stopped before writing one)"].join("\n")
+      [`\n## ${i + 1}. ${r.job.title}${r.ok ? "" : " — incomplete"}`, r.report ? clipResult(r.report, REPORT_MAX) : "(no report: the sub-agent stopped before writing one)"].join("\n")
     ),
     "",
     SOURCES_OPEN,
@@ -146,4 +168,18 @@ export async function runResearch(tasks: ResearchTask[], deps: ResearchDeps): Pr
     summary: `${done}/${reports.length} sub-agents reported, ${consulted.length} pages consulted.`,
     sources: consulted.slice(0, 12),
   };
+}
+
+export async function runResearch(tasks: ResearchTask[], deps: ResearchDeps): Promise<Outcome> {
+  const chosen = tasks.slice(0, deps.maxAgents);
+  const jobs = chosen.map((task) => ({
+    title: task.title,
+    system: workerSystem(task, deps),
+    prompt: `Your task — ${task.title}\n\n${task.brief}`,
+    tools: deps.tools,
+    task: "research" as const,
+    maxTokens: 3_000,
+    effort: "medium" as const,
+  }));
+  return runWorkers(jobs, deps, { count: tasks.length - chosen.length, limit: deps.maxAgents });
 }

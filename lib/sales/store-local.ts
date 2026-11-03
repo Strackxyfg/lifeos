@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { jsonFile } from "./file";
+import { jsonFile } from "@/lib/db/json-file";
 import { formatNumber } from "./legal";
 import type { CatalogItem, Client, Issuer, SalesDoc } from "./model";
 import type { SalesStore } from "./store";

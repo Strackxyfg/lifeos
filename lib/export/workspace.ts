@@ -8,6 +8,8 @@ import { getMapStore } from "@/lib/maps/store";
 import type { MapDoc } from "@/lib/maps/model";
 import { getSalesStore } from "@/lib/sales/store";
 import type { CatalogItem, Client, Issuer, SalesDoc } from "@/lib/sales/model";
+import { getSpecialistStore } from "@/lib/specialists/store";
+import type { Specialist } from "@/lib/specialists/model";
 
 /**
  * Everything a person keeps in LifeOS besides their brain — for the export
@@ -15,7 +17,8 @@ import type { CatalogItem, Client, Issuer, SalesDoc } from "@/lib/sales/model";
  * tasks, reminders, balances and weekly reviews, their double (portrait,
  * check-ins, what they did with its advice), their mind maps, their sales
  * (the business, clients, catalogue, every quote, invoice and credit note,
- * issued ones exactly as issued), and what they wrote in their teams. Rows lose the account key (it is theirs, and says nothing).
+ * issued ones exactly as issued), their specialists, and what they wrote in
+ * their teams. Rows lose the account key (it is theirs, and says nothing).
  * A table a pending migration has not created yet is simply empty; any
  * other failure fails the export rather than handing over less than it
  * claims.
@@ -32,6 +35,8 @@ export interface WorkspaceExport {
   maps: { id: string; title: string; createdAt: string; updatedAt: string; doc: MapDoc }[];
   /** Sales (migration 017): what an accountant, or the tax office, may ask to see. */
   sales: { issuer: Issuer | null; clients: Client[]; catalog: CatalogItem[]; documents: SalesDoc[] };
+  /** The agents they defined (migration 018). */
+  specialists: Specialist[];
 }
 
 const withoutKey = <T extends { userKey?: string }>(row: T): Omit<T, "userKey"> => {
@@ -51,15 +56,16 @@ async function tolerant<T>(load: () => Promise<T>, empty: T): Promise<T> {
 export async function loadWorkspaceExport(userKey: string): Promise<WorkspaceExport> {
   const store = getStore();
   const teamStore = getTeamStore();
-  const [profile, lists, teams, maps, sales] = await Promise.all([
+  const [profile, lists, teams, maps, sales, specialists] = await Promise.all([
     tolerant(() => store.getProfile(userKey), null),
     Promise.all(COLLECTIONS.map((c) => tolerant(() => store.list(userKey, c) as Promise<{ userKey?: string }[]>, []))),
     tolerant(async () => ((await teamStore.supportsTeams()) ? (await teamStore.authoredBy(userKey)).teams : []), [] as AuthoredTeamData["teams"]),
     loadMaps(userKey),
     loadSales(userKey),
+    tolerant(async () => ((await getSpecialistStore().supports()) ? await getSpecialistStore().list(userKey) : []), [] as Specialist[]),
   ]);
   const collections = Object.fromEntries(COLLECTIONS.map((c, i) => [c, lists[i].map(withoutKey)])) as WorkspaceExport["collections"];
-  return { profile: profile ? withoutKey(profile) : null, collections, teams, maps, sales };
+  return { profile: profile ? withoutKey(profile) : null, collections, teams, maps, sales, specialists };
 }
 
 async function loadSales(userKey: string): Promise<WorkspaceExport["sales"]> {

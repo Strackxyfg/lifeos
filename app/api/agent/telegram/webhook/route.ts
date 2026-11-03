@@ -8,6 +8,7 @@ import {
   isTelegramConfigured,
 } from "@/lib/agent/telegram";
 import { VOICE_REPLIES, telegramVoiceDeps, voiceToText } from "@/lib/agent/telegram-voice";
+import { KB, readJson } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  const update = (await req.json().catch(() => null)) as TelegramUpdate | null;
+  const read = await readJson(req, 256 * KB);
+  if (read instanceof Response) return read;
+  const update = (read.value ?? null) as TelegramUpdate | null;
   const message = update?.message;
   const chatId = message?.chat?.id;
   let text = message?.text?.trim();

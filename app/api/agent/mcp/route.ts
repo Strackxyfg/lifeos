@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateRunner } from "@/lib/agent/token";
 import { runCapability } from "@/lib/agent/gate";
 import { listMcpTools, fromToolName, negotiateProtocolVersion, SUPPORTED_PROTOCOL_VERSIONS } from "@/lib/agent/mcp-tools";
+import { KB, readJson } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +37,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json().catch(() => null)) as RpcRequest | RpcRequest[] | null;
+  const read = await readJson(req, 256 * KB);
+  if (read instanceof Response) return read;
+  const body = (read.value ?? null) as RpcRequest | RpcRequest[] | null;
   if (!body) return rpcError(null, -32700, "Parse error");
 
   // A batch is legal JSON-RPC; answer each and drop notification responses.

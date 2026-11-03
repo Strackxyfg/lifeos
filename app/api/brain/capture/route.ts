@@ -1,6 +1,7 @@
 import { classifyNote } from "@/lib/ai/classify";
 import { isLocale, type Locale } from "@/lib/i18n/config";
 import { requireUserKey } from "@/lib/auth/require-user";
+import { KB, readJson } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,9 @@ export async function POST(req: Request) {
   const auth = await requireUserKey();
   if ("response" in auth) return auth.response;
 
-  const body = (await req.json().catch(() => ({}))) as { text?: string; locale?: string };
+  const read = await readJson(req, 256 * KB);
+  if (read instanceof Response) return read;
+  const body = (read.value ?? {}) as { text?: string; locale?: string };
   const locale: Locale = isLocale(body.locale) ? body.locale : "en";
   return Response.json(await classifyNote(body.text ?? "", locale));
 }

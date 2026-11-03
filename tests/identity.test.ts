@@ -83,3 +83,24 @@ describe("the admin client", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe("writes", () => {
+  it("are filed under the signed-in person, never under the shared demo key", async () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const { writerKey, SignedOut } = await import("@/lib/db/store");
+    session.current = null;
+    await expect(writerKey()).rejects.toBeInstanceOf(SignedOut);
+    session.current = { email: "camille@test.local" };
+    expect(await writerKey()).toBe("camille@test.local");
+  });
+
+  it("never use the fallback identity in a server action — an action can be called from any page, /login included", () => {
+    const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    const offenders = sources(join(ROOT, "app", "actions"))
+      .map((file) => ({ file: relative(ROOT, file).split(sep).join("/"), src: code(readFileSync(file, "utf8")) }))
+      .filter((f) => /\bgetUserKey\(\)/.test(f.src))
+      .map((f) => f.file);
+    expect(offenders).toEqual([]);
+  });
+});

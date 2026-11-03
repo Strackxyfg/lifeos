@@ -12,6 +12,7 @@ import {
   computeInsight, insightPrompt, snapshotFacts,
   type Insight, type InsightKind,
 } from "@/lib/ai/insights";
+import { KB, readJson } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +28,9 @@ export async function POST(req: Request) {
   const auth = await requireUserKey();
   if ("response" in auth) return auth.response;
 
-  const body = (await req.json().catch(() => ({}))) as { kind?: string; locale?: string };
+  const read = await readJson(req, 16 * KB);
+  if (read instanceof Response) return read;
+  const body = (read.value ?? {}) as { kind?: string; locale?: string };
   const kind: InsightKind = body.kind === "weekly" ? "weekly" : "daily";
   const locale: Locale = isLocale(body.locale) ? body.locale : "en";
 

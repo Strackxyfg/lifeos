@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getStore, getUserKey } from "@/lib/db/store";
+import { getStore, SignedOut, writerKey } from "@/lib/db/store";
 import { isMissingTable } from "@/lib/data/live";
 import { CATEGORY_IDS, kindForCategory, type BrainCategoryId } from "@/lib/data/brain";
 import { canonicalPair, pairKey, sameLink, toBrainLink, type BrainLink } from "@/lib/brain/graph";
@@ -20,6 +20,7 @@ import { noteText } from "@/lib/self/portrait";
  * bug: it means migration 007 hasn't been applied yet, and the UI says so.
  */
 export type BrainErrorCode =
+  | "unauthorized"
   | "invalid"
   | "not_found"
   | "migration_pending"
@@ -36,6 +37,7 @@ const done = <T>(data: T): BrainResult<T> => ({ ok: true, data });
 const fail = (code: BrainErrorCode, error: string): BrainResult<never> => ({ ok: false, code, error });
 
 function fromError(e: unknown): BrainResult<never> {
+  if (e instanceof SignedOut) return fail("unauthorized", "Not signed in.");
   if (isMissingTable(e)) return fail("migration_pending", "Migration 007 has not been applied yet.");
   return fail("failed", e instanceof Error ? e.message : "Something went wrong.");
 }
@@ -70,7 +72,7 @@ export async function createNote(input: unknown): Promise<BrainResult<DbBrainIte
   const { title, detail, category, ai } = parsed.data;
 
   try {
-    const note = await getStore().insert(await getUserKey(), "brain", {
+    const note = await getStore().insert(await writerKey(), "brain", {
       title,
       detail: detail || null,
       category,
@@ -111,7 +113,7 @@ export async function updateNote(id: unknown, patch: unknown): Promise<BrainResu
 
   try {
     const store = getStore();
-    const userKey = await getUserKey();
+    const userKey = await writerKey();
     await store.update(userKey, "brain", pid.data, update);
     // Rewritten: the portrait keeps only the quotes the note still holds.
     if (update.title !== undefined || update.detail !== undefined) {
@@ -134,7 +136,7 @@ export async function deleteNote(id: unknown): Promise<BrainResult> {
   if (!pid.success) return fail("invalid", "Invalid note.");
   try {
     const store = getStore();
-    const userKey = await getUserKey();
+    const userKey = await writerKey();
     const note = await store.get(userKey, "brain", pid.data);
     await store.remove(userKey, "brain", pid.data);
     await reconcilePortrait(store, userKey, pid.data, null);
@@ -196,7 +198,7 @@ export async function linkNotes(input: unknown): Promise<BrainResult<BrainLink>>
 
   try {
     const store = getStore();
-    const userKey = await getUserKey();
+    const userKey = await writerKey();
     const pair = await ownPair(userKey, a, b);
     if (!pair) return fail("not_found", "One of these notes does not exist.");
 
@@ -230,7 +232,7 @@ export async function unlinkNotes(linkId: unknown): Promise<BrainResult> {
   if (!pid.success) return fail("invalid", "Invalid link.");
   try {
     const store = getStore();
-    const userKey = await getUserKey();
+    const userKey = await writerKey();
     const link = (await store.list(userKey, "links")).find((l) => l.id === pid.data);
     await store.remove(userKey, "links", pid.data);
     if (link) await rememberNo(userKey, link.fromId, link.toId);
@@ -252,7 +254,7 @@ export async function reviewLink(linkId: unknown, decision: unknown): Promise<Br
   if (!pid.success || !pd.success) return fail("invalid", "Invalid review.");
   if (pd.data === "remove") return unlinkNotes(pid.data);
   try {
-    await getStore().update(await getUserKey(), "links", pid.data, { origin: "suggested" });
+    await getStore().update(await writerKey(), "links", pid.data, { origin: "suggested" });
     refresh();
     return done(null);
   } catch (e) {
@@ -271,7 +273,7 @@ export async function retypeLink(linkId: unknown, kind: unknown): Promise<BrainR
   try {
     const store = getStore();
     if (!(await store.supportsSynapses())) return fail("migration_pending", "Migration 008 has not been applied yet.");
-    const userKey = await getUserKey();
+    const userKey = await writerKey();
     const link = (await store.list(userKey, "links")).find((l) => l.id === pid.data);
     if (!link) return fail("not_found", "That connection no longer exists.");
     const pair = await ownPair(userKey, link.fromId, link.toId);
@@ -297,7 +299,7 @@ export async function dismissPair(a: unknown, b: unknown): Promise<BrainResult> 
   try {
     const store = getStore();
     if (!(await store.supportsSynapses())) return fail("migration_pending", "Migration 008 has not been applied yet.");
-    const userKey = await getUserKey();
+    const userKey = await writerKey();
     if (!(await ownPair(userKey, pa.data, pb.data))) return fail("not_found", "One of these notes does not exist.");
     await rememberNo(userKey, pa.data, pb.data);
     return done(null);

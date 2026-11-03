@@ -16,6 +16,7 @@ import { localDayHour, summarize } from "@/lib/self/rhythm";
 import { doubleSystem, goalRefs, portraitSection, rhythmSection } from "@/lib/self/double";
 import { careOf, type Care } from "@/lib/self/care";
 import { registerOf, selfGender } from "@/lib/self/voice";
+import { KB, readJson } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,7 +55,9 @@ export async function POST(req: Request) {
   const userKey = await getAuthenticatedUserKey();
   if (!userKey) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
 
-  const body = (await req.json().catch(() => ({}))) as { messages?: Turn[]; locale?: string; zone?: string; mode?: string; answerNote?: unknown };
+  const read = await readJson(req, 512 * KB);
+  if (read instanceof Response) return read;
+  const body = (read.value ?? {}) as { messages?: Turn[]; locale?: string; zone?: string; mode?: string; answerNote?: unknown };
   const locale: Locale = isLocale(body.locale) ? body.locale : "en";
   const m = dictionaries[locale];
   const zone = typeof body.zone === "string" && isValidZone(body.zone) ? body.zone : "UTC";

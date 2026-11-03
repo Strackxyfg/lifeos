@@ -3,12 +3,16 @@ import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { editionOfPlan } from "@/lib/plans/editions";
+import { readText } from "@/lib/http/body";
 
 // Stripe signature verification needs the raw body → Node runtime.
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  const body = await req.text();
+  // Stripe's events are a few kilobytes; the signature is checked on the exact text.
+  const read = await readText(req, 1024 * 1024);
+  if (read instanceof Response) return read;
+  const body = read.text;
   const sig = req.headers.get("stripe-signature");
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
 

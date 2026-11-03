@@ -35,7 +35,7 @@
     "three": "^0.186.1",
     "three-gpu-pathtracer": "0.0.25",
     "three-mesh-bvh": "^0.9.15",
-    "zod": "^3.24.1"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
@@ -54,6 +54,9 @@
   "overrides": {
     "three-mesh-bvh": "$three-mesh-bvh",
     "postcss": "$postcss",
-    "qs": "^6.16.0"
+    "qs": "6.16.1",
+    "openai": {
+      "zod": "$zod"
+    }
   }
 }

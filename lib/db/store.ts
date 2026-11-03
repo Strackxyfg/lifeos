@@ -52,6 +52,27 @@ export const getUserKey = cache(async function getUserKey(): Promise<string> {
  * workspace. Use this wherever writing to the wrong row is a security
  * problem rather than a cosmetic one.
  */
+/** Thrown by `writerKey()` when nobody is signed in; an action's catch turns it into its own refusal. */
+export class SignedOut extends Error {
+  constructor() {
+    super("Not signed in.");
+  }
+}
+
+/**
+ * The key a write is filed under: the signed-in person, or `SignedOut`.
+ *
+ * A server action can be called by a POST to any page — `/login` included,
+ * which the middleware leaves open — so "the page is protected" is never
+ * enough for a write. Without this, a signed-out call would write into (or
+ * delete from) the shared demo rows every visitor sees.
+ */
+export async function writerKey(): Promise<string> {
+  const key = await getAuthenticatedUserKey();
+  if (!key) throw new SignedOut();
+  return key;
+}
+
 export const getAuthenticatedUserKey = cache(async function getAuthenticatedUserKey(): Promise<
   string | null
 > {

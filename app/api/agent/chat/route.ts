@@ -21,6 +21,7 @@ import { isKnownUrl } from "@/lib/agent/provenance";
 import { runResearch, workerToolsOf, type ResearchTask } from "@/lib/agent/research";
 import { searchAvailable } from "@/lib/agent/search";
 import { sourcesIn, toolsFor, webSourcesIn, type AgentTool } from "@/lib/agent/tools";
+import { readText } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ const MAX_BODY = 1_500_000;
 const toolCall = z.object({
   id: z.string().min(1).max(128),
   name: z.string().regex(TOOL_NAME),
-  arguments: z.record(z.unknown()),
+  arguments: z.record(z.string(), z.unknown()),
   invalid: z.string().max(2_000).optional(),
 });
 const replay = z.object({
@@ -98,8 +99,9 @@ export async function POST(req: Request) {
   if (!(req.headers.get("content-type") ?? "").includes("application/json")) return json(415, { error: "content_type" });
   if (!aiAvailable()) return json(503, { error: "no_ai" });
 
-  const raw = await req.text();
-  if (raw.length > MAX_BODY) return json(413, { error: "too_long" });
+  const read = await readText(req, MAX_BODY);
+  if (read instanceof Response) return json(413, { error: "too_long" });
+  const raw = read.text;
   let parsed: z.infer<typeof bodySchema>;
   try {
     const result = bodySchema.safeParse(JSON.parse(raw));

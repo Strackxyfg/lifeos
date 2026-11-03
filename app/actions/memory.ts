@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getAuthenticatedUserKey, getStore, getUserKey } from "@/lib/db/store";
+import { getAuthenticatedUserKey, getStore, SignedOut, writerKey } from "@/lib/db/store";
 import { isMissingTable } from "@/lib/db/errors";
 import { AIError, aiAvailable } from "@/lib/ai/router";
 import { proposeDecisions } from "@/lib/ai/brain-ai";
@@ -43,7 +43,7 @@ export async function reviewNote(id: unknown, answer: unknown): Promise<BrainRes
   if (!pid.success || !pa.success) return fail("invalid", "Invalid review.");
   try {
     const store = getStore();
-    const userKey = await getUserKey();
+    const userKey = await writerKey();
     const [items, memory] = await Promise.all([store.list(userKey, "brain"), store.supportsMemory()]);
     const item = items.find((i) => i.id === pid.data);
     if (!item) return fail("not_found", "That note no longer exists.");
@@ -69,6 +69,7 @@ export async function reviewNote(id: unknown, answer: unknown): Promise<BrainRes
     refresh();
     return { ok: true, data: next };
   } catch (e) {
+    if (e instanceof SignedOut) return fail("unauthorized", e.message);
     return fail("failed", e instanceof Error ? e.message : "Could not save the review.");
   }
 }
@@ -144,7 +145,7 @@ export async function recordDecision(
   if (!parsed.success) return fail("invalid", "Invalid decision.");
   try {
     const store = getStore();
-    const userKey = await getUserKey();
+    const userKey = await writerKey();
     const t = await tensionOf(userKey, parsed.data.linkId);
     if (!t) return fail("not_found", "That tension no longer exists.");
     const [typed, memory] = await Promise.all([store.supportsSynapses(), store.supportsMemory()]);
@@ -189,6 +190,7 @@ export async function recordDecision(
       },
     };
   } catch (e) {
+    if (e instanceof SignedOut) return fail("unauthorized", e.message);
     if (isMissingTable(e)) return fail("migration_pending", "Migration 007 has not been applied yet.");
     return fail("failed", e instanceof Error ? e.message : "Could not record the decision.");
   }

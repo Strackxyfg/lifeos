@@ -1055,6 +1055,8 @@ const en = {
     savedProject: "Project created",
     savedDeal: "Deal created",
     savedEntry: "Entry added",
+    required: "“{field}” is required.",
+    invalid: "Check “{field}”.",
   },
   onboarding: {
     optional: "Optional",
@@ -1425,6 +1427,7 @@ const en = {
       kind: "Kind of connection",
     },
     errors: {
+      unauthorized: "Your session has expired. Sign in again — nothing was saved.",
       invalid: "That didn't look right — nothing was saved.",
       not_found: "That note no longer exists.",
       migration_pending: "This feature isn't enabled on this workspace yet.",
@@ -1640,6 +1643,17 @@ const en = {
     noAccount: "New to LifeOS?",
     signInLink: "Sign in",
     createLink: "Create an account",
+    errors: {
+      email: "Enter a valid email address.",
+      password: "The password needs at least 8 characters.",
+      credentials: "That email and password do not match.",
+      exists: "An account already exists with this email. Sign in instead.",
+      confirm: "Check your inbox to confirm your email, then sign in.",
+      unconfirmed: "Your email is not confirmed yet: open the link we sent you.",
+      weak: "That password is too weak. Choose a longer one.",
+      rate: "Too many attempts. Wait a minute, then try again.",
+      failed: "Signing in did not work. Try again in a moment.",
+    },
     sso: {
       link: "Sign in with your company's SSO",
       title: "Single sign-on",
@@ -2701,6 +2715,8 @@ const fr: Messages = {
     savedProject: "Projet créé",
     savedDeal: "Opportunité créée",
     savedEntry: "Écriture ajoutée",
+    required: "« {field} » est obligatoire.",
+    invalid: "Vérifiez « {field} ».",
   },
   onboarding: {
     optional: "Facultatif",
@@ -3070,6 +3086,7 @@ const fr: Messages = {
       kind: "Type de connexion",
     },
     errors: {
+      unauthorized: "Votre session a expiré. Reconnectez-vous — rien n'a été enregistré.",
       invalid: "Ça ne semblait pas correct — rien n'a été enregistré.",
       not_found: "Cette note n'existe plus.",
       migration_pending: "Cette fonction n'est pas encore activée sur cet espace.",
@@ -3285,6 +3302,17 @@ const fr: Messages = {
     noAccount: "Nouveau sur LifeOS ?",
     signInLink: "Se connecter",
     createLink: "Créer un compte",
+    errors: {
+      email: "Saisissez une adresse e-mail valide.",
+      password: "Le mot de passe doit faire au moins 8 caractères.",
+      credentials: "Cet e-mail et ce mot de passe ne correspondent pas.",
+      exists: "Un compte existe déjà avec cet e-mail. Connectez-vous.",
+      confirm: "Ouvrez votre boîte de réception pour confirmer votre e-mail, puis connectez-vous.",
+      unconfirmed: "Votre e-mail n'est pas encore confirmé : ouvrez le lien que nous vous avons envoyé.",
+      weak: "Ce mot de passe est trop faible. Choisissez-en un plus long.",
+      rate: "Trop de tentatives. Attendez une minute, puis réessayez.",
+      failed: "La connexion n'a pas abouti. Réessayez dans un instant.",
+    },
     sso: {
       link: "Se connecter avec le SSO de mon entreprise",
       title: "Connexion unique (SSO)",

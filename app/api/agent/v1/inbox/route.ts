@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authenticateRunner } from "@/lib/agent/token";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { KB, readJson } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -105,7 +106,9 @@ export async function POST(req: Request) {
   const auth = await authenticateRunner(req);
   if (!auth) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const parsed = replySchema.safeParse(await req.json().catch(() => ({})));
+  const read = await readJson(req, 64 * KB);
+  if (read instanceof Response) return read;
+  const parsed = replySchema.safeParse(read.value ?? {});
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
 
   const db = createAdminClient();

@@ -2,6 +2,7 @@ import { AIError, ai, aiAvailable } from "@/lib/ai/router";
 import { quota } from "@/lib/ai/quota";
 import { requireUserKey } from "@/lib/auth/require-user";
 import { parseIdeas, suggestInput, suggestMessages } from "@/lib/maps/suggest";
+import { KB, readJson } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,9 @@ export async function POST(req: Request) {
   if ("response" in auth) return auth.response;
   if (!aiAvailable()) return json({ ok: false, code: "unavailable" }, 503);
 
-  const input = suggestInput(await req.json().catch(() => null));
+  const read = await readJson(req, 512 * KB);
+  if (read instanceof Response) return read;
+  const input = suggestInput(read.value ?? null);
   if (!input) return json({ ok: false, code: "invalid" }, 400);
   if (!quota().take(auth.userKey, "maps").ok) return json({ ok: false, code: "rate_limit" }, 429);
 

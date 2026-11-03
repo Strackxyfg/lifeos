@@ -12,7 +12,9 @@ export type SubmitState =
   | { ok: true; valid: boolean }
   | { ok: false; error: string };
 
-const schema = z.record(z.number().int().min(LIKERT_MIN).max(LIKERT_MAX));
+const schema = z.record(z.string(), z.number().int().min(LIKERT_MIN).max(LIKERT_MAX));
+/** Far more than the questionnaire has: anything larger is refused before it is validated. */
+const MAX_ANSWERS = 200;
 
 /**
  * Scores the assessment, derives the agent policy and stores both.
@@ -22,6 +24,7 @@ const schema = z.record(z.number().int().min(LIKERT_MIN).max(LIKERT_MAX));
  * stored — the audit trail matters — but yields the minimum policy.
  */
 export async function submitAssessment(responses: unknown): Promise<SubmitState> {
+  if (typeof responses !== "object" || responses === null || Object.keys(responses).length > MAX_ANSWERS) return { ok: false, error: "Invalid responses." };
   const parsed = schema.safeParse(responses);
   if (!parsed.success) return { ok: false, error: "Invalid responses." };
 

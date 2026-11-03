@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handleScim } from "@/lib/enterprise/scim-handler";
 import { ScimError, errorBody } from "@/lib/enterprise/scim";
 import { getEnterpriseStore } from "@/lib/enterprise/store";
+import { readText } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,8 +30,9 @@ async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }
 
   let body: unknown;
   if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
-    const text = await req.text();
-    if (text.length > MAX_BODY) return reply(413, errorBody(new ScimError(413, "The request body is too large.")));
+    const read = await readText(req, MAX_BODY);
+    if (read instanceof Response) return reply(413, errorBody(new ScimError(413, "The request body is too large.")));
+    const text = read.text;
     try {
       body = text ? JSON.parse(text) : undefined;
     } catch {

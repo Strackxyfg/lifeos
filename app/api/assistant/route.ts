@@ -10,6 +10,7 @@ import { subjectsOfQuestion } from "@/lib/ai/brain-ai";
 import { computeFocus } from "@/lib/brain/focus";
 import { contextLabels, focusReasonText } from "@/lib/brain/labels";
 import { getProfile } from "@/lib/user/profile";
+import { KB, readJson } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,7 +67,9 @@ export async function POST(req: Request) {
   const auth = await requireUserKey();
   if ("response" in auth) return auth.response;
 
-  const body = (await req.json().catch(() => ({}))) as { messages?: ChatMessage[]; locale?: string; voice?: boolean };
+  const read = await readJson(req, 512 * KB);
+  if (read instanceof Response) return read;
+  const body = (read.value ?? {}) as { messages?: ChatMessage[]; locale?: string; voice?: boolean };
   // A spoken conversation: the answer is heard, not read.
   const spoken = body.voice === true;
   const locale: Locale = isLocale(body.locale) ? body.locale : "en";

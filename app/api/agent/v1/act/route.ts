@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authenticateRunner } from "@/lib/agent/token";
 import { runCapability } from "@/lib/agent/gate";
+import { KB, readJson } from "@/lib/http/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 const schema = z.object({
   capability: z.string().min(1).max(64),
   runId: z.string().uuid().optional(),
-  payload: z.record(z.unknown()).optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
   /** Model spend the runner is reporting for this step, in cents. */
   costCents: z.number().int().min(0).max(10_000).optional(),
 });
@@ -26,7 +27,9 @@ export async function POST(req: Request) {
   const auth = await authenticateRunner(req);
   if (!auth) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const parsed = schema.safeParse(await req.json().catch(() => ({})));
+  const read = await readJson(req, 64 * KB);
+  if (read instanceof Response) return read;
+  const parsed = schema.safeParse(read.value ?? {});
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }

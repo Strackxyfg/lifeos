@@ -733,6 +733,11 @@ de 5 s, testées.
    est vide : ni l'une ni l'autre n'est utilisée. La voix anglaise d'Orpheus
    (Groq) demande que l'administrateur accepte ses conditions dans la console
    Groq — non utilisée, les voix de l'appareil suffisent.
+   **OpenRouter** (3 novembre) : la nouvelle clé fonctionne — les 9 modèles
+   configurés répondent, l'agent tourne sur Claude Sonnet 5.5 —, mais le compte
+   n'a **aucun crédit acheté** : OpenRouter refuse au-delà d'une petite marge,
+   et l'agent retombe alors sur Groq. Ajouter des crédits sur openrouter.ai.
+   Détails et autres constats : `docs/23-AUDIT.md`.
 6. **Telegram** : les mémos vocaux au bot et l'envoi des rappels sont codés et
    testés, pas éprouvés sur l'API réelle (aucun jeton de bot configuré ici).
 7. **Rappels application fermée** : définir `CRON_SECRET` (16 caractères au

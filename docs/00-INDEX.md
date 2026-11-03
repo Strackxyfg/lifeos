@@ -30,3 +30,4 @@ The 17 requested deliverables and where each lives.
 | + | The agent in the app: loop, tools, approvals, safety | [`20-AGENT-IN-APP.md`](20-AGENT-IN-APP.md) |
 | + | LifeOS for Windows: build, local and online modes, security | [`21-DESKTOP.md`](21-DESKTOP.md) |
 | + | Sales: quotes, invoices, credit notes, French rules, the agent's part | [`22-SALES.md`](22-SALES.md) |
+| + | Internal audit (2026-11-03): security, AI, performance, language, what is left to sell it | [`23-AUDIT.md`](23-AUDIT.md) |

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isEuVat, isFrenchVat, isIban, isSiren, isSiret } from "./identifiers";
 import type { Line, Payment, Totals } from "./compute";
+import { LEGAL_FORMS, NATURES, PAYMENT_METHODS, type DocKind, type LegalForm, type Nature } from "./constants";
 
 /**
  * Sales: the business that sells (the issuer), its clients, its catalogue,
@@ -14,16 +15,8 @@ import type { Line, Payment, Totals } from "./compute";
  * in Supabase, by the database itself), not only by the page.
  */
 
-export const DOC_KINDS = ["quote", "invoice", "credit"] as const;
-export type DocKind = (typeof DOC_KINDS)[number];
-
-export const NATURES = ["services", "goods", "mixed"] as const;
-export type Nature = (typeof NATURES)[number];
-
-export const LEGAL_FORMS = ["EI", "EIRL", "Micro-entreprise", "EURL", "SARL", "SAS", "SASU", "SA", "SCI", "SNC", "Association", "Autre"] as const;
-export type LegalForm = (typeof LEGAL_FORMS)[number];
-
-export const PAYMENT_METHODS = ["transfer", "card", "cash", "cheque", "other"] as const;
+export { DOC_KINDS, LEGAL_FORMS, NATURES, PAYMENT_METHODS } from "./constants";
+export type { DocKind, LegalForm, Nature } from "./constants";
 
 export interface Address {
   line1: string;

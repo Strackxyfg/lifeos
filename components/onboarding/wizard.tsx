@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Brain, Check, Loader2, Sparkles } from "lucide-react";
 
-import { AREA_IDS, questions, type AreaId, type OnboardingDraft, type Question } from "@/lib/onboarding";
+import { AREA_IDS, questions, type AreaId, type Question } from "@/lib/onboarding-questions";
+import type { OnboardingDraft } from "@/lib/onboarding";
 import { EDITIONS, isEdition, suggestEdition, type Edition } from "@/lib/plans/editions";
 import { completeOnboarding, type OnboardingResult } from "@/app/actions/onboarding";
 import { weaveNotes } from "@/app/actions/weave";

@@ -7,7 +7,7 @@ import { Check, Loader2 } from "lucide-react";
 import { updateProfile, type ProfileState } from "@/app/actions/profile";
 import { toast } from "@/components/ui/toaster";
 import { buttonVariants } from "@/components/ui/button";
-import { AREA_IDS, LIMITS, type AreaId } from "@/lib/onboarding";
+import { AREA_IDS, LIMITS, type AreaId } from "@/lib/onboarding-questions";
 import { useMessages } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 

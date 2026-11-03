@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { AgentMessage, Route, ToolCall, TurnRequest, TurnResult } from "@/lib/ai/types";
 import { AGENT_TOOLS, checkArgs, webSourcesIn } from "@/lib/agent/tools";
 import { isKnownUrl, knownUrls, normalizeUrl, SOURCES_CLOSE, SOURCES_OPEN } from "@/lib/agent/provenance";
-import { pool, runResearch, workerSystem } from "@/lib/agent/research";
+import { pool, runResearch, workerSystem, workerToolsOf } from "@/lib/agent/research";
 import { start, type AgentEvent, type LoopDeps } from "@/lib/agent/loop";
 import { decide as policyDecide, type AgentPolicy } from "@/lib/agent/policy";
 import { agentSystem } from "@/lib/agent/prompt";
@@ -178,6 +178,12 @@ describe("research sub-agents", () => {
     const subs = events.filter((e): e is Extract<AgentEvent, { t: "sub" }> => e.t === "sub");
     expect(subs.filter((e) => e.state === "done").map((e) => e.n).sort()).toEqual([1, 2]);
     expect(subs.every((e) => e.call === "c1")).toBe(true);
+  });
+
+  it("gives sub-agents the reading tools and page reading — never research itself, never a write", () => {
+    const names = workerToolsOf(AGENT_TOOLS).map((t) => t.spec.name);
+    for (const n of ["web_search", "web_read", "compute", "brain_search", "sales_overview"]) expect(names, n).toContain(n);
+    for (const n of ["research", "note_create", "email_send", "deal_create", "sales_draft"]) expect(names, n).not.toContain(n);
   });
 
   it("keeps order when running a few at a time", async () => {

@@ -18,9 +18,9 @@ import { resume, start, type AgentEvent, type LoopDeps, type Outcome } from "@/l
 import { personaFor } from "@/lib/agent/persona";
 import { agentSystem, localNow } from "@/lib/agent/prompt";
 import { isKnownUrl } from "@/lib/agent/provenance";
-import { runResearch, type ResearchTask } from "@/lib/agent/research";
+import { runResearch, workerToolsOf, type ResearchTask } from "@/lib/agent/research";
 import { searchAvailable } from "@/lib/agent/search";
-import { isReadOnly, sourcesIn, toolsFor, webSourcesIn, type AgentTool } from "@/lib/agent/tools";
+import { sourcesIn, toolsFor, webSourcesIn, type AgentTool } from "@/lib/agent/tools";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -186,7 +186,7 @@ export async function POST(req: Request) {
       };
       // The lead's conversation as of its latest decision: what its sub-agents may build on.
       let lead: AgentMessage[] = history;
-      const workerTools = tools.filter((t) => isReadOnly(t) && t.spec.name !== "research");
+      const workerTools = workerToolsOf(tools);
       const execute: LoopDeps["execute"] = async (tool, args, callId) => {
         if (tool.capability !== "agent.research") return runCapability(tool, args);
         return runResearch((args.tasks as ResearchTask[]) ?? [], {

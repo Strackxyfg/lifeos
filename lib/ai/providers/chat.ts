@@ -261,11 +261,17 @@ export function parseRetryAfter(text: string): number | undefined {
   return ms > 0 ? Math.ceil(ms) : undefined;
 }
 
+/** OpenRouter's 402 wording: "You requested up to 8000 tokens, but can only afford 3789." */
+export function parseAfford(text: string): { requested: number; affordable: number } | undefined {
+  const m = /requested up to (\d+) tokens,? but can only afford (\d+)/i.exec(text);
+  return m ? { requested: Number(m[1]), affordable: Number(m[2]) } : undefined;
+}
+
 export function toRouteError(e: unknown): RouteError {
   if (e instanceof OpenAI.APIError) {
     const header = (e.headers as Record<string, string> | undefined)?.["retry-after"];
     const fromHeader = header && Number.isFinite(Number(header)) ? Number(header) * 1000 : undefined;
-    return new RouteError(e.message, e.status, fromHeader ?? parseRetryAfter(e.message));
+    return new RouteError(e.message, e.status, fromHeader ?? parseRetryAfter(e.message), e.status === 402 ? parseAfford(e.message) : undefined);
   }
   if (e instanceof RouteError) return e;
   return new RouteError(e instanceof Error ? e.message : String(e));

@@ -2,7 +2,7 @@ import type { AgentMessage, TurnRequest, TurnResult } from "@/lib/ai/types";
 import { start, type AgentEvent, type JournalEntry, type Outcome } from "./loop";
 import type { Decision } from "./policy";
 import { SOURCES_CLOSE, SOURCES_OPEN } from "./provenance";
-import { clipResult, type AgentTool, type Source } from "./tools";
+import { clipResult, isReadOnly, type AgentTool, type Source } from "./tools";
 
 /**
  * Research in parallel — the `agent.research` capability.
@@ -43,6 +43,15 @@ export interface ResearchDeps {
 }
 
 const REPORT_MAX = 6_000;
+
+/**
+ * What a sub-agent may use: the read-only tools, and reading web pages —
+ * which its `decide` limits to pages its own searches found or the lead
+ * already holds. Never research itself (no recursion), never a write.
+ */
+export function workerToolsOf(tools: AgentTool[]): AgentTool[] {
+  return tools.filter((t) => (isReadOnly(t) || t.capability === "web.research") && t.capability !== "agent.research");
+}
 
 export function workerSystem(task: ResearchTask, d: Pick<ResearchDeps, "today" | "language" | "maxSteps">): string {
   return [

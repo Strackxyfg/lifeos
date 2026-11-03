@@ -265,7 +265,8 @@ const MINUTE = 60_000;
 export function breakerFor(err: RouteError): { ms: number; scope: "route" | "provider" } | null {
   const s = err.status;
   if (s === 429 || s === 413) return { ms: Math.min(err.retryAfterMs ?? MINUTE, 24 * 60 * MINUTE), scope: "route" };
-  if (s === 401 || s === 402 || s === 403) return { ms: 60 * MINUTE, scope: "provider" };
+  if (s === 402) return { ms: 10 * MINUTE, scope: "provider" }; // out of credits: soon back once they are added
+  if (s === 401 || s === 403) return { ms: 60 * MINUTE, scope: "provider" };
   if (s === 404) return { ms: 60 * MINUTE, scope: "route" };
   if (s === 400 || s === 422) return null;
   return { ms: 20_000, scope: "route" }; // 5xx, timeouts, network
@@ -292,6 +293,8 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
 
   const trip = (route: Route, err: RouteError) => {
     lastError.set(route.id, `${err.status ?? "network"}: ${err.message.slice(0, 200)}`);
+    // Why a model was passed over, for whoever reads the server's log — never a key, never an address.
+    if (process.env.NODE_ENV !== "test") console.warn(`[ai] ${route.id} failed (${err.status ?? "network"}): ${err.message.replace(/https?:\/\/\S+/g, "<url>").slice(0, 200)}`);
     const b = breakerFor(err);
     if (!b) return;
     const until = now() + b.ms;
@@ -337,6 +340,24 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
 
   const asRouteError = (e: unknown) => (e instanceof RouteError ? e : new RouteError(e instanceof Error ? e.message : String(e)));
 
+  /**
+   * A request the account cannot pay for in full is asked again, once, of the
+   * same model with fewer tokens — when what it can afford is still enough to
+   * answer. Otherwise the error stands and fails over as usual.
+   */
+  const MIN_TOKENS = 512;
+  async function withinBudget<R extends { maxTokens: number }, T>(req: R, run: (r: R) => Promise<T>): Promise<T> {
+    try {
+      return await run(req);
+    } catch (e) {
+      const err = asRouteError(e);
+      if (err.status !== 402 || !err.afford || err.afford.requested <= 0) throw err;
+      const scaled = Math.floor(req.maxTokens * (err.afford.affordable / err.afford.requested) * 0.95);
+      if (scaled < MIN_TOKENS || scaled >= req.maxTokens) throw err;
+      return run({ ...req, maxTokens: scaled });
+    }
+  }
+
   async function attempt<T>(order: Route[], call: (route: Route) => Promise<T>): Promise<{ value: T; route: Route }> {
     const failures: RouteError[] = [];
     let skipped = 0;
@@ -366,7 +387,7 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
     /** One completion, from the first route that answers. */
     complete: (req: CompletionRequest) =>
       attempt(routesFor(req.task, req.prefer), async (route) => {
-        const text = await deps.transport.complete(route, req, req.timeoutMs ?? 30_000);
+        const text = await withinBudget(req, (r) => deps.transport.complete(route, r, r.timeoutMs ?? 30_000));
         if (req.validate && !req.validate(text)) throw new RouteError(`Unusable answer from ${route.id}`, 422);
         return text;
       }),
@@ -378,7 +399,7 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
      */
     async stream(req: CompletionRequest): Promise<{ tokens: AsyncIterable<string>; route: Route }> {
       const { value, route } = await attempt(routesFor(req.task, req.prefer), async (r) => {
-        const it = (await deps.transport.stream(r, req, req.timeoutMs ?? 30_000))[Symbol.asyncIterator]();
+        const it = (await withinBudget(req, (q) => deps.transport.stream(r, q, q.timeoutMs ?? 30_000)))[Symbol.asyncIterator]();
         const first = await it.next(); // errors before any token count as the route's
         return { it, first };
       });
@@ -415,15 +436,17 @@ export function createRouter(deps: { routes: Route[]; transport: Transport; now?
         }
         let started = false;
         try {
-          const out = await deps.transport.turn(route, {
-            ...req,
-            onText: req.onText
-              ? (delta) => {
-                  started = true;
-                  req.onText!(delta);
-                }
-              : undefined,
-          });
+          const out = await withinBudget(req, (r) =>
+            deps.transport.turn!(route, {
+              ...r,
+              onText: r.onText
+                ? (delta) => {
+                    started = true;
+                    r.onText!(delta);
+                  }
+                : undefined,
+            })
+          );
           lastError.delete(route.id);
           return { ...out, route };
         } catch (e) {

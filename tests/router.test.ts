@@ -115,7 +115,9 @@ describe("retry-after", () => {
 
   it("rests a route by the error, the whole provider for a refused key", () => {
     expect(breakerFor(new RouteError("x", 429, 5_000))).toEqual({ ms: 5_000, scope: "route" });
-    expect(breakerFor(new RouteError("x", 402))).toEqual({ ms: 3_600_000, scope: "provider" });
+    expect(breakerFor(new RouteError("x", 401))).toEqual({ ms: 3_600_000, scope: "provider" });
+    // Out of credits: the whole provider rests, but only for minutes — credits added count soon.
+    expect(breakerFor(new RouteError("x", 402))).toEqual({ ms: 600_000, scope: "provider" });
     expect(breakerFor(new RouteError("x", 503))).toEqual({ ms: 20_000, scope: "route" });
     // Bad JSON from one model is not the route's health.
     expect(breakerFor(new RouteError("Failed to generate JSON", 400))).toBeNull();
@@ -183,6 +185,49 @@ describe("failover", () => {
       "cerebras:qwen-3.8-27b",
       "cerebras:gpt-oss-120b",
     ]);
+  });
+
+  it("asks the same model again with fewer tokens when the account can afford a smaller answer", async () => {
+    const seen: number[] = [];
+    const afford = (requested: number, affordable: number) =>
+      new RouteError(`This request requires more credits, or fewer max_tokens. You requested up to ${requested} tokens, but can only afford ${affordable}.`, 402, undefined, { requested, affordable });
+    const transport: Transport = {
+      async complete(route, r) {
+        seen.push(r.maxTokens);
+        if (r.maxTokens > 3_789) throw afford(r.maxTokens, 3_789);
+        return `ok from ${route.model}`;
+      },
+      async stream() {
+        throw new RouteError("unused", 500);
+      },
+    };
+    const router = createRouter({ routes, transport });
+    const out = await router.complete({ ...req, maxTokens: 8_000 });
+    expect(out.route.model).toBe("qwen/qwen3.8-27b");
+    expect(seen).toEqual([8_000, 3_599]);
+    // Nothing rests: the model answered.
+    expect(router.health().every((h) => h.openUntil === 0)).toBe(true);
+
+    // When what is left cannot carry an answer, it fails over and the provider rests.
+    const broke: Transport = {
+      async complete(route) {
+        if (route.provider === "groq") throw afford(8_000, 200);
+        return "elsewhere";
+      },
+      async stream() {
+        throw new RouteError("unused", 500);
+      },
+    };
+    const both = routesFromEnv({ GROQ_API_KEY: "g", MISTRAL_API_KEY: "m" });
+    const r2 = createRouter({ routes: both, transport: broke });
+    expect((await r2.complete({ ...req, maxTokens: 8_000 })).value).toBe("elsewhere");
+    expect(r2.health().filter((h) => h.openUntil > 0).every((h) => h.provider === "groq")).toBe(true);
+  });
+
+  it("reads OpenRouter's wording of what the account can afford", async () => {
+    const { parseAfford } = await import("@/lib/ai/providers/chat");
+    expect(parseAfford("This request requires more credits, or fewer max_tokens. You requested up to 8000 tokens, but can only afford 3789. To increase, visit …")).toEqual({ requested: 8000, affordable: 3789 });
+    expect(parseAfford("Payment required")).toBeUndefined();
   });
 
   it("says 'rate limit' when every model is resting from one, 'failed' otherwise", async () => {

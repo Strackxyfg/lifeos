@@ -80,7 +80,13 @@ export class RouteError extends Error {
     message: string,
     public readonly status?: number,
     /** From `retry-after`, or parsed from the provider's own wording. */
-    public readonly retryAfterMs?: number
+    public readonly retryAfterMs?: number,
+    /**
+     * A 402 that says how much the account can still pay for ("You requested
+     * up to 8000 tokens, but can only afford 3789"): the same model can answer
+     * a smaller request.
+     */
+    public readonly afford?: { requested: number; affordable: number }
   ) {
     super(message);
   }

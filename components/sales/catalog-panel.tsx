@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { FRENCH_VAT_BP, formatRate, parseEuros } from "@/lib/sales/compute";
 import type { CatalogItem } from "@/lib/sales/model";
 import { archiveCatalogItem, saveCatalogItem } from "@/app/actions/sales";
-import { eurosOf, Field, inputCls } from "./fields";
+import { areaCls, eurosOf, Field, inputCls } from "./fields";
 import { attempt, failureText, money } from "./format";
 
 function CatalogForm({ item, onDone }: { item: CatalogItem | null; onDone: (saved: boolean) => void }) {
@@ -54,7 +54,7 @@ function CatalogForm({ item, onDone }: { item: CatalogItem | null; onDone: (save
         {(p) => <input {...p} value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} className={inputCls} data-autofocus />}
       </Field>
       <Field label={f.description} wide>
-        {(p) => <textarea {...p} rows={2} value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} className={cn(inputCls, "h-auto py-2")} />}
+        {(p) => <textarea {...p} rows={2} value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} className={areaCls} />}
       </Field>
       <Field label={f.unitPrice} error={err("unitPrice")}>
         {(p) => <input {...p} inputMode="decimal" value={v.price} onChange={(e) => setV({ ...v, price: e.target.value })} className={cn(inputCls, "tabular-nums")} placeholder="0,00" />}

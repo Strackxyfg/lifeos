@@ -6,7 +6,7 @@ import { useLocale, useMessages } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import { FRENCH_VAT_BP, formatRate, lineNet, parseEuros, type Line } from "@/lib/sales/compute";
 import type { CatalogItem } from "@/lib/sales/model";
-import { eurosOf, inputCls } from "./fields";
+import { areaCls, eurosOf, inputCls } from "./fields";
 import { money } from "./format";
 
 /** A line as typed: numbers stay text until they are read, so "1,5" can be typed. */
@@ -93,7 +93,7 @@ export function LineEditor({
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_6rem_7.5rem_6rem_5rem]">
                   <label className="col-span-2 flex flex-col gap-1 sm:col-span-6">
                     <span className={small}>{e.description}</span>
-                    <textarea rows={2} value={d.description} onChange={(ev) => update(i, { description: ev.target.value })} className={cn(inputCls, "h-auto py-2")} />
+                    <textarea rows={2} value={d.description} onChange={(ev) => update(i, { description: ev.target.value })} className={areaCls} />
                   </label>
                   <label className="flex flex-col gap-1 sm:col-start-2">
                     <span className={small}>{e.quantity}</span>

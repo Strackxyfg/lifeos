@@ -18,7 +18,7 @@ import type { CatalogItem, Client, DocContent, Issuer, SalesDoc } from "@/lib/sa
 import { deleteDraftDocument, issueDocument, saveDraftDocument } from "@/app/actions/sales";
 import { ClientForm } from "./client-form";
 import { DocSheet } from "./doc-sheet";
-import { Field, inputCls } from "./fields";
+import { areaCls, Field, inputCls } from "./fields";
 import { attempt, failureText, zone } from "./format";
 import { draftOf, LineEditor, readLine, type LineDraft } from "./line-editor";
 
@@ -232,7 +232,7 @@ export function DocEditor({ doc, issuer, clients, catalog }: { doc: SalesDoc; is
           </Card>
 
           <Card className="p-4">
-            <Field label={e.notes}>{(p) => <textarea {...p} rows={3} value={d.notes} onChange={(ev) => set("notes")(ev.target.value)} className={cn(inputCls, "h-auto py-2")} />}</Field>
+            <Field label={e.notes}>{(p) => <textarea {...p} rows={3} value={d.notes} onChange={(ev) => set("notes")(ev.target.value)} className={areaCls} />}</Field>
           </Card>
 
           {(problems.length > 0 || check.warnings.length > 0) && (

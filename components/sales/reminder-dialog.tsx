@@ -9,7 +9,7 @@ import { useMessages } from "@/lib/i18n/client";
 import { fill } from "@/lib/i18n/config";
 import { cn } from "@/lib/utils";
 import { mailtoOf, type PaymentReminder } from "@/lib/sales/reminder";
-import { inputCls } from "./fields";
+import { areaCls } from "./fields";
 
 /** A payment reminder, written for the owner to send from their own mailbox — copied, or opened there. */
 export function ReminderDialog({ open, onClose, number, reminder }: { open: boolean; onClose: () => void; number: string; reminder: PaymentReminder }) {
@@ -35,11 +35,11 @@ export function ReminderDialog({ open, onClose, number, reminder }: { open: bool
         </p>
         <label className="flex flex-col gap-1">
           <span className="text-[0.8125rem] text-muted-foreground">{r.subject}</span>
-          <textarea readOnly rows={2} value={reminder.subject} className={cn(inputCls, "h-auto resize-none py-2")} />
+          <textarea readOnly rows={2} value={reminder.subject} className={cn(areaCls, "resize-none")} />
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[0.8125rem] text-muted-foreground">{r.body}</span>
-          <textarea readOnly rows={14} value={reminder.body} className={cn(inputCls, "h-auto py-2 font-[inherit] leading-relaxed")} />
+          <textarea readOnly rows={14} value={reminder.body} className={cn(areaCls, "font-[inherit] leading-relaxed")} />
         </label>
         <p className="text-[0.75rem] leading-relaxed text-muted">{reminder.to ? r.note : r.noEmail}</p>
         <div className="flex flex-wrap justify-end gap-2">

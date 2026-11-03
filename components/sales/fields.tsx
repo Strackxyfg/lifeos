@@ -46,6 +46,13 @@ export function Field({
   );
 }
 
+/**
+ * A text area: the same look, its height left to its `rows`. (`inputCls` fixes
+ * the height at every width, and `h-auto` alone does not undo `sm:h-9`.)
+ */
+export const areaCls =
+  "w-full rounded-md border border-border bg-surface-2/40 px-3 py-2 text-base outline-none transition-colors focus:border-border-strong aria-[invalid=true]:border-danger/60 sm:text-[0.875rem]";
+
 /** Cents shown as euros in a field ("1250,5" stays as typed). */
 export const eurosOf = (cents: number | undefined, locale: "fr" | "en") =>
   cents === undefined ? "" : (cents / 100).toFixed(2).replace(".", locale === "fr" ? "," : ".");

@@ -8,7 +8,7 @@ import { useMessages } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import type { Client } from "@/lib/sales/model";
 import { saveClient } from "@/app/actions/sales";
-import { Field, inputCls } from "./fields";
+import { areaCls, Field, inputCls } from "./fields";
 import { attempt, failureText } from "./format";
 
 const blank = { kind: "company" as Client["kind"], name: "", contact: "", email: "", phone: "", line1: "", line2: "", postalCode: "", city: "", country: "France", siren: "", vatNumber: "", notes: "" };
@@ -99,7 +99,7 @@ export function ClientForm({ client, onSaved, onCancel }: { client: Client | nul
           <Field label={f.vatNumber} error={err("vatNumber")}>{(p) => <input {...p} value={v.vatNumber} onChange={set("vatNumber")} className={inputCls} />}</Field>
         </>
       )}
-      <Field label={f.notes} wide>{(p) => <textarea {...p} rows={2} value={v.notes} onChange={set("notes")} className={cn(inputCls, "h-auto py-2")} />}</Field>
+      <Field label={f.notes} wide>{(p) => <textarea {...p} rows={2} value={v.notes} onChange={set("notes")} className={areaCls} />}</Field>
       <div className="flex justify-end gap-2 sm:col-span-2">
         <button type="button" onClick={onCancel} className={buttonVariants({ variant: "ghost", size: "sm" })}>
           {t.cancel}

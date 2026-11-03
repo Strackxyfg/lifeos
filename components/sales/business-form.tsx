@@ -12,7 +12,7 @@ import { parseEuros } from "@/lib/sales/compute";
 import { LEGAL_FORMS } from "@/lib/sales/constants";
 import type { Issuer } from "@/lib/sales/model";
 import { saveIssuer } from "@/app/actions/sales";
-import { eurosOf, Field, inputCls } from "./fields";
+import { areaCls, eurosOf, Field, inputCls } from "./fields";
 import { attempt, failureText } from "./format";
 
 type Form = Record<
@@ -178,7 +178,7 @@ export function BusinessForm({ issuer }: { issuer: Issuer | null }) {
             {(p) => <input {...p} type="number" min={1} max={365} value={v.quoteValidityDays} onChange={set("quoteValidityDays")} className={inputCls} />}
           </Field>
           <Field label={f.latePenalty} hint={t.business.hints.latePenalty} wide>{(p) => <input {...p} value={v.latePenalty} onChange={set("latePenalty")} className={inputCls} />}</Field>
-          <Field label={f.footer} wide>{(p) => <textarea {...p} rows={2} value={v.footer} onChange={set("footer")} className={cn(inputCls, "h-auto py-2")} />}</Field>
+          <Field label={f.footer} wide>{(p) => <textarea {...p} rows={2} value={v.footer} onChange={set("footer")} className={areaCls} />}</Field>
         </div>
 
         <div className="flex justify-end">

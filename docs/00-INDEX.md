@@ -31,3 +31,4 @@ The 17 requested deliverables and where each lives.
 | + | LifeOS for Windows: build, local and online modes, security | [`21-DESKTOP.md`](21-DESKTOP.md) |
 | + | Sales: quotes, invoices, credit notes, French rules, the agent's part | [`22-SALES.md`](22-SALES.md) |
 | + | Internal audit (2026-11-03): security, AI, performance, language, what is left to sell it | [`23-AUDIT.md`](23-AUDIT.md) |
+| + | Specialists: sub-agents the owner defines, delegation in parallel, the boundary | [`24-SPECIALISTS.md`](24-SPECIALISTS.md) |

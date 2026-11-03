@@ -325,6 +325,27 @@ lus. Ce qui est dessiné est **exactement** ce que le modèle a reçu — pas un
 reconstitution. Chaque note lue est listée avec la raison (mots ou sujets
 partagés, connexion suivie) ; les titres cités dans la réponse s'ouvrent.
 
+## 5 bis. Les spécialistes — des agents à vous ✅
+
+Un spécialiste est un sous-agent que la personne définit pour un besoin à
+elle : un regard juridique sur ses contrats, un assistant pour sa TVA, une
+plume dans sa voix. Un rôle, les outils qu'il peut utiliser, la profondeur de
+sa réflexion.
+
+- **Les créer facilement** : décrire son besoin en une phrase (l'IA propose un
+  spécialiste complet, relu avant d'être enregistré), partir d'un des six
+  modèles, partir de zéro, ou le demander à l'agent — qui montre alors le
+  spécialiste et attend votre accord.
+- **S'en servir** : lui parler directement (sélecteur de la conversation), ou
+  laisser l'agent lui confier des tâches — plusieurs spécialistes en
+  parallèle, puis l'agent vérifie et fait la synthèse.
+- **Les garde-fous** : jamais plus d'outils que l'agent ; jamais d'orchestration
+  (ni recherche, ni délégation, ni création d'agents) ; les règles de LifeOS
+  passent après son rôle et priment ; délégué, il ne peut rien vous demander,
+  donc toute action qui exigerait votre accord lui est refusée ; 30 au plus.
+
+Détails : `docs/24-SPECIALISTS.md`. À appliquer : migration 018.
+
 ## 6. La voix ✅
 
 **Notes vocales.** Le micro de la barre de capture enregistre une note :
@@ -699,10 +720,12 @@ de 5 s, testées.
 
 ## 16. Avant de lancer
 
-1. **Appliquer les migrations 013, 014, 015, 016 puis 017** dans Supabase (007
-   à 012 sont faites). Sans 017 : pas de ventes (la page le dit) ; 017 a été
-   relue mais **pas encore exécutée sur Postgres** — la passer une fois sur le
-   vrai projet, puis faire le parcours devis → facture → paiement → avoir. Sans 013 : ni trésorerie datée, ni soldes, ni rappels
+1. **Appliquer les migrations 013 à 018** dans Supabase (007
+   à 012 sont faites). Sans 017 : pas de ventes (la page le dit) ; sans 018 :
+   pas de spécialistes (la page le dit). 017 et 018 ont été relues mais **pas
+   encore exécutées sur Postgres** — les passer une fois sur le vrai projet,
+   puis faire le parcours devis → facture → paiement → avoir, et créer, modifier,
+   utiliser et supprimer un spécialiste. Sans 013 : ni trésorerie datée, ni soldes, ni rappels
    d'affaires, ni revue du vendredi, ni pack d'accueil. Sans 014 : ni domaines,
    ni connexion unique, ni provisionnement. Sans 015 : pas de double (portrait,
    point du jour, suivi des conseils). Sans 016 : pas de cartes mentales
